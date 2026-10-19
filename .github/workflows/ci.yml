@@ -59,7 +59,14 @@ jobs:
       - name: Create database
         run: uv run python -m app.db.ensure_database
       - name: Integration tests (migrations up, down, up)
-        run: uv run pytest -m integration -o addopts=""
+        run: |
+          set -o pipefail
+          uv run pytest -m integration -o addopts="" -rA --tb=short 2>&1 | tee /tmp/integration.log
+      - name: Surface integration failure as an annotation
+        if: failure()
+        run: |
+          [ -f /tmp/integration.log ] || exit 0
+          echo "::error title=Integration tests::$(tail -80 /tmp/integration.log | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
 
   web:
     name: Web (lint, types, tests, build)

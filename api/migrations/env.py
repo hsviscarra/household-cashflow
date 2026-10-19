@@ -7,7 +7,9 @@ config = context.config
 
 
 def run_migrations_offline() -> None:
-    context.configure(url=get_settings().database_url, literal_binds=True)
+    context.configure(
+        url=get_settings().database_url, literal_binds=True, version_table_schema="audit"
+    )
     with context.begin_transaction():
         context.run_migrations()
 
