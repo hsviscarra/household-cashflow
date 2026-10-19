@@ -1,0 +1,30 @@
+# Real financial data never enters git
+data/
+*.pdf
+*.xlsx
+*.xls
+*.csv
+!api/tests/fixtures/**/*.csv
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+web/dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.tsbuildinfo

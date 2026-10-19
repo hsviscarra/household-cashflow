@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/*
+ * Mercado design tokens (docs/design-system.md).
+ * Utilities read these variables, so the dark block below re-themes the whole app.
+ */
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ground: #ffffff;
+  --color-surface: #f3f2f8;
+  --color-line: #e4e2ee;
+  --color-ink: #241f45;
+  --color-muted: #5d5880;
+
+  --color-primary: #2f5bea;
+  --color-primary-hover: #1e3fb0;
+  --color-on-primary: #ffffff;
+
+  --color-attention-bg: #fff4da;
+  --color-attention-ink: #6b4a00;
+  --color-good-bg: #e9f6f3;
+  --color-good-ink: #00695c;
+  --color-danger-bg: #fce8e4;
+  --color-danger-ink: #a3301b;
+  --color-info-bg: #eef2ff;
+
+  /* Category colors, in the order of docs/design-system.md */
+  --color-cat-fixed: #6b6788;
+  --color-cat-groceries: #4e9a2a;
+  --color-cat-health: #00897b;
+  --color-cat-services: #7b4bd6;
+  --color-cat-dining: #e2583e;
+  --color-cat-shopping: #c2185b;
+  --color-cat-subscriptions: #2f5bea;
+  --color-cat-delivery: #e8a000;
+  --color-cat-kids: #e57ba9;
+  --color-cat-transport: #3aa7d9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-ground: #17152b;
+    --color-surface: #221f3d;
+    --color-line: #34305a;
+    --color-ink: #eeedf7;
+    --color-muted: #aca8c8;
+
+    --color-primary: #8aa4ff;
+    --color-primary-hover: #b0c2ff;
+    --color-on-primary: #10163a;
+
+    --color-attention-bg: #3a3014;
+    --color-attention-ink: #f5d58a;
+    --color-good-bg: #12332e;
+    --color-good-ink: #7fd8c8;
+    --color-danger-bg: #3b1c17;
+    --color-danger-ink: #f4a898;
+    --color-info-bg: #232a52;
+  }
+}
+
+body {
+  @apply bg-ground font-sans text-ink antialiased;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
+}
+.pill-good {
+  @apply bg-good-bg text-good-ink;
+}
+.pill-bad {
+  @apply bg-danger-bg text-danger-ink;
+}
+.pill-muted {
+  @apply bg-surface text-muted;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
