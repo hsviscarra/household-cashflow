@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+.pill {
+  @apply rounded-full px-3 py-1 text-xs font-medium;
+}
+.pill-good {
+  @apply bg-emerald-100 text-emerald-800;
+}
+.pill-bad {
+  @apply bg-rose-100 text-rose-800;
+}
+.pill-muted {
+  @apply bg-slate-100 text-slate-600;
+}

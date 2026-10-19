@@ -1,0 +1,7 @@
+# Default rules plus an allowlist for the throwaway local/CI SQL Server passwords.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local-only and CI-only container passwords"
+regexes = ['''Ci-Only-Passw0rd!''', '''ChangeMe-Local-2026!''']

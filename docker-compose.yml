@@ -1,0 +1,56 @@
+# Local stack:  cp .env.example .env  &&  docker compose up --build
+# App on http://localhost:8000 (API + built web). For hot-reload UI work:
+#   docker compose --profile dev up   ->  Vite on http://localhost:5173
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      args:
+        GIT_SHA: local
+    environment:
+      APP_ENV: local
+      DATABASE_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD}@sqlserver:1433/cashflow?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+    ports:
+      - "8000:8000"
+    volumes:
+      - statements:/data/statements
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+  web:
+    profiles: ["dev"]
+    image: node:22-alpine
+    working_dir: /web
+    command: sh -c "corepack enable && pnpm install && pnpm dev --host 0.0.0.0"
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/web
+      - /web/node_modules
+    depends_on:
+      - api
+
+volumes:
+  sqldata:
+  statements:

@@ -1,0 +1,96 @@
+name: Deploy
+
+# Runs after CI succeeds on main: build the image, push to GHCR, roll the Container App, smoke test.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag (git SHA) to redeploy, for rollback. Empty = build current main."
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write   # Azure OIDC login, no stored cloud secrets
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ inputs.image_tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.event.workflow_run.head_sha || github.sha }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "build=${{ inputs.image_tag == '' }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.build == 'true'
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.tag.outputs.build == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.tag.outputs.build == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        if: steps.tag.outputs.build == 'true'
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }},${{ env.IMAGE }}:latest
+          build-args: GIT_SHA=${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Roll the Container App
+        run: |
+          az containerapp update \
+            --name "${{ vars.AZURE_APP_NAME }}" --resource-group "${{ vars.AZURE_RG }}" \
+            --image "${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}" \
+            --set-env-vars GIT_SHA=${{ steps.tag.outputs.tag }} \
+            --output none
+          az containerapp ingress update \
+            --name "${{ vars.AZURE_APP_NAME }}" --resource-group "${{ vars.AZURE_RG }}" \
+            --target-port 8000 --output none
+
+      - name: Smoke test
+        run: |
+          FQDN=$(az containerapp show -n "${{ vars.AZURE_APP_NAME }}" -g "${{ vars.AZURE_RG }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          # Scale-from-zero and a paused database can take a minute to wake up.
+          for i in $(seq 1 18); do
+            BODY=$(curl -fsS "https://$FQDN/api/health" || true)
+            echo "attempt $i: $BODY"
+            if echo "$BODY" | grep -q '"git_sha":"${{ steps.tag.outputs.tag }}"' \
+               && echo "$BODY" | grep -q '"database":"ok"'; then
+              echo "Deployed ${{ steps.tag.outputs.tag }} to https://$FQDN"; exit 0
+            fi
+            sleep 10
+          done
+          echo "Smoke test failed. Roll back: run this workflow with the previous image tag."; exit 1

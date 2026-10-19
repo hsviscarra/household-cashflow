@@ -1,0 +1,16 @@
+# Changelog
+
+All notable changes per roadmap feature. Versions follow `v0.<feature>.0` until the app replaces
+the Excel workbook.
+
+## [Unreleased]
+
+### F0 — Walking skeleton and pipeline
+- FastAPI app with `/api/health` (version, git SHA, database check) and `/api/me`.
+- Email allow-list middleware for Container Apps sign-in.
+- Alembic baseline creating the `raw`, `stg`, `rej`, `core`, `mart` and `audit` schemas.
+- React shell with navigation to every planned page and a database status pill.
+- Single Docker image (API serves the web build); Docker Compose with SQL Server 2022.
+- CI (lint, types, unit and integration tests, secret scan, image build) and deploy-on-merge to
+  Azure Container Apps with smoke test and manual rollback.
+- Azure Bicep (Container App, Azure SQL free offer with auto-pause, Blob, budget) and bootstrap script.

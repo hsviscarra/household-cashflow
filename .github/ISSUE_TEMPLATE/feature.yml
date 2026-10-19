@@ -1,0 +1,36 @@
+name: Roadmap feature
+description: One feature (F0 to F19) or a slice of one
+title: "Fxx: "
+labels: ["type:feature"]
+body:
+  - type: input
+    id: feature
+    attributes:
+      label: Roadmap feature
+      placeholder: F3 — Statement upload
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What this issue builds.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable outcomes, with sample data where possible.
+    validations:
+      required: true
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: Definition of Done
+      options:
+        - label: Tests (unit, integration, e2e as relevant), coverage ≥ 80%
+        - label: Migrations up/down tested
+        - label: CI green and deployed; smoke test passed
+        - label: Docs, ADR, CHANGELOG updated
+        - label: Demo accepted
