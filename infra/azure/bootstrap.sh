@@ -3,7 +3,10 @@
 #
 #   az login && gh auth login
 #   ALERT_EMAIL=you@example.com ALLOWED_EMAILS="you@example.com,lauren@example.com" \
-#     ./infra/azure/bootstrap.sh
+#     LOCATION=eastus ./infra/azure/bootstrap.sh
+#
+# LOCATION is the Azure region (default eastus). If Azure SQL says a region is not accepting
+# new servers, delete the resource group and re-run with another region (e.g. centralus).
 #
 # It creates the resource group and resources (infra/azure/main.bicep), the sign-in
 # app registration for Microsoft personal accounts, and a GitHub OIDC identity that
@@ -12,7 +15,7 @@ set -euo pipefail
 
 : "${ALERT_EMAIL:?set ALERT_EMAIL}"
 : "${ALLOWED_EMAILS:?set ALLOWED_EMAILS (comma-separated)}"
-LOCATION="${LOCATION:-eastus2}"
+LOCATION="${LOCATION:-eastus}"
 RG="${RG:-rg-cashflow}"
 PREFIX="${PREFIX:-cashflow}"
 REPO="${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
@@ -27,6 +30,21 @@ SUB_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 echo "Subscription $SUB_ID, resource group $RG in $LOCATION, repo $REPO"
 
+# Resource providers must be registered once per subscription before first use.
+for ns in Microsoft.App Microsoft.Sql Microsoft.Storage Microsoft.Consumption; do
+  state=$(az provider show -n "$ns" --query registrationState -o tsv 2>/dev/null || echo NotRegistered)
+  if [ "$state" != "Registered" ]; then
+    echo "Registering $ns (one time, can take a few minutes)…"
+    az provider register -n "$ns" --wait -o none
+  fi
+done
+
+EXISTING_LOCATION=$(az group show -n "$RG" --query location -o tsv 2>/dev/null || true)
+if [ -n "$EXISTING_LOCATION" ] && [ "$EXISTING_LOCATION" != "$LOCATION" ]; then
+  echo "Resource group $RG already exists in $EXISTING_LOCATION, not $LOCATION."
+  echo "Delete it first if it only holds a failed attempt:  az group delete -n $RG --yes"
+  exit 1
+fi
 az group create -n "$RG" -l "$LOCATION" -o none
 
 # Keep the SQL password stable across re-runs: reuse it if the app already holds it.
@@ -38,7 +56,7 @@ fi
 
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
-    -p prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
+    -p location="$LOCATION" prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
        ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" "$@" \
     --query properties.outputs -o json
 }
