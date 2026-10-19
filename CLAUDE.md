@@ -1,6 +1,7 @@
 # Working on household-cashflow
 
-Private household finance app. Read `README.md`, `docs/adr/` and `docs/definition-of-done.md` first.
+Private household finance app. Read `README.md`, `docs/adr/`, `docs/definition-of-done.md` and
+`docs/design-system.md` (Mercado: use its tokens and rules for every UI change) first.
 
 ## Rules
 - Never commit real statements, workbooks, account numbers, cédulas or `.env`. Fixtures are synthetic.

@@ -10,6 +10,7 @@ the Excel workbook.
 - Email allow-list middleware for Container Apps sign-in.
 - Alembic baseline creating the `raw`, `stg`, `rej`, `core`, `mart` and `audit` schemas.
 - React shell with navigation to every planned page and a database status pill.
+- Mercado design system (docs/design-system.md): color tokens with dark mode, Bricolage Grotesque + Figtree, category colors, button and behaviour rules; shell restyled with it.
 - Single Docker image (API serves the web build); Docker Compose with SQL Server 2022.
 - CI (lint, types, unit and integration tests, secret scan, image build) and deploy-on-merge to
   Azure Container Apps with smoke test and manual rollback.

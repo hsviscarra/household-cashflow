@@ -10,7 +10,10 @@ function StatusPill() {
   if (isError || !data) return <span className="pill pill-bad">API unreachable</span>;
   const ok = data.database === "ok";
   return (
-    <span className={`pill ${ok ? "pill-good" : "pill-bad"}`} title={`v${data.version} · ${data.git_sha}`}>
+    <span
+      className={`pill ${ok ? "pill-good" : "pill-bad"}`}
+      title={`Version ${data.version} (${data.git_sha})`}
+    >
       Database {ok ? "connected" : "unavailable"}
     </span>
   );
@@ -19,32 +22,42 @@ function StatusPill() {
 function SignedIn() {
   const { data } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
   if (!data?.authenticated) return null;
-  return <span className="text-sm text-slate-500">{data.name}</span>;
+  return <span className="text-sm text-muted">{data.name}</span>;
 }
 
 function Placeholder({ page }: { page: PageDef }) {
   return (
-    <section>
-      <h1 className="text-2xl font-semibold">{page.label}</h1>
-      <p className="mt-2 text-slate-600">{page.summary}</p>
-      <p className="mt-6 text-sm text-slate-500">Built in roadmap feature {page.feature}.</p>
+    <section className="max-w-3xl">
+      <h1 className="font-display text-4xl font-bold leading-tight">{page.label}</h1>
+      <p className="mt-3 text-lg text-muted">{page.summary}</p>
+      <p className="mt-8 inline-block rounded-2xl bg-info-bg px-5 py-4">
+        This page arrives with roadmap feature {page.feature}.
+      </p>
     </section>
   );
 }
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 md:flex">
-      <nav aria-label="Main" className="border-b border-slate-200 bg-white md:w-56 md:border-b-0 md:border-r">
-        <div className="px-4 py-4 font-semibold">Household Cash Flow</div>
-        <ul className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-visible">
+    <div className="min-h-screen bg-ground text-ink">
+      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 pt-6 md:px-12">
+        <div className="font-display text-xl font-bold">Household Cash Flow</div>
+        <div className="flex items-center gap-3">
+          <SignedIn />
+          <StatusPill />
+        </div>
+      </header>
+      <nav aria-label="Main" className="mx-auto mt-4 max-w-6xl px-4 md:px-12">
+        <ul className="flex gap-1 overflow-x-auto rounded-full bg-surface p-1.5">
           {PAGES.map((p) => (
             <li key={p.path}>
               <NavLink
                 to={p.path}
                 end={p.path === "/"}
                 className={({ isActive }) =>
-                  `block whitespace-nowrap rounded px-3 py-2 text-sm ${isActive ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`
+                  `flex h-11 items-center whitespace-nowrap rounded-full px-4 ${
+                    isActive ? "bg-ink font-semibold text-ground" : "text-ink hover:bg-line"
+                  }`
                 }
               >
                 {p.label}
@@ -53,19 +66,13 @@ export default function App() {
           ))}
         </ul>
       </nav>
-      <div className="flex-1">
-        <header className="flex items-center justify-end gap-3 border-b border-slate-200 bg-white px-6 py-3">
-          <SignedIn />
-          <StatusPill />
-        </header>
-        <main className="px-6 py-8">
-          <Routes>
-            {PAGES.map((p) => (
-              <Route key={p.path} path={p.path} element={<Placeholder page={p} />} />
-            ))}
-          </Routes>
-        </main>
-      </div>
+      <main className="mx-auto max-w-6xl px-4 py-10 md:px-12">
+        <Routes>
+          {PAGES.map((p) => (
+            <Route key={p.path} path={p.path} element={<Placeholder page={p} />} />
+          ))}
+        </Routes>
+      </main>
     </div>
   );
 }
