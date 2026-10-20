@@ -58,9 +58,8 @@ _INCOME: dict[str, Mapping] = {
 _EXPENSE: dict[str, Mapping] = {
     # Housing and loans
     "biess depo": _m("expense", "Housing/Mortgage BIESS", "Joint", "EC"),
-    "iess": _m(
-        "expense", "Housing/Mortgage BIESS", "Joint", "EC", "2021 'IESS': the BIESS mortgage?"
-    ),
+    # 2021 sheet: "IESS" 540.00 is the BIESS house loan (the maid's IESS is a separate ~110.00).
+    "iess": _m("expense", "Housing/Mortgage BIESS", "Joint", "EC"),
     "condo fee": _m("expense", "Housing/Condo Fee", "Joint", "EC"),
     "aliquota ofi": _m("expense", "Housing/Office Alícuota", "Joint", "EC"),
     # Security fee for the conjunto.
