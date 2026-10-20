@@ -5,8 +5,10 @@
 #   ALERT_EMAIL=you@example.com ALLOWED_EMAILS="you@example.com,lauren@example.com" \
 #     LOCATION=eastus ./infra/azure/bootstrap.sh
 #
-# LOCATION is the Azure region (default eastus). If Azure SQL says a region is not accepting
-# new servers, delete the resource group and re-run with another region (e.g. centralus).
+# LOCATION is the Azure region (default eastus). SQL_LOCATION (default: LOCATION) is where the
+# Azure SQL server goes; some subscriptions may only create SQL servers in certain regions. If SQL
+# says a region is not accepting new servers, delete the resource group and re-run with
+# SQL_LOCATION set to a region whose SQL capability status is Available.
 #
 # It creates the resource group and resources (infra/azure/main.bicep), the sign-in
 # app registration for Microsoft personal accounts, and a GitHub OIDC identity that
@@ -16,6 +18,7 @@ set -euo pipefail
 : "${ALERT_EMAIL:?set ALERT_EMAIL}"
 : "${ALLOWED_EMAILS:?set ALLOWED_EMAILS (comma-separated)}"
 LOCATION="${LOCATION:-eastus}"
+SQL_LOCATION="${SQL_LOCATION:-$LOCATION}"
 RG="${RG:-rg-cashflow}"
 PREFIX="${PREFIX:-cashflow}"
 REPO="${REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
@@ -28,7 +31,7 @@ fi
 
 SUB_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
-echo "Subscription $SUB_ID, resource group $RG in $LOCATION, repo $REPO"
+echo "Subscription $SUB_ID, resource group $RG in $LOCATION (SQL in $SQL_LOCATION), repo $REPO"
 
 # Resource providers must be registered once per subscription before first use.
 for ns in Microsoft.App Microsoft.Sql Microsoft.Storage Microsoft.Consumption; do
@@ -56,7 +59,7 @@ fi
 
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
-    -p location="$LOCATION" prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
+    -p location="$LOCATION" sqlLocation="$SQL_LOCATION" prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
        ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" "$@" \
     --query properties.outputs -o json
 }

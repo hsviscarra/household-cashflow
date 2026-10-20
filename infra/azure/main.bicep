@@ -4,6 +4,9 @@
 @description('Azure region for all resources.')
 param location string = resourceGroup().location
 
+@description('Region for the Azure SQL server; some subscriptions may only create SQL servers in certain regions.')
+param sqlLocation string = location
+
 @description('Short prefix for resource names.')
 param prefix string = 'cashflow'
 
@@ -53,7 +56,7 @@ var msaIssuer = '${environment().authentication.loginEndpoint}9188040d-6c67-4c5b
 // ---------- Azure SQL Database: free offer, auto-pause when the monthly allowance is used ----------
 resource sql 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: '${prefix}-sql-${suffix}'
-  location: location
+  location: sqlLocation
   properties: {
     administratorLogin: sqlAdminLogin
     administratorLoginPassword: sqlAdminPassword
@@ -74,7 +77,7 @@ resource allowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
 resource db 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sql
   name: 'cashflow'
-  location: location
+  location: sqlLocation
   sku: {
     name: 'GP_S_Gen5_2'
     tier: 'GeneralPurpose'
