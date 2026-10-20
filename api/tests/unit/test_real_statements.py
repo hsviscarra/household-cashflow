@@ -1,6 +1,6 @@
 """Optional checks against real statements, run locally only (files never enter git):
 
-    REAL_CAPITALONE="/path/to/statement.pdf" uv run pytest tests/unit/test_real_statements.py
+REAL_CAPITALONE="/path/to/statement.pdf" uv run pytest tests/unit/test_real_statements.py
 """
 
 import os
