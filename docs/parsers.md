@@ -52,3 +52,27 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
   balance on the previous statement when that statement is loaded. Empty sections are skipped.
 - **Checked on the real Aug 22 – Sep 22, 2026 statement:** 9 lines; checking 5,968.07 →
   6,856.04, savings 242.31 → 262.31. Zelle payments and one PayPal purchase have no rule yet.
+
+## Banco Pichincha (Mastercard, `pichincha`) — F6
+
+- **Detect:** `BANCO PICHINCHA C.A.` / `pichincha.com`; card `546605XXXXXX2829`; period on page 2,
+  `PERÍODO DESDE PERÍODO HASTA … 13/06/2026 12/07/2026`.
+- **Summary:** `MOVIMIENTO 527.69 1,057.81- 574.71 44.59` = saldo anterior, pagos/créditos,
+  consumos/débitos, total a pagar (US number format here).
+- **Detail:** `DETALLE DE MOVIMIENTOS`: `SALDO ANTERIOR 527,69`, then account-level lines (payments
+  `SU PAGO "MUCHAS GRACIAS" 310,00-`, `INTERESES SALDO A FAVOR N/C 0,03-`,
+  `INT. FINANCIAMIENTO N/D 0,56`, `ND PRECANCELACION DIF. C. N/D 426,24`,
+  `CONT_FIN_SOLCA_C.ROT** N/D 0,02`), then one block per card
+  (`… 5466-xxxx-xxxx-6331 * PRINCIPAL REEMPLAZO …`) ending in `SUBTOTAL : 123,75`.
+  Lines: `16/06 3541282 UBER *ONE MEMBERSHIP U V CONSUMO NLD 3,99` (operation and country code are
+  removed from the description); Ecuadorian number format (`1.057,78`), credits end in `-`.
+- **Deferred purchases:** an installment (`2/6`) and a second amount (the deferred balance) may
+  follow; the installment amount is the line, the installment is kept as the line's reference and
+  the balance in the header totals.
+- **Cards:** the replacement card 6331 and the original 2829 both belong to the Pichincha account;
+  each line keeps its card's last four digits.
+- **Tie-out:** payments and credits; purchases and charges; saldo anterior − credits + debits =
+  total a pagar; each card's SUBTOTAL; SUBTOTAL PAGOS; TOTAL CONSUMOS MES (purchases only);
+  totals printed in the detail = the summary; continuity with the previous statement.
+- **Checked on the real Jun 13 – Jul 12, 2026 statement:** 26 lines, ties out to 44.59; every
+  line categorized by the seeded rules.

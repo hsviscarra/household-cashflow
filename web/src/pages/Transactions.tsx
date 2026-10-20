@@ -56,6 +56,12 @@ export default function TransactionsPage() {
           Could not load the transactions: {(error as Error).message}
         </p>
       )}
+      {data?.some((t) => t.source === "excel_history") && data.some((t) => t.source === "statement") && (
+        <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">
+          {monthLong(`${month}-01`)} is covered by the Excel history, so the totals on the Overview use the
+          workbook. The statement lines below are kept for reference and don’t count twice.
+        </p>
+      )}
       {data && !data.length && (
         <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">
           Nothing loaded for {monthLong(`${month}-01`)} yet. Upload and approve a statement on the Import

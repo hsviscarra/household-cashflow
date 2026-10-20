@@ -163,10 +163,10 @@ def test_read_errors(client: TestClient) -> None:
     assert client.get("/api/batches/999").status_code == 404
     assert client.post("/api/batches/999/approve").status_code == 404
     assert client.post("/api/batches/999/reject").status_code == 404
-    pich = _upload(client, "pich.pdf", s.pichincha())
-    resp = client.post(f"/api/statements/{pich['statement_file_id']}/read")
+    prod = _upload(client, "prod.pdf", s.produbanco())
+    resp = client.post(f"/api/statements/{prod['statement_file_id']}/read")
     assert resp.status_code == 422 and "not built yet" in resp.json()["detail"]
-    assert pich["can_read"] is False
+    assert prod["can_read"] is False
     broken = _upload(client, "co-short.pdf", s.capitalone())  # detected, but no summary
     resp = client.post(f"/api/statements/{broken['statement_file_id']}/read")
     assert resp.status_code == 422 and "could not be read" in resp.json()["detail"]
@@ -245,3 +245,63 @@ def test_bofa_needs_both_accounts_linked(client: TestClient, db: Session) -> Non
     st = _upload(client, "bofa.pdf", s.bofa_full())
     resp = client.post(f"/api/statements/{st['statement_file_id']}/read")
     assert resp.status_code == 422 and "•••• 1862" in resp.json()["detail"]
+
+
+def test_pichincha_statement_loads_with_categories(client: TestClient) -> None:
+    st = _upload(client, "pich.pdf", s.pichincha_full())
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"] is True, [c for c in b["checks"] if not c["ok"]]
+    lines = {ln["description"]: ln for ln in b["lines"]}
+    expect = {
+        'SU PAGO "MUCHAS GRACIAS"': ("transfer", "Transfers / Card Payment"),
+        "INT. FINANCIAMIENTO": ("fee_interest", "Financial Costs / Credit Card Interest"),
+        "CONT_FIN_SOLCA_C.ROT**": ("expense", "Financial Costs / SOLCA Contribution"),
+        "RET IVA SERV DIGITAL 100%": ("expense", "Financial Costs / Taxes on Digital Services"),
+        "ND PRECANCELACION DIF. C.": ("savings", "Savings & Debt / Extra Debt Payoff"),
+        "UBER *ONE MEMBERSHIP U V": ("expense", "Subscriptions & Software / Memberships"),
+        "GOOGLE *YouTubeA M": ("expense", "Subscriptions & Software / Media"),
+        "CONECEL VARIOS UIO": ("expense", "Utilities / Phone/Internet"),
+    }
+    for desc, (type_, path) in expect.items():
+        assert (lines[desc]["type"], lines[desc]["category_path"]) == (type_, path), desc
+    assert lines['SU PAGO "MUCHAS GRACIAS"']["person"] == "Hernan"  # the account owner
+    assert lines["UBER *ONE MEMBERSHIP U V"]["cardholder"] == "6331"
+    assert lines["TIENDA DE PRUEBA DIFERIDO"]["pay_reference"] == "2/6"
+    assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == 10
+
+
+def test_months_with_excel_history_do_not_count_statement_lines(
+    client: TestClient, db: Session
+) -> None:
+    from datetime import date
+
+    st = _upload(client, "co.pdf", s.capitalone_full())
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    client.post(f"/api/batches/{b['batch_id']}/approve")
+    # A history row for September 2026 (as if the workbook covered it).
+    db.add(
+        Transaction(
+            natural_key="excel-test-sep",
+            txn_date=date(2026, 9, 1),
+            cash_month=date(2026, 9, 1),
+            amount=Decimal("-1000"),
+            description_raw="Capital One",
+            type="debt_payment",
+            source="excel_history",
+            status="confirmed",
+        )
+    )
+    db.commit()
+    monthly = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    sep = monthly["2026-09-01"]
+    assert (Decimal(sep["expenses"]), Decimal(sep["debt_payments"])) == (
+        Decimal("0"),
+        Decimal("1000"),
+    )
+    assert Decimal(monthly["2026-10-01"]["expenses"]) == Decimal(
+        "50"
+    )  # no history: statements count
+    cats = client.get("/api/cashflow/categories", params={"year": 2026}).json()
+    assert not [c for c in cats if c["cash_month"] == "2026-09-01" and c["type"] == "expense"]
+    # The lines are still loaded and listed.
+    assert len(client.get("/api/transactions", params={"month": "2026-09-01"}).json()) == 10

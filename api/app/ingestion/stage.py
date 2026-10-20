@@ -293,7 +293,7 @@ def parse_statement(
                 type=c.type,
                 category_id=c.category_id,
                 rule_id=c.rule_id,
-                person=line.person,
+                person=line.person or account.owner,
                 country=country,
                 pay_reference=line.reference,
                 is_duplicate=False,

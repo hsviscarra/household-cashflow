@@ -22,5 +22,16 @@ FROM (
         COUNT(*) AS [transactions]
     FROM [core].[transaction] AS [t]
     WHERE [t].[type] <> 'transfer'
+        -- Months covered by the Excel history keep it; statement lines count from the first
+        -- month without history, so a month is never counted twice (ADR-004).
+        AND NOT (
+            [t].[source] = 'statement'
+            AND EXISTS (
+                SELECT 1
+                FROM [core].[transaction] AS [h]
+                WHERE [h].[source] = 'excel_history'
+                    AND [h].[cash_month] = [t].[cash_month]
+            )
+        )
     GROUP BY [t].[cash_month]
 ) AS [m];
