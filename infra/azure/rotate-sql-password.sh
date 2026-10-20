@@ -14,12 +14,12 @@ FQDN=$(az sql server show -g "$RG" -n "$SQL" --query fullyQualifiedDomainName -o
 ENC=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$NEW")
 URL="mssql+pyodbc://${LOGIN}:${ENC}@${FQDN}:1433/cashflow?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no&Connection+Timeout=60"
 
-echo "Updating SQL admin password on $SQL…"
+echo "Updating SQL admin password on ${SQL}..."
 az sql server update -g "$RG" -n "$SQL" --admin-password "$NEW" -o none
-echo "Updating the app's database-url secret…"
+echo "Updating the app's database-url secret..."
 az containerapp secret set -g "$RG" -n "$APP" --secrets "database-url=$URL" -o none
 REV=$(az containerapp revision list -g "$RG" -n "$APP" --query "[?properties.active] | [0].name" -o tsv)
-echo "Restarting revision $REV…"
+echo "Restarting revision ${REV}..."
 az containerapp revision restart -g "$RG" -n "$APP" --revision "$REV" -o none
 
 echo

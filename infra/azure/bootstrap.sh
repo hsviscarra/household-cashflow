@@ -43,12 +43,12 @@ deploy() {
     --query properties.outputs -o json
 }
 
-echo "1/4 Deploying resources (no sign-in yet)…"
+echo "1/4 Deploying resources (no sign-in yet)..."
 OUT=$(deploy enableAuth=false)
 APP=$(echo "$OUT" | jq -r .appName.value)
 FQDN=$(echo "$OUT" | jq -r .fqdn.value)
 
-echo "2/4 Sign-in app registration for https://$FQDN …"
+echo "2/4 Sign-in app registration for https://$FQDN ..."
 AUTH_APP_ID=$(az ad app list --display-name "$PREFIX-signin" --query "[0].appId" -o tsv)
 if [ -z "$AUTH_APP_ID" ]; then
   AUTH_APP_ID=$(az ad app create --display-name "$PREFIX-signin" \
@@ -59,10 +59,10 @@ fi
 AUTH_SECRET=$(az ad app credential reset --id "$AUTH_APP_ID" --display-name containerapp \
   --years 2 --query password -o tsv --only-show-errors)
 
-echo "3/4 Redeploying with sign-in on…"
+echo "3/4 Redeploying with sign-in on..."
 deploy enableAuth=true authClientId="$AUTH_APP_ID" authClientSecret="$AUTH_SECRET" >/dev/null
 
-echo "4/4 GitHub OIDC deploy identity…"
+echo "4/4 GitHub OIDC deploy identity..."
 DEPLOY_APP_ID=$(az ad app list --display-name "$PREFIX-github-deploy" --query "[0].appId" -o tsv)
 if [ -z "$DEPLOY_APP_ID" ]; then
   DEPLOY_APP_ID=$(az ad app create --display-name "$PREFIX-github-deploy" --query appId -o tsv)
