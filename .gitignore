@@ -28,3 +28,7 @@ web/dist/
 .idea/
 .DS_Store
 *.tsbuildinfo
+
+# Playwright
+web/test-results/
+web/playwright-report/

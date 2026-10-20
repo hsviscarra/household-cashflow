@@ -44,6 +44,8 @@ cd ../web && pnpm install && pnpm dev           # UI on :5173, proxies /api to :
 cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest --cov
 cd api && uv run pytest -m integration -o addopts=""   # needs SQL Server + DATABASE_URL
 cd web && pnpm lint && pnpm typecheck && pnpm test && pnpm build
+# End-to-end (needs the app on :8000, e.g. docker compose up):
+cd web && pnpm exec playwright install chromium && pnpm e2e
 pre-commit run --all-files
 ```
 

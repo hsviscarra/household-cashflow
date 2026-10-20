@@ -3,6 +3,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 
 import { fetchHealth, fetchMe } from "./api";
 import { PAGES, type PageDef } from "./pages";
+import Settings from "./pages/Settings";
 
 function StatusPill() {
   const { data, isError, isLoading } = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
@@ -69,7 +70,11 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-4 py-10 md:px-12">
         <Routes>
           {PAGES.map((p) => (
-            <Route key={p.path} path={p.path} element={<Placeholder page={p} />} />
+            <Route
+              key={p.path}
+              path={p.path}
+              element={p.path === "/settings" ? <Settings /> : <Placeholder page={p} />}
+            />
           ))}
         </Routes>
       </main>
