@@ -1,5 +1,10 @@
-"""Request and response models for the reference-data API (F1)."""
+"""Request and response models: reference data (F1), history and cash flow (F2).
 
+Money is Decimal and serializes as a JSON string, so no precision is lost on the way to the UI.
+"""
+
+from datetime import date
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -116,3 +121,109 @@ class RuleOut(_Out):
 class RuleTestOut(BaseModel):
     description: str
     rule: RuleOut | None
+
+
+# ---------------- F2: Excel history and cash flow ----------------
+class MonthCheckOut(BaseModel):
+    month: date
+    sheet: str
+    income_rows: Decimal
+    income_workbook: Decimal | None
+    expense_rows: Decimal
+    expense_workbook: Decimal | None
+    left_out: list[str]
+    typed_total: bool
+    explained: bool
+
+
+class MappingReviewOut(BaseModel):
+    block: str
+    group: str | None
+    label: str
+    type: str
+    category: str
+    person: str | None
+    months: int
+    total: Decimal
+    review: str | None
+
+
+class SnapshotOut(BaseModel):
+    as_of: date
+    name: str
+    kind: str
+    amount: Decimal
+    notes: str
+
+
+class YearTotalOut(BaseModel):
+    year: int
+    months: int
+    income: Decimal
+    outflows: Decimal
+
+
+class UnmappedOut(BaseModel):
+    sheet: str
+    cell: str
+    block: str
+    group: str | None
+    label: str
+    value: Decimal
+
+
+class HistoryPreviewOut(BaseModel):
+    file_name: str
+    file_sha256: str
+    already_loaded: bool
+    first_month: date | None
+    last_month: date | None
+    months: int
+    actual_rows: int
+    plan_rows: int
+    plan_months: list[date]
+    years: list[YearTotalOut]
+    mismatches: list[MonthCheckOut]
+    unmapped: list[UnmappedOut]
+    mapping: list[MappingReviewOut]
+    snapshots: list[SnapshotOut]
+    side_cells: int
+
+
+class HistoryLoadOut(BaseModel):
+    load_id: int
+    transactions: int
+    budget_rows: int
+    snapshots: int
+    raw_cells: int
+    replaced_transactions: int
+
+
+class MonthlyCashflowOut(BaseModel):
+    cash_month: date
+    income: Decimal
+    expenses: Decimal
+    savings: Decimal
+    debt_payments: Decimal
+    net: Decimal
+    cumulative_net: Decimal
+    savings_rate: Decimal | None
+    transactions: int
+
+
+class CategoryMonthOut(BaseModel):
+    cash_month: date
+    type: str
+    group_id: int
+    group_name: str
+    group_color: str | None
+    category_id: int
+    category_name: str
+    amount: Decimal
+    transactions: int
+
+
+class PlanMonthOut(BaseModel):
+    month: date
+    income: Decimal
+    outflows: Decimal

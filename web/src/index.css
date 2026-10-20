@@ -37,6 +37,10 @@
   --color-cat-delivery: #e8a000;
   --color-cat-kids: #e57ba9;
   --color-cat-transport: #3aa7d9;
+
+  /* Money in / out in charts (validated pair: CVD and contrast checks pass on both surfaces) */
+  --color-flow-in: #00897b;
+  --color-flow-out: #7b4bd6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -58,6 +62,9 @@
     --color-danger-bg: #3b1c17;
     --color-danger-ink: #f4a898;
     --color-info-bg: #232a52;
+
+    --color-flow-in: #1e9e8f;
+    --color-flow-out: #8f6be8;
   }
 }
 

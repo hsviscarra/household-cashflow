@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.3.0] — F2 Excel history and first dashboard
+
+### F2 — Excel history and Overview
+- Migration 0004: `raw.excel_import` / `raw.excel_cell`, `core.transaction`, `core.budget`,
+  `core.balance_snapshot`, `audit.load_log`; categories Health / Dad's Insurance, Savings & Debt /
+  Loan Payments, Pets, Other Expenses; views `mart.v_monthly_cashflow` and `mart.v_category_month`.
+- Workbook importer (ADR-002): August 2019 to June 2026 as monthly history, July to December 2026 as
+  plan, 2026 side tables as raw cells and balance snapshots; reconciliation that names the rows each
+  workbook TOTAL formula leaves out.
+- Import page: preview (years, rows to confirm, TOTAL differences, balances) then Load history.
+  CLI: `python -m app.cli.import_excel_history`.
+- Overview page: the year in one sentence, money in / out / kept tiles, monthly columns with plan,
+  running total since 2019, category table; light and dark, desktop and phone.
+- API: `/api/history/excel/preview|load`, `/api/cashflow/monthly|categories|plan`.
+
 ## [0.2.0] — F1 reference data
 
 ### F1 — Accounts, categories and merchant rules

@@ -55,6 +55,17 @@ because they never appear in spending charts.
 
 New categories get a color from this list's unused hues or `muted` until one is chosen.
 
+## Charts
+
+- Money in / out: `flow-in` #00897B (dark #1E9E8F) and `flow-out` #7B4BD6 (dark #8F6BE8). The pair
+  passes the palette validator (lightness band, chroma, colorblind separation, contrast) on both
+  surfaces. Trends with one series use `primary`.
+- Columns at most 24 px wide with 4 px rounded tops, 2 px apart; lines 2 px; hairline solid grid;
+  axis ticks compact (5K). A legend whenever there are two or more series; plan values at 35%
+  opacity with "Plan" in the legend.
+- Every chart has a hover or focus tooltip and a table with the same numbers on the page.
+- Text never takes the series color; identity comes from the swatch beside it.
+
 ## Shape and spacing
 
 - Buttons, nav items and chips: fully rounded (`rounded-full`), height ≥ 44 px.
