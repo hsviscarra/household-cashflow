@@ -106,3 +106,27 @@ def test_excel_history_load_on_sql_server() -> None:
     # Downgrade with data in place, then upgrade again.
     _alembic("downgrade", "0003")
     _alembic("upgrade", "head")
+
+
+def test_statement_upload_on_sql_server(tmp_path: object) -> None:
+    """Upload synthetic statements through the API against SQL Server, re-upload, downgrade."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa.pdf", s.bofa(), "application/pdf"))]
+    first = client.post("/api/statements", files=files).json()[0]
+    assert first["outcome"] == "stored", first
+    assert sorted(a["last4"] for a in first["statement"]["accounts"]) == ["1862", "8872"]
+    assert client.post("/api/statements", files=files).json()[0]["outcome"] == "duplicate"
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")

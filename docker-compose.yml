@@ -27,6 +27,7 @@ services:
         GIT_SHA: local
     environment:
       APP_ENV: local
+      STATEMENTS_DIR: /data/statements
       DATABASE_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD}@sqlserver:1433/cashflow?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
     ports:
       - "8000:8000"

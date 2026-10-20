@@ -34,6 +34,9 @@ TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest
 TXN_SOURCES = ("statement", "manual", "excel_history")
 TXN_STATUSES = ("pending", "confirmed", "matched")
 SNAPSHOT_KINDS = ("asset", "liability")
+STATEMENT_SOURCES = ("bofa", "capitalone", "pichincha", "produbanco", "diners", "unknown")
+STATEMENT_STATUSES = ("detected", "needs_account", "unknown_format")
+ACCOUNT_MATCHES = ("last4", "by_bank", "manual")
 
 # Money is DECIMAL(19,4) everywhere; never float.
 Money = Numeric(19, 4, asdecimal=True)
@@ -235,6 +238,51 @@ class LoadLog(Base):
     loaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     rows_loaded: Mapped[int] = mapped_column(Integer)
     summary: Mapped[str] = mapped_column(UnicodeText)
+
+
+# ---------------- F3: uploaded statements ----------------
+class StatementFile(Base):
+    """One uploaded statement PDF. The file is in blob storage; only metadata is here."""
+
+    __tablename__ = "statement_file"
+    __table_args__ = (
+        CheckConstraint(_in("source", STATEMENT_SOURCES), name="source"),
+        CheckConstraint(_in("status", STATEMENT_STATUSES), name="status"),
+        UniqueConstraint("sha256"),
+        {"schema": "raw"},
+    )
+
+    statement_file_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sha256: Mapped[str] = mapped_column(Unicode(64))
+    file_name: Mapped[str] = mapped_column(Unicode(260))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    page_count: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(Unicode(12))
+    status: Mapped[str] = mapped_column(Unicode(15))
+    # Last four digits found in the file, comma-separated ("8872,1862"); never full numbers.
+    last4_found: Mapped[str | None] = mapped_column(Unicode(60))
+    account_match: Mapped[str | None] = mapped_column(Unicode(10))
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    blob_key: Mapped[str] = mapped_column(Unicode(200))
+    uploaded_by: Mapped[str] = mapped_column(Unicode(320))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    accounts: Mapped[list["Account"]] = relationship(
+        secondary="raw.statement_file_account", order_by="Account.name"
+    )
+
+
+class StatementFileAccount(Base):
+    """Accounts a statement covers (a BofA combined statement covers checking and savings)."""
+
+    __tablename__ = "statement_file_account"
+    __table_args__ = ({"schema": "raw"},)
+
+    statement_file_id: Mapped[int] = mapped_column(
+        ForeignKey("raw.statement_file.statement_file_id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[int] = mapped_column(ForeignKey("core.account.account_id"), primary_key=True)
 
 
 # ---------------- mart views (read-only; created by migrations from sql/views) ----------------

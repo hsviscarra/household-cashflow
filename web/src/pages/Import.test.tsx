@@ -63,6 +63,7 @@ function stub(previewBody: object, loadStatus = 200) {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
+      if (url === "/api/statements") return Promise.resolve(new Response("[]"));
       calls.push(url);
       if (url.endsWith("/preview")) return Promise.resolve(new Response(JSON.stringify(previewBody)));
       if (loadStatus !== 200)
