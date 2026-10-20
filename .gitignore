@@ -7,6 +7,8 @@ data/
 !api/tests/fixtures/**/*.csv
 # Synthetic sample built by api/tests/fixtures/workbook.py (no real data)
 !web/e2e/fixtures/cash-flow-sample.xlsx
+# Synthetic statements built by api/tests/fixtures/statements.py (no real data)
+!web/e2e/fixtures/sample-*.pdf
 .env
 .env.*
 !.env.example

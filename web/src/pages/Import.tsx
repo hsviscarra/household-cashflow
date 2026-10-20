@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { loadHistory, previewHistory, type HistoryPreview } from "../api";
 import { money, monthLong } from "../money";
+import { StatementsCard } from "./ImportStatements";
 
 const TYPE_LABEL: Record<string, string> = {
   income: "Money in",
@@ -18,8 +19,9 @@ export default function ImportPage() {
     <section>
       <h1 className="font-display text-4xl font-bold leading-tight">Import</h1>
       <p className="mt-2 text-lg text-muted">
-        Statement uploads arrive with F3. For now: load the Cash Flow workbook as history.
+        Upload this month’s statements. The Cash Flow workbook history is loaded once, below.
       </p>
+      <StatementsCard />
       <HistoryCard />
     </section>
   );

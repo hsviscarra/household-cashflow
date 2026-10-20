@@ -3,7 +3,7 @@
 Money is Decimal and serializes as a JSON string, so no precision is lost on the way to the UI.
 """
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -227,3 +227,38 @@ class PlanMonthOut(BaseModel):
     month: date
     income: Decimal
     outflows: Decimal
+
+
+# ---------------- F3: statements ----------------
+class StatementAccountOut(_Out):
+    account_id: int
+    name: str
+    last4: str | None
+
+
+class StatementOut(_Out):
+    statement_file_id: int
+    file_name: str
+    source: str
+    source_label: str
+    status: str
+    accounts: list[StatementAccountOut]
+    account_match: str | None
+    last4_found: list[str]
+    period_start: date | None
+    period_end: date | None
+    page_count: int
+    size_bytes: int
+    uploaded_by: str
+    uploaded_at: datetime
+
+
+class UploadResultOut(BaseModel):
+    file_name: str
+    outcome: Literal["stored", "duplicate", "rejected"]
+    message: str
+    statement: StatementOut | None = None
+
+
+class StatementPatch(BaseModel):
+    account_ids: list[int] = Field(min_length=1, max_length=4)

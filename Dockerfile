@@ -39,9 +39,12 @@ COPY infra/docker/entrypoint.sh /entrypoint.sh
 ARG GIT_SHA=dev
 ENV GIT_SHA=$GIT_SHA \
     PATH="/app/.venv/bin:$PATH" \
-    WEB_DIST_DIR=/app/web_dist
+    WEB_DIST_DIR=/app/web_dist \
+    STATEMENTS_DIR=/data/statements
 
-RUN useradd --create-home --uid 10001 app && chmod +x /entrypoint.sh
+# Local statement storage (a volume in compose; Azure uses Blob Storage instead).
+RUN useradd --create-home --uid 10001 app && chmod +x /entrypoint.sh \
+ && mkdir -p /data/statements && chown -R app:app /data
 USER app
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]

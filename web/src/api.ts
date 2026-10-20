@@ -220,3 +220,49 @@ export const fetchCategoryMonths = (year: number) =>
 export const fetchPlan = () => send<PlanMonth[]>("GET", "/api/cashflow/plan");
 export const previewHistory = (file: File) => upload<HistoryPreview>("/api/history/excel/preview", file);
 export const loadHistory = (file: File) => upload<HistoryLoad>("/api/history/excel/load", file);
+
+// ---------- statements (F3) ----------
+export type Statement = {
+  statement_file_id: number;
+  file_name: string;
+  source: string;
+  source_label: string;
+  status: "detected" | "needs_account" | "unknown_format";
+  accounts: { account_id: number; name: string; last4: string | null }[];
+  account_match: "last4" | "by_bank" | "manual" | null;
+  last4_found: string[];
+  period_start: string | null;
+  period_end: string | null;
+  page_count: number;
+  size_bytes: number;
+  uploaded_by: string;
+  uploaded_at: string;
+};
+
+export type UploadResult = {
+  file_name: string;
+  outcome: "stored" | "duplicate" | "rejected";
+  message: string;
+  statement: Statement | null;
+};
+
+export async function uploadStatements(files: File[]): Promise<UploadResult[]> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  const resp = await fetch("/api/statements", {
+    method: "POST",
+    body: form,
+    headers: { Accept: "application/json" },
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const detail = (data as { detail?: unknown }).detail;
+    throw new ApiError(typeof detail === "string" ? detail : `Upload failed (${resp.status}).`, resp.status);
+  }
+  return data as UploadResult[];
+}
+
+export const fetchStatements = () => send<Statement[]>("GET", "/api/statements");
+export const assignStatement = (id: number, account_ids: number[]) =>
+  send<Statement>("PATCH", `/api/statements/${id}`, { account_ids });
+export const statementFileUrl = (id: number) => `/api/statements/${id}/file`;

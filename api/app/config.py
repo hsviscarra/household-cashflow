@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # Comma-separated emails allowed to use the app behind Container Apps auth.
     # Empty = no allow-list (local development, where there is no sign-in).
     allowed_emails: str = ""
+    # Statement PDFs: Azure Blob (managed identity) when STORAGE_ACCOUNT_URL is set,
+    # otherwise a local folder (a Docker volume in compose).
+    storage_account_url: str = ""
+    statements_container: str = "statements"
+    statements_dir: str = "data/statements"
 
     @property
     def allowed_email_set(self) -> frozenset[str]:

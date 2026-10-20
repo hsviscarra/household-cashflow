@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.session import get_session
+from app.ingestion.storage import LocalStore, get_store
 from app.main import create_app
 from app.models import Account, Base, Category, MerchantRule
 from app.routers.health import database_check
@@ -53,7 +54,12 @@ def db(engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
-def client(engine: Engine) -> Iterator[TestClient]:
+def store(tmp_path: Path) -> LocalStore:
+    return LocalStore(tmp_path / "statements")
+
+
+@pytest.fixture
+def client(engine: Engine, store: LocalStore) -> Iterator[TestClient]:
     factory = sessionmaker(bind=engine, expire_on_commit=False)
 
     def _session() -> Iterator[Session]:
@@ -63,4 +69,5 @@ def client(engine: Engine) -> Iterator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[database_check] = lambda: lambda: True
+    app.dependency_overrides[get_store] = lambda: store
     yield TestClient(app)

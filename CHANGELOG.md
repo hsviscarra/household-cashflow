@@ -5,6 +5,22 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.4.0] — F3 Statement upload
+
+### F3 — Upload, detect and keep statements
+- Migration 0005: `raw.statement_file` (hash, source, status, last four digits found, period,
+  storage key, who and when) and `raw.statement_file_account` (a BofA combined statement covers two
+  accounts).
+- Upload one or many PDFs (up to 50, 25 MB each) on the Import page or `POST /api/statements`.
+  Each file is hashed; the same file is never saved twice, whatever its name.
+- Detection by bank fingerprint (domains and legal names only), last four digits and statement
+  period for Bank of America, Capital One, Banco Pichincha, Produbanco and Diners; unknown formats
+  are kept for review. Password-protected or damaged PDFs are refused with a clear message.
+- Account matching: last four digits first, then the bank's only account (replacement cards,
+  Lauren's Produbanco); otherwise Hernan picks the account in the list.
+- Files stored in Azure Blob Storage with the app's managed identity (`STORAGE_ACCOUNT_URL`), or a
+  local folder (`STATEMENTS_DIR`, a Docker volume). `GET /api/statements/{id}/file` opens the PDF.
+
 ## [0.3.0] — F2 Excel history and first dashboard
 
 ### F2 — Excel history and Overview
