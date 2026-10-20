@@ -5,6 +5,26 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.5.0] — F4 Capital One end to end
+
+### F4 — Read, tie out, preview and approve a Capital One statement
+- Migration 0006: `raw.statement_header`, `raw.raw_line`, `stg.import_batch`,
+  `stg.stg_transaction`, `rej.rejected_line`; `core.transaction` gains `statement_file_id`,
+  `raw_line_id`, `import_batch_id` and `post_date`.
+- Capital One parser (docs/parsers.md): summary, lines per cardholder, fees and interest, year
+  from the billing cycle; golden test on a synthetic statement; the real Sep 4 – Oct 3, 2026
+  statement ties out to 3,932.84 (76 lines).
+- Tie-out checks per card and for the statement, plus continuity with the previous statement.
+  A statement that doesn't tie out, or has unreadable lines, can't be approved.
+- Staging with merchant-rule categories, person and country per line; card payments are
+  transfers, interest is a financial cost, credits on purchases are refunds. Identical lines on
+  one statement are kept (each gets its own key); lines already loaded are flagged and skipped.
+- Approve loads the batch into `core.transaction` in one database transaction and writes
+  `audit.load_log`; Discard leaves core untouched. Re-reading a preview replaces it.
+- Import page: "Read lines" per statement; review page with tie-out, totals by category, lines,
+  rejects, Approve import / Discard. Transactions page (read-only) with a month picker.
+- Overview: plan months give way to actual months as statements arrive.
+
 ## [0.4.0] — F3 Statement upload
 
 ### F3 — Upload, detect and keep statements

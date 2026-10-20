@@ -24,6 +24,8 @@ const base: Statement = {
   size_bytes: 1000,
   uploaded_by: "hernan@example.com",
   uploaded_at: "2026-10-20T15:00:00",
+  can_read: false,
+  batch: null,
 };
 const DINERS: Statement = {
   ...base,
@@ -186,7 +188,7 @@ describe("Import: statements", () => {
     fireEvent.change(select, { target: { value: "8" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Diners Club Lauren", { selector: "div" })).toBeInTheDocument();
-    expect(screen.getAllByText("Ready")).toHaveLength(2);
+    expect(screen.getAllByText("Uploaded", { selector: "span" })).toHaveLength(2);
     expect(calls.find((c) => c.method === "PATCH")?.body).toBe(JSON.stringify({ account_ids: [8] }));
   });
 

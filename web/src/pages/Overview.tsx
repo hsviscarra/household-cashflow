@@ -43,7 +43,11 @@ export default function Overview() {
   const expenses = inYear.reduce((s, m) => s + num(m.expenses), 0);
   const saved = inYear.reduce((s, m) => s + num(m.savings), 0);
   const debt = inYear.reduce((s, m) => s + num(m.debt_payments), 0);
-  const planInYear = (plan.data ?? []).filter((p) => parts(p.month).year === year);
+  // Plan months only where no actual month exists yet (statements replace the plan).
+  const actualMonths = new Set(inYear.map((m) => m.cash_month));
+  const planInYear = (plan.data ?? []).filter(
+    (p) => parts(p.month).year === year && !actualMonths.has(p.month),
+  );
   const first = inYear[0].cash_month;
   const last = inYear[inYear.length - 1].cash_month;
   const span =
@@ -53,25 +57,27 @@ export default function Overview() {
         ? monthLong(first)
         : `${monthShort(first)}–${monthShort(last)} ${year}`;
 
-  const columns: ColumnDatum[] = [
-    ...inYear.map((m) => ({
-      key: m.cash_month,
-      label: monthShort(m.cash_month),
-      in: num(m.income),
-      out: outflows(m),
-      tooltip: <MonthTip title={monthLong(m.cash_month)} income={num(m.income)} out={outflows(m)} />,
-    })),
-    ...planInYear.map((p) => ({
-      key: p.month,
-      label: monthShort(p.month),
-      in: num(p.income),
-      out: num(p.outflows),
-      plan: true,
-      tooltip: (
-        <MonthTip title={`${monthLong(p.month)} (plan)`} income={num(p.income)} out={num(p.outflows)} />
-      ),
-    })),
-  ];
+  const columns: ColumnDatum[] = (
+    [
+      ...inYear.map((m) => ({
+        key: m.cash_month,
+        label: monthShort(m.cash_month),
+        in: num(m.income),
+        out: outflows(m),
+        tooltip: <MonthTip title={monthLong(m.cash_month)} income={num(m.income)} out={outflows(m)} />,
+      })),
+      ...planInYear.map((p) => ({
+        key: p.month,
+        label: monthShort(p.month),
+        in: num(p.income),
+        out: num(p.outflows),
+        plan: true,
+        tooltip: (
+          <MonthTip title={`${monthLong(p.month)} (plan)`} income={num(p.income)} out={num(p.outflows)} />
+        ),
+      })),
+    ] as ColumnDatum[]
+  ).sort((a, b) => a.key.localeCompare(b.key));
 
   return (
     <section>
@@ -88,8 +94,8 @@ export default function Overview() {
         )}
       </h1>
       <p className="mt-2 text-muted">
-        Cash view from the Cash Flow workbook: money in and out of the household by month. Statement detail
-        replaces it month by month from F4 on.
+        Money in and out of the household by month: the Cash Flow workbook through June 2026, then approved
+        statements. A month is complete once every account’s statement for it is loaded.
       </p>
 
       <div role="group" aria-label="Year" className="mt-6 flex gap-2 overflow-x-auto pb-1">

@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type DragEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import {
   assignStatement,
   fetchAccounts,
   fetchStatements,
+  readStatement,
   statementFileUrl,
   uploadStatements,
   type Statement,
@@ -179,7 +181,7 @@ function StatementList({ statements, error }: { statements: Statement[] | undefi
                 </a>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-muted">
                   {s.source !== "unknown" && <span>{s.source_label}</span>}
-                  <span className={`pill ${STATUS[s.status].className}`}>{STATUS[s.status].label}</span>
+                  <StatementAction statement={s} />
                 </div>
               </td>
               <td className="px-4 py-2 align-top max-md:py-0">
@@ -260,5 +262,58 @@ function AccountPicker({ statement }: { statement: Statement }) {
       </button>
       {save.error && <span className="text-danger-ink">{(save.error as Error).message}</span>}
     </form>
+  );
+}
+
+function StatementAction({ statement: s }: { statement: Statement }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const read = useMutation({
+    mutationFn: () => readStatement(s.statement_file_id),
+    onSuccess: (b) => {
+      qc.invalidateQueries({ queryKey: ["statements"] });
+      navigate(`/import/batches/${b.batch_id}`);
+    },
+  });
+
+  if (s.status !== "detected")
+    return <span className={`pill ${STATUS[s.status].className}`}>{STATUS[s.status].label}</span>;
+  if (s.batch?.status === "approved")
+    return (
+      <>
+        <span className="pill pill-good">Loaded</span>
+        <Link
+          to={`/import/batches/${s.batch.batch_id}`}
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          View
+        </Link>
+      </>
+    );
+  if (s.batch?.status === "preview")
+    return (
+      <>
+        <span className="pill bg-attention-bg text-attention-ink">Waiting for approval</span>
+        <Link
+          to={`/import/batches/${s.batch.batch_id}`}
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          Review
+        </Link>
+      </>
+    );
+  if (!s.can_read) return <span className="pill pill-muted">Uploaded</span>;
+  return (
+    <>
+      <button
+        className="btn btn-secondary h-9 px-4"
+        disabled={read.isPending}
+        onClick={() => read.mutate()}
+        aria-label={`Read lines of ${s.file_name}`}
+      >
+        {read.isPending ? "Reading…" : "Read lines"}
+      </button>
+      {read.error && <span className="text-danger-ink">{(read.error as Error).message}</span>}
+    </>
   );
 }

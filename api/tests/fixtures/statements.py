@@ -88,6 +88,103 @@ def encrypted() -> bytes:
     return buf.getvalue()
 
 
+# ---------------- a full Capital One statement (golden test, F4) ----------------
+CO_LAUREN = [
+    ("Sep 2", "Sep 4", "UBER EATS SAN JOSE", "12.50"),
+    ("Sep 2", "Sep 4", "UBER EATS SAN JOSE", "12.50"),  # same line twice: both are real
+    ("Sep 14", "Sep 16", "DL RAPPI ECUADOR Guayaquil", "15.00"),
+    ("Sep 30", "Oct 1", "ANTHROPIC* CLAUDE SUB ANTHROPIC.COM CA", "20.00"),
+    ("Oct 1", "Oct 3", "NEW MERCHANT XYZ MIAMI FL", "40.00"),
+]
+CO_HERNAN = [
+    ("Sep 4", "Sep 8", "SUPERMAXI EL JARDIN QUITO", "200.00"),
+    ("Sep 12", "Sep 14", "GITHUB, INC. GITHUB.COM CA", "21.32"),
+    ("Sep 19", "Sep 22", "FYBECA Ruminahui", "5.43"),
+    ("Sep 20", "Sep 21", "AMAZON MKTPL*REFUND Amzn.com/bill WA", "- $30.00"),
+]
+
+
+def capitalone_full(
+    *,
+    previous: str = "1000.00",
+    payment: str = "500.00",
+    interest: str = "10.00",
+    lauren: list[tuple[str, str, str, str]] | None = None,
+    hernan: list[tuple[str, str, str, str]] | None = None,
+    period: tuple[str, str] = ("Sep 04, 2026", "Oct 03, 2026"),
+    printed_total_delta: str = "0.00",
+    extra_lines: list[str] | None = None,
+    payment_dates: str = "Sep 27 Sep 28",
+) -> bytes:
+    from decimal import Decimal
+
+    lauren = CO_LAUREN if lauren is None else lauren
+    hernan = CO_HERNAN if hernan is None else hernan
+
+    def amt(a: str) -> Decimal:
+        return -Decimal(a[3:]) if a.startswith("- $") else Decimal(a)
+
+    def fmt(a: str) -> str:
+        return a if a.startswith("- $") else f"${Decimal(a):,.2f}"
+
+    lt = sum((amt(x[3]) for x in lauren), Decimal(0))
+    ht = sum((amt(x[3]) for x in hernan), Decimal(0))
+    total = lt + ht
+    new = Decimal(previous) - Decimal(payment) + total + Decimal(interest)
+    head = [
+        "Venture Credit Card | Visa Signature ending in 4003",
+        f"{period[0]} - {period[1]} | 30 days in Billing Cycle",
+    ]
+    page1 = [
+        "Page 1 of 4",
+        *head,
+        f"Payment Information Account Summary Previous Balance ${Decimal(previous):,.2f}",
+        f"Payments - ${Decimal(payment):,.2f}",
+        "Other Credits $0.00",
+        f"Transactions + ${total + Decimal(printed_total_delta):,.2f}",
+        "Cash Advances + $0.00",
+        "Fees Charged + $0.00",
+        f"Interest Charged + ${Decimal(interest):,.2f}",
+        f"New Balance = ${new:,.2f}",
+        "Pay or manage your account at capitalone.com",
+    ]
+    page2 = [
+        "Page 2 of 4",
+        *head,
+        "Transactions",
+        "TEST LAUREN HOLDER #4003: Payments, Credits and Adjustments",
+        "Trans Date Post Date Description Amount",
+        f"{payment_dates} CAPITAL ONE MOBILE PYMT - ${Decimal(payment):,.2f}",
+        "TEST LAUREN HOLDER #4003: Transactions",
+        "Trans Date Post Date Description Amount",
+        *[f"{a} {b} {c} {fmt(d)}" for a, b, c, d in lauren],
+        f"TEST LAUREN HOLDER #4003: Total Transactions ${lt:,.2f}",
+        *(extra_lines or []),
+    ]
+    page3 = [
+        "Page 3 of 4",
+        *head,
+        "Transactions (Continued)",
+        "TEST HERNAN HOLDER #4162: Payments, Credits and Adjustments",
+        "Trans Date Post Date Description Amount",
+        "TEST HERNAN HOLDER #4162: Transactions",
+        "Trans Date Post Date Description Amount",
+        *[f"{a} {b} {c} {fmt(d)}" for a, b, c, d in hernan],
+        f"TEST HERNAN HOLDER #4162: Total Transactions ${ht:,.2f}",
+        f"Total Transactions for This Period ${total:,.2f}",
+        "Fees",
+        "Trans Date Post Date Description Amount",
+        "Total Fees for This Period $0.00",
+        "Interest Charged",
+        f"Interest Charge on Purchases ${Decimal(interest):,.2f}",
+        "Interest Charge on Cash Advances $0.00",
+        f"Total Interest for This Period ${Decimal(interest):,.2f}",
+        "Totals Year-to-Date",
+        "Total Fees charged $0.00",
+    ]
+    return pdf(page1, page2, page3, ["Page 4 of 4", *head, "Interest Charge Calculation"])
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,
@@ -95,6 +192,7 @@ SAMPLES = {
     "produbanco.pdf": produbanco,
     "diners.pdf": diners,
     "unknown.pdf": unknown,
+    "capitalone-full.pdf": capitalone_full,
 }
 
 

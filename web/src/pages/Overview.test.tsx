@@ -76,7 +76,10 @@ const CATS = [
     transactions: 1,
   },
 ];
-const PLAN = [{ month: "2026-07-01", income: "5600", outflows: "2700" }];
+const PLAN = [
+  { month: "2026-02-01", income: "1", outflows: "1" }, // has actuals: the plan is dropped
+  { month: "2026-07-01", income: "5600", outflows: "2700" },
+];
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -125,6 +128,8 @@ describe("Overview", () => {
     expect(screen.getByText("Plan")).toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId("col-2026-07-01"));
     expect(screen.getByRole("status")).toHaveTextContent("July 2026 (plan)");
+    fireEvent.mouseEnter(screen.getByTestId("col-2026-02-01"));
+    expect(screen.getByRole("status")).toHaveTextContent("February 2026In9,200.00");
     fireEvent.mouseEnter(screen.getByTestId("col-2026-01-01"));
     expect(screen.getByRole("status")).toHaveTextContent("Kept-500.00");
   });

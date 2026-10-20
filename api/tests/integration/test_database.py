@@ -130,3 +130,35 @@ def test_statement_upload_on_sql_server(tmp_path: object) -> None:
 
     _alembic("downgrade", "0004")
     _alembic("upgrade", "head")
+
+
+def test_capital_one_read_and_approve_on_sql_server(tmp_path: object) -> None:
+    """Read, tie out and approve a synthetic Capital One statement on SQL Server."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM [core].[transaction] WHERE [source] = 'statement'"))
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("co.pdf", s.capitalone_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"] is True, b["checks"]
+    ok = client.post(f"/api/batches/{b['batch_id']}/approve").json()
+    assert ok["loaded"] == 11
+    monthly = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    assert Decimal(monthly["2026-09-01"]["expenses"]) == Decimal("256.75")
+
+    # Downgrade with loaded statement lines, then upgrade again.
+    _alembic("downgrade", "0005")
+    _alembic("upgrade", "head")
