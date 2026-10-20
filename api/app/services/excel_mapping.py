@@ -42,27 +42,17 @@ _INCOME: dict[str, Mapping] = {
     "lauren": _m("income", "Salary/Lauren", "Lauren"),
     "hernan": _m("income", "Salary/Hernan", "Hernan"),
     "office rent": _m("income", "Office Rent", "Joint", "EC"),
-    "tefy - seguro": _m(
-        "income",
-        "Insurance Reimbursement",
-        "Joint",
-        "EC",
-        "Money from Tefy toward insurance: reimbursement, or something else?",
-    ),
+    # Tefy pays her share of Hernan's father's insurance into BofA for 6 or 12 months at a time.
+    "tefy - seguro": _m("income", "Insurance Reimbursement", "Joint", "US"),
     "insurance rembolso": _m("income", "Insurance Reimbursement", "Joint", "EC"),
     "iess - maternity": _m("income", "Other Income", "Lauren", "EC"),
-    "idb": _m("income", "Other Income", "Hernan", review="IDB project income: Other Income?"),
-    "lse": _m("income", "Other Income", "Hernan", review="LSE project income: Other Income?"),
+    # Consulting work for the Inter-American Development Bank and the London School of Economics.
+    "idb": _m("income", "Other Income", "Hernan"),
+    "lse": _m("income", "Other Income", "Hernan"),
     "tax return": _m("income", "Other Income", "Joint", "US"),
     "others": _m("income", "Other Income", "Joint"),
-    "office loan": _m(
-        "income",
-        "Other Income",
-        "Joint",
-        "EC",
-        "Office Loan as income (2022): loan money received? It is offset by the Office Loan "
-        "payment the same month.",
-    ),
+    # Loan money received (2022); repaid through the Office Loan expense row.
+    "office loan": _m("income", "Other Income", "Joint", "EC"),
 }
 
 _EXPENSE: dict[str, Mapping] = {
@@ -73,26 +63,22 @@ _EXPENSE: dict[str, Mapping] = {
     ),
     "condo fee": _m("expense", "Housing/Condo Fee", "Joint", "EC"),
     "aliquota ofi": _m("expense", "Housing/Office Alícuota", "Joint", "EC"),
-    "bellavista fee": _m("expense", "Other Expenses", "Joint", "EC", "Bellavista Fee: what is it?"),
+    # Security fee for the conjunto.
+    "bellavista fee": _m("expense", "Housing", "Joint", "EC"),
     "house renovaciones": _m("expense", "Housing/Home Maintenance", "Joint", "EC"),
     "office loan": _m("debt_payment", LOANS, "Joint", "EC"),
     "biess car": _m("debt_payment", LOANS, "Joint", "EC"),
     "produbanco car": _m("debt_payment", LOANS, "Joint", "EC"),
     "iess lau": _m("debt_payment", LOANS, "Lauren", "EC"),
-    "firstmark": _m("debt_payment", LOANS, "Joint", "US", "Firstmark: student loan? whose?"),
+    "firstmark": _m("debt_payment", LOANS, "Lauren", "US"),  # Lauren's US student loan
     "nelnet": _m("debt_payment", LOANS, "Joint", "US"),
     "h student loan": _m("debt_payment", LOANS, "Hernan", "US"),
-    "malu": _m(
-        "debt_payment",
-        LOANS,
-        "Joint",
-        review="Malu: matches 'Others' income the same month; money passed through?",
-    ),
-    "alex/estefy": _m("debt_payment", LOANS, "Joint", review="Alex/Estefy: a loan?"),
-    "sobregiro": _m("debt_payment", LOANS, "Joint", review="Sobregiro (overdraft) repayment."),
+    "malu": _m("debt_payment", LOANS, "Joint"),  # loan
+    "alex/estefy": _m("debt_payment", LOANS, "Joint"),  # loan
+    "sobregiro": _m("debt_payment", LOANS, "Joint"),  # overdraft repayment
     # Card payments (cash view)
     "capital one": _m("debt_payment", CARD, "Joint", "US"),
-    "rei": _m("debt_payment", CARD, "Joint", "US", "REI: a credit card payment?"),
+    "rei": _m("debt_payment", CARD, "Joint", "US", "REI: a credit card payment? (not sure yet)"),
     "h's ec cc": _m("debt_payment", CARD, "Hernan", "EC"),
     "h's black cc": _m("debt_payment", CARD, "Hernan", "EC"),
     "h's black mastercard": _m("debt_payment", CARD, "Hernan", "EC"),
@@ -101,17 +87,12 @@ _EXPENSE: dict[str, Mapping] = {
     "l's ec cc": _m("debt_payment", CARD, "Lauren", "EC"),
     "l - diners": _m("debt_payment", CARD, "Lauren", "EC"),
     "diners": _m("debt_payment", CARD, "Joint", "EC"),
-    "prodo blck": _m("debt_payment", CARD, "Joint", "EC", "Prodo Blck: Produbanco Black card?"),
-    "laverix cc": _m("debt_payment", CARD, "Joint", "EC", "Laverix CC: whose card?"),
+    "prodo blck": _m("debt_payment", CARD, "Joint", "EC"),  # Produbanco Black card
+    "laverix cc": _m("debt_payment", CARD, "Joint", "EC"),  # Banco del Pacifico card
     # Health
     "ecuasanitas": _m("expense", "Health/Insurance", "Hernan", "EC"),
-    "h&c seguro": _m(
-        "expense",
-        "Health/Insurance",
-        "Hernan",
-        "EC",
-        "H&C Seguro: is this your dad's insurance (Health / Dad's Insurance)?",
-    ),
+    # Hernan's father's insurance, paid by transfer to him in Ecuador.
+    "h&c seguro": _m("expense", "Health/Dad's Insurance", "Joint", "EC"),
     "bmi": _m("expense", "Health/Insurance", "Joint", "EC"),
     "doula": _m("expense", "Health/Doctors", "Lauren", "EC"),
     # Household, childcare, pets
@@ -120,8 +101,8 @@ _EXPENSE: dict[str, Mapping] = {
     "cleaning": _m("expense", "Household Staff", "Joint", "EC"),
     "daycare": _m("expense", "Childcare/Daycare", "Joint", "EC"),
     "daycare lunch": _m("expense", "Childcare/Daycare Lunch", "Joint", "EC"),
-    "killa gaudaria": _m("expense", "Pets/Pet Daycare", "Joint", "EC", "Killa: your dog?"),
-    "killa guarderia": _m("expense", "Pets/Pet Daycare", "Joint", "EC", "Killa: your dog?"),
+    "killa gaudaria": _m("expense", "Pets/Pet Daycare", "Joint", "EC"),  # Killa, the dog
+    "killa guarderia": _m("expense", "Pets/Pet Daycare", "Joint", "EC"),
     "donation - perros": _m("expense", "Donations", "Joint", "EC"),
     # Utilities and subscriptions
     "agua": _m("expense", "Utilities/Water", "Joint", "EC"),
@@ -145,9 +126,7 @@ _GROUPED: dict[tuple[str, str, str], Mapping] = {
     ("expense", "health appointments", "hernan"): _m("expense", "Health/Doctors", "Hernan", "EC"),
     ("expense", "health appointments", "lauren"): _m("expense", "Health/Doctors", "Lauren", "EC"),
     ("expense", "health appointments", "matias"): _m("expense", "Health/Doctors", "Joint", "EC"),
-    ("expense", "health appointments", "juli"): _m(
-        "expense", "Health/Doctors", "Joint", "EC", "Juli: who is it?"
-    ),
+    ("expense", "health appointments", "juli"): _m("expense", "Health/Doctors", "Joint", "EC"),
 }
 
 # Rows without a label in column A, keyed by (sheet, row): the label they stand for.
