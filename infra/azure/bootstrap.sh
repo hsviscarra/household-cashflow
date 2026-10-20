@@ -67,14 +67,24 @@ DEPLOY_APP_ID=$(az ad app list --display-name "$PREFIX-github-deploy" --query "[
 if [ -z "$DEPLOY_APP_ID" ]; then
   DEPLOY_APP_ID=$(az ad app create --display-name "$PREFIX-github-deploy" --query appId -o tsv)
   az ad sp create --id "$DEPLOY_APP_ID" -o none
-  # deploy.yml runs in the "production" environment, so the token subject names it.
-  az ad app federated-credential create --id "$DEPLOY_APP_ID" --parameters "{
-    \"name\": \"github-production\",
-    \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:$REPO:environment:production\",
-    \"audiences\": [\"api://AzureADTokenExchange\"]
-  }" -o none
 fi
+# deploy.yml runs in the "production" environment, so the token subject names it. GitHub may send
+# the name-based subject or the newer ID-based one (owner@id/repo@id); trust both.
+OWNER_ID=$(gh api "repos/$REPO" --jq .owner.id)
+REPO_ID=$(gh api "repos/$REPO" --jq .id)
+add_subject() {
+  local name="$1" subject="$2"
+  if ! az ad app federated-credential list --id "$DEPLOY_APP_ID" --query "[?subject=='$subject'] | [0].name" -o tsv | grep -q .; then
+    az ad app federated-credential create --id "$DEPLOY_APP_ID" --parameters "{
+      \"name\": \"$name\",
+      \"issuer\": \"https://token.actions.githubusercontent.com\",
+      \"subject\": \"$subject\",
+      \"audiences\": [\"api://AzureADTokenExchange\"]
+    }" -o none
+  fi
+}
+add_subject github-production "repo:$REPO:environment:production"
+add_subject github-production-ids "repo:${REPO%%/*}@$OWNER_ID/${REPO#*/}@$REPO_ID:environment:production"
 az role assignment create --assignee "$DEPLOY_APP_ID" --role Contributor \
   --scope "/subscriptions/$SUB_ID/resourceGroups/$RG" -o none 2>/dev/null || true
 
