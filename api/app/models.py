@@ -37,6 +37,7 @@ SNAPSHOT_KINDS = ("asset", "liability")
 STATEMENT_SOURCES = ("bofa", "capitalone", "pichincha", "produbanco", "diners", "unknown")
 STATEMENT_STATUSES = ("detected", "needs_account", "unknown_format")
 ACCOUNT_MATCHES = ("last4", "by_bank", "manual")
+BATCH_STATUSES = ("preview", "approved", "rejected")
 
 # Money is DECIMAL(19,4) everywhere; never float.
 Money = Numeric(19, 4, asdecimal=True)
@@ -172,7 +173,13 @@ class Transaction(Timestamps, Base):
     natural_key: Mapped[str] = mapped_column(Unicode(64))
     account_id: Mapped[int | None] = mapped_column(ForeignKey("core.account.account_id"))
     excel_cell_id: Mapped[int | None] = mapped_column(ForeignKey("raw.excel_cell.cell_id"))
+    statement_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("raw.statement_file.statement_file_id")
+    )
+    raw_line_id: Mapped[int | None] = mapped_column(ForeignKey("raw.raw_line.raw_line_id"))
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("stg.import_batch.batch_id"))
     txn_date: Mapped[date] = mapped_column(Date)
+    post_date: Mapped[date | None] = mapped_column(Date)
     # First day of the month the money moved (cash basis); set by the loader from txn_date.
     cash_month: Mapped[date] = mapped_column(Date, index=True)
     amount: Mapped[Decimal] = mapped_column(Money)
@@ -283,6 +290,107 @@ class StatementFileAccount(Base):
         ForeignKey("raw.statement_file.statement_file_id", ondelete="CASCADE"), primary_key=True
     )
     account_id: Mapped[int] = mapped_column(ForeignKey("core.account.account_id"), primary_key=True)
+
+
+# ---------------- F4: parsed statements, staging, rejects ----------------
+class StatementHeader(Base):
+    """What a parser read from a statement's summary: period, balances and section totals."""
+
+    __tablename__ = "statement_header"
+    __table_args__ = ({"schema": "raw"},)
+
+    statement_file_id: Mapped[int] = mapped_column(
+        ForeignKey("raw.statement_file.statement_file_id", ondelete="CASCADE"), primary_key=True
+    )
+    parser: Mapped[str] = mapped_column(Unicode(30))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    opening_balance: Mapped[Decimal | None] = mapped_column(Money)
+    closing_balance: Mapped[Decimal | None] = mapped_column(Money)
+    # Section totals as printed, e.g. {"payments": "4000.00", "transactions": "3932.84"} (JSON).
+    totals_json: Mapped[str] = mapped_column(UnicodeText)
+    parsed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RawLine(Base):
+    """One statement line exactly as read (text plus the fields the parser took from it)."""
+
+    __tablename__ = "raw_line"
+    __table_args__ = ({"schema": "raw"},)
+
+    raw_line_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    statement_file_id: Mapped[int] = mapped_column(
+        ForeignKey("raw.statement_file.statement_file_id", ondelete="CASCADE"), index=True
+    )
+    page: Mapped[int] = mapped_column(Integer)
+    line_no: Mapped[int] = mapped_column(Integer)
+    section: Mapped[str] = mapped_column(Unicode(30))
+    cardholder: Mapped[str | None] = mapped_column(Unicode(10))
+    text: Mapped[str] = mapped_column(Unicode(400))
+    data_json: Mapped[str] = mapped_column(UnicodeText)
+
+
+class ImportBatch(Base):
+    """One statement's lines waiting in staging for Hernan's approval."""
+
+    __tablename__ = "import_batch"
+    __table_args__ = (
+        CheckConstraint(_in("status", BATCH_STATUSES), name="status"),
+        {"schema": "stg"},
+    )
+
+    batch_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    statement_file_id: Mapped[int] = mapped_column(
+        ForeignKey("raw.statement_file.statement_file_id"), index=True
+    )
+    status: Mapped[str] = mapped_column(Unicode(10), default="preview")
+    tieout_ok: Mapped[bool] = mapped_column(Boolean)
+    # The checks shown in the preview: [{"name", "expected", "actual", "ok"}] (JSON).
+    checks_json: Mapped[str] = mapped_column(UnicodeText)
+    created_by: Mapped[str] = mapped_column(Unicode(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    decided_by: Mapped[str | None] = mapped_column(Unicode(320))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class StgTransaction(Base):
+    __tablename__ = "stg_transaction"
+    __table_args__ = ({"schema": "stg"},)
+
+    stg_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("stg.import_batch.batch_id", ondelete="CASCADE"), index=True
+    )
+    raw_line_id: Mapped[int] = mapped_column(ForeignKey("raw.raw_line.raw_line_id"))
+    account_id: Mapped[int] = mapped_column(ForeignKey("core.account.account_id"))
+    natural_key: Mapped[str] = mapped_column(Unicode(64))
+    txn_date: Mapped[date] = mapped_column(Date)
+    post_date: Mapped[date | None] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    description_raw: Mapped[str] = mapped_column(Unicode(400))
+    merchant: Mapped[str | None] = mapped_column(Unicode(200))
+    type: Mapped[str] = mapped_column(Unicode(12))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    rule_id: Mapped[int | None] = mapped_column(ForeignKey("core.merchant_rule.rule_id"))
+    person: Mapped[str | None] = mapped_column(Unicode(10))
+    country: Mapped[str | None] = mapped_column(Unicode(2))
+    is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RejectedLine(Base):
+    """A line that looked like a transaction but could not be read or placed."""
+
+    __tablename__ = "rejected_line"
+    __table_args__ = ({"schema": "rej"},)
+
+    rejected_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    statement_file_id: Mapped[int] = mapped_column(
+        ForeignKey("raw.statement_file.statement_file_id", ondelete="CASCADE"), index=True
+    )
+    page: Mapped[int] = mapped_column(Integer)
+    line_no: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Unicode(400))
+    reason: Mapped[str] = mapped_column(Unicode(200))
 
 
 # ---------------- mart views (read-only; created by migrations from sql/views) ----------------

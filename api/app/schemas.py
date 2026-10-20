@@ -230,6 +230,12 @@ class PlanMonthOut(BaseModel):
 
 
 # ---------------- F3: statements ----------------
+class BatchRef(BaseModel):
+    batch_id: int
+    status: str
+    tieout_ok: bool
+
+
 class StatementAccountOut(_Out):
     account_id: int
     name: str
@@ -251,6 +257,8 @@ class StatementOut(_Out):
     size_bytes: int
     uploaded_by: str
     uploaded_at: datetime
+    can_read: bool = False
+    batch: BatchRef | None = None
 
 
 class UploadResultOut(BaseModel):
@@ -262,3 +270,87 @@ class UploadResultOut(BaseModel):
 
 class StatementPatch(BaseModel):
     account_ids: list[int] = Field(min_length=1, max_length=4)
+
+
+# ---------------- F4: import batches and transactions ----------------
+class CheckOut(BaseModel):
+    name: str
+    expected: Decimal
+    actual: Decimal
+    ok: bool
+
+
+class StgLineOut(BaseModel):
+    stg_id: int
+    txn_date: date
+    post_date: date | None
+    description: str
+    merchant: str | None
+    amount: Decimal
+    type: str
+    category_id: int | None
+    category_path: str | None
+    person: str | None
+    country: str | None
+    cardholder: str | None
+    is_duplicate: bool
+
+
+class CategoryTotalOut(BaseModel):
+    category_path: str
+    type: str
+    lines: int
+    amount: Decimal
+
+
+class RejectOut(BaseModel):
+    page: int
+    line_no: int
+    text: str
+    reason: str
+
+
+class BatchOut(BaseModel):
+    batch_id: int
+    status: str
+    tieout_ok: bool
+    statement: StatementOut
+    period_start: date
+    period_end: date
+    opening_balance: Decimal | None
+    closing_balance: Decimal | None
+    checks: list[CheckOut]
+    lines: list[StgLineOut]
+    by_category: list[CategoryTotalOut]
+    rejects: list[RejectOut]
+    new_lines: int
+    duplicate_lines: int
+    uncategorized: int
+    created_by: str
+    decided_by: str | None
+    decided_at: datetime | None
+
+
+class ApproveOut(BaseModel):
+    batch_id: int
+    loaded: int
+    skipped_duplicates: int
+
+
+class TransactionOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    post_date: date | None
+    cash_month: date
+    account_id: int | None
+    account_name: str | None
+    description: str
+    merchant: str | None
+    amount: Decimal
+    type: str
+    category_id: int | None
+    category_path: str | None
+    person: str | None
+    country: str | None
+    source: str
+    statement_file_id: int | None

@@ -3,9 +3,11 @@ import { NavLink, Route, Routes } from "react-router-dom";
 
 import { fetchHealth, fetchMe } from "./api";
 import { PAGES, type PageDef } from "./pages";
+import BatchPage from "./pages/Batch";
 import ImportPage from "./pages/Import";
 import Overview from "./pages/Overview";
 import Settings from "./pages/Settings";
+import TransactionsPage from "./pages/Transactions";
 
 function StatusPill() {
   const { data, isError, isLoading } = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
@@ -44,6 +46,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/": <Overview />,
   "/import": <ImportPage />,
   "/settings": <Settings />,
+  "/transactions": <TransactionsPage />,
 };
 
 export default function App() {
@@ -80,6 +83,7 @@ export default function App() {
           {PAGES.map((p) => (
             <Route key={p.path} path={p.path} element={PAGE_ELEMENTS[p.path] ?? <Placeholder page={p} />} />
           ))}
+          <Route path="/import/batches/:batchId" element={<BatchPage />} />
         </Routes>
       </main>
     </div>

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
+from app.ingestion.preview import latest_batches
 from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement, to_out
 from app.models import Account, StatementFile
@@ -38,12 +39,13 @@ async def upload(
 
 @router.get("", response_model=list[StatementOut])
 def list_statements(db: DB) -> list[StatementOut]:
+    batches = latest_batches(db)
     rows = db.scalars(
         select(StatementFile).order_by(
             StatementFile.uploaded_at.desc(), StatementFile.statement_file_id.desc()
         )
     )
-    return [to_out(sf) for sf in rows]
+    return [to_out(sf, batches.get(sf.statement_file_id)) for sf in rows]
 
 
 def _get(db: Session, statement_id: int) -> StatementFile:

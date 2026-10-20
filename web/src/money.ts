@@ -36,3 +36,6 @@ export const parts = (iso: string) => ({ year: Number(iso.slice(0, 4)), month: N
 export const monthShort = (iso: string) => MONTHS[parts(iso).month - 1];
 export const monthLong = (iso: string) => `${LONG[parts(iso).month - 1]} ${parts(iso).year}`;
 export const monthName = (m: number) => LONG[m - 1];
+
+/** Money out without a sign, money back with + (docs/design-system.md). */
+export const showAmount = (v: string | number) => (num(v) > 0 ? signed(v) : money(-num(v)));

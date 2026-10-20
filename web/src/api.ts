@@ -237,6 +237,8 @@ export type Statement = {
   size_bytes: number;
   uploaded_by: string;
   uploaded_at: string;
+  can_read: boolean;
+  batch: { batch_id: number; status: "preview" | "approved" | "rejected"; tieout_ok: boolean } | null;
 };
 
 export type UploadResult = {
@@ -266,3 +268,69 @@ export const fetchStatements = () => send<Statement[]>("GET", "/api/statements")
 export const assignStatement = (id: number, account_ids: number[]) =>
   send<Statement>("PATCH", `/api/statements/${id}`, { account_ids });
 export const statementFileUrl = (id: number) => `/api/statements/${id}/file`;
+
+// ---------- import batches and transactions (F4) ----------
+export type Check = { name: string; expected: Money; actual: Money; ok: boolean };
+export type StgLine = {
+  stg_id: number;
+  txn_date: string;
+  post_date: string | null;
+  description: string;
+  merchant: string | null;
+  amount: Money;
+  type: string;
+  category_id: number | null;
+  category_path: string | null;
+  person: string | null;
+  country: string | null;
+  cardholder: string | null;
+  is_duplicate: boolean;
+};
+export type Batch = {
+  batch_id: number;
+  status: "preview" | "approved" | "rejected";
+  tieout_ok: boolean;
+  statement: Statement;
+  period_start: string;
+  period_end: string;
+  opening_balance: Money | null;
+  closing_balance: Money | null;
+  checks: Check[];
+  lines: StgLine[];
+  by_category: { category_path: string; type: string; lines: number; amount: Money }[];
+  rejects: { page: number; line_no: number; text: string; reason: string }[];
+  new_lines: number;
+  duplicate_lines: number;
+  uncategorized: number;
+  created_by: string;
+  decided_by: string | null;
+  decided_at: string | null;
+};
+export type Txn = {
+  transaction_id: number;
+  txn_date: string;
+  post_date: string | null;
+  cash_month: string;
+  account_id: number | null;
+  account_name: string | null;
+  description: string;
+  merchant: string | null;
+  amount: Money;
+  type: string;
+  category_id: number | null;
+  category_path: string | null;
+  person: string | null;
+  country: string | null;
+  source: string;
+  statement_file_id: number | null;
+};
+
+export const readStatement = (id: number) => send<Batch>("POST", `/api/statements/${id}/read`);
+export const fetchBatch = (id: number) => send<Batch>("GET", `/api/batches/${id}`);
+export const approveBatch = (id: number) =>
+  send<{ batch_id: number; loaded: number; skipped_duplicates: number }>(
+    "POST",
+    `/api/batches/${id}/approve`,
+  );
+export const rejectBatch = (id: number) => send<Batch>("POST", `/api/batches/${id}/reject`);
+export const fetchTransactions = (month: string) => send<Txn[]>("GET", `/api/transactions?month=${month}`);

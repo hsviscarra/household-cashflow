@@ -7,9 +7,10 @@ from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
 from app.ingestion.detect import SOURCES, Detection, PdfError, detect, read_pdf
+from app.ingestion.parsers import PARSERS
 from app.ingestion.storage import StatementStore
 from app.models import Account, StatementFile
-from app.schemas import StatementAccountOut, StatementOut, UploadResultOut
+from app.schemas import BatchRef, StatementAccountOut, StatementOut, UploadResultOut
 
 MAX_BYTES = 25 * 1024 * 1024
 INSTITUTIONS = {
@@ -52,7 +53,7 @@ def resolve_accounts(db: Session, found: Detection) -> Resolution:
     return Resolution([], None)
 
 
-def to_out(sf: StatementFile) -> StatementOut:
+def to_out(sf: StatementFile, batch: BatchRef | None = None) -> StatementOut:
     return StatementOut(
         statement_file_id=sf.statement_file_id,
         file_name=sf.file_name,
@@ -68,6 +69,8 @@ def to_out(sf: StatementFile) -> StatementOut:
         size_bytes=sf.size_bytes,
         uploaded_by=sf.uploaded_by,
         uploaded_at=sf.uploaded_at,
+        can_read=sf.source in PARSERS,
+        batch=batch,
     )
 
 

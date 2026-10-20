@@ -75,6 +75,15 @@ def read_pdf(data: bytes) -> PdfInfo:
     return PdfInfo(pages=pages, text=text)
 
 
+def read_pages(data: bytes) -> list[str]:
+    """Every page's text, for the parsers."""
+    try:
+        with pdfplumber.open(BytesIO(data)) as pdf:
+            return [p.extract_text() or "" for p in pdf.pages]
+    except (PdfminerException, PDFSyntaxError, ValueError, KeyError) as exc:
+        raise PdfError("This PDF could not be read; it may be damaged.") from exc
+
+
 # ---------------- period parsers ----------------
 def _en(fmt: str) -> Callable[[str], date]:
     return lambda s: datetime.strptime(" ".join(s.split()), fmt).date()
