@@ -36,18 +36,22 @@ Dark mode follows the device setting (`prefers-color-scheme`).
 Each category keeps its color everywhere: bars, chips, dots, legends. Always show the category
 name next to its color; color is never the only signal.
 
-| Category | Color |
-|---|---|
-| Fixed bills | #6B6788 |
-| Groceries | #4E9A2A |
-| Health | #00897B |
-| Services | #7B4BD6 |
-| Dining out | #E2583E |
-| Shopping | #C2185B |
-| Subscriptions | #2F5BEA |
-| Food delivery | #E8A000 |
-| Kids | #E57BA9 |
-| Transport | #3AA7D9 |
+Colors are stored per category group in `core.category.color` (seed v1 below) and editable on
+Settings → Categories. Subcategories use their group's color.
+
+| Group | Color | Group | Color |
+|---|---|---|---|
+| Housing | #6B6788 | Transport | #3AA7D9 |
+| Utilities | #8D6E63 | Subscriptions & Software | #2F5BEA |
+| Household Staff | #7B4BD6 | Shopping | #C2185B |
+| Childcare | #E57BA9 | Travel | #E8A000 |
+| Health | #00897B | Donations | #9C8D2B |
+| Groceries | #4E9A2A | Financial Costs | #A3301B |
+| Dining | #E2583E | Savings & Debt | #1E3FB0 |
+
+Income groups reuse the same hues (Salary #4E9A2A, Office Rent #00897B, Insurance
+Reimbursement #3AA7D9, Interest Earned #7B4BD6, Other Income #6B6788); Transfers have no color
+because they never appear in spending charts.
 
 New categories get a color from this list's unused hues or `muted` until one is chosen.
 

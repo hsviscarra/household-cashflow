@@ -9,7 +9,7 @@ from starlette.types import Scope
 from app import __version__
 from app.auth import allow_list
 from app.config import get_settings
-from app.routers import health
+from app.routers import health, reference
 
 
 class SPAStaticFiles(StaticFiles):
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Household Cash Flow", version=__version__)
     app.middleware("http")(allow_list)
     app.include_router(health.router)
+    app.include_router(reference.router)
 
     # The built React app is served from the same origin, so one Container App hosts both.
     dist = Path(get_settings().web_dist_dir)

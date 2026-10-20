@@ -22,6 +22,7 @@ Private household finance app. Read `README.md`, `docs/adr/`, `docs/definition-o
 - API: `cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest --cov`
 - Integration: `cd api && uv run pytest -m integration -o addopts=""` (SQL Server via `docker compose up -d sqlserver`)
 - Web: `cd web && pnpm lint && pnpm typecheck && pnpm test && pnpm build`
+- E2E: `cd web && pnpm e2e` (Playwright against http://localhost:8000; override with `E2E_BASE_URL`)
 - Everything: `docker compose up --build` → http://localhost:8000
 
 ## Money

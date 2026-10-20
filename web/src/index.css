@@ -63,6 +63,7 @@
 
 body {
   @apply bg-ground font-sans text-ink antialiased;
+  accent-color: var(--color-primary);
 }
 
 .num {
@@ -85,4 +86,27 @@ body {
 :focus-visible {
   outline: 3px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* Buttons and fields (docs/design-system.md: pill controls, height >= 44 px) */
+.btn {
+  @apply inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 font-semibold whitespace-nowrap disabled:opacity-50;
+}
+.btn-primary {
+  @apply bg-primary text-on-primary hover:bg-primary-hover;
+}
+.btn-secondary {
+  @apply border border-line bg-ground text-ink hover:bg-surface;
+}
+.btn-danger {
+  @apply bg-danger-bg text-danger-ink;
+}
+.btn-quiet {
+  @apply text-primary hover:bg-surface;
+}
+.field {
+  @apply h-11 w-full rounded-xl border border-line bg-ground px-3 text-ink;
+}
+.label {
+  @apply mb-1 block text-sm font-semibold text-muted;
 }
