@@ -11,9 +11,12 @@ function mockApi(health: object, me: object) {
     "fetch",
     vi.fn((url: string) =>
       Promise.resolve(
-        new Response(JSON.stringify(url.endsWith("/health") ? health : me), {
-          status: url.endsWith("/health") && (health as { database: string }).database !== "ok" ? 503 : 200,
-        }),
+        new Response(
+          JSON.stringify(url.endsWith("/health") ? health : url.includes("/cashflow/") ? [] : me),
+          {
+            status: url.endsWith("/health") && (health as { database: string }).database !== "ok" ? 503 : 200,
+          },
+        ),
       ),
     ),
   );
@@ -35,6 +38,13 @@ const okHealth = { status: "ok", version: "0.1.0", git_sha: "abc", environment: 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("App shell", () => {
+  it("shows the empty overview with a way to load the history", async () => {
+    mockApi(okHealth, { name: null, authenticated: false });
+    renderAt("/");
+    expect(await screen.findByRole("heading", { name: "No cash flow yet" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Load the Excel history" })).toHaveAttribute("href", "/import");
+  });
+
   it("lists every page in the navigation", () => {
     mockApi(okHealth, { name: null, authenticated: false });
     renderAt("/");
@@ -55,8 +65,8 @@ describe("App shell", () => {
       { ...okHealth, status: "degraded", database: "unavailable" },
       { name: null, authenticated: false },
     );
-    renderAt("/import");
+    renderAt("/status");
     expect(await screen.findByText("Database unavailable")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Import" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Data Status" })).toBeInTheDocument();
   });
 });

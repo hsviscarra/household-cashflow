@@ -6,6 +6,8 @@ export default defineConfig({
   testDir: "e2e",
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
+  // One worker: the history test loads data the other projects then read.
+  workers: 1,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:8000",

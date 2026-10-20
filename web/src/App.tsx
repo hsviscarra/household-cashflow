@@ -3,6 +3,8 @@ import { NavLink, Route, Routes } from "react-router-dom";
 
 import { fetchHealth, fetchMe } from "./api";
 import { PAGES, type PageDef } from "./pages";
+import ImportPage from "./pages/Import";
+import Overview from "./pages/Overview";
 import Settings from "./pages/Settings";
 
 function StatusPill() {
@@ -38,6 +40,12 @@ function Placeholder({ page }: { page: PageDef }) {
   );
 }
 
+const PAGE_ELEMENTS: Record<string, JSX.Element> = {
+  "/": <Overview />,
+  "/import": <ImportPage />,
+  "/settings": <Settings />,
+};
+
 export default function App() {
   return (
     <div className="min-h-screen bg-ground text-ink">
@@ -70,11 +78,7 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-4 py-10 md:px-12">
         <Routes>
           {PAGES.map((p) => (
-            <Route
-              key={p.path}
-              path={p.path}
-              element={p.path === "/settings" ? <Settings /> : <Placeholder page={p} />}
-            />
+            <Route key={p.path} path={p.path} element={PAGE_ELEMENTS[p.path] ?? <Placeholder page={p} />} />
           ))}
         </Routes>
       </main>

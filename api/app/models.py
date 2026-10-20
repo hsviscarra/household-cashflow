@@ -1,19 +1,25 @@
-"""SQLAlchemy models for the core reference tables (F1).
+"""SQLAlchemy models: reference tables (F1), history, transactions and snapshots (F2).
 
 Generic column types keep the models portable: Unicode -> NVARCHAR and Boolean -> BIT on SQL Server,
 while unit tests run the same models on SQLite.
 """
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
     MetaData,
+    Numeric,
+    Table,
     Unicode,
+    UnicodeText,
     UniqueConstraint,
     func,
 )
@@ -24,6 +30,13 @@ OWNERS = ("Hernan", "Lauren", "Joint")
 COUNTRIES = ("US", "EC")
 CATEGORY_KINDS = ("income", "expense", "savings", "transfer")
 MATCH_TYPES = ("contains", "starts_with", "regex")
+TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest", "debt_payment")
+TXN_SOURCES = ("statement", "manual", "excel_history")
+TXN_STATUSES = ("pending", "confirmed", "matched")
+SNAPSHOT_KINDS = ("asset", "liability")
+
+# Money is DECIMAL(19,4) everywhere; never float.
+Money = Numeric(19, 4, asdecimal=True)
 
 NAMING = {
     "pk": "pk_%(table_name)s",
@@ -107,3 +120,152 @@ class MerchantRule(Timestamps, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
     category: Mapped[Category] = relationship()
+
+
+# ---------------- F2: raw workbook, transactions, budget, balances, audit ----------------
+class ExcelImport(Base):
+    """One loaded Cash Flow workbook. The file itself is not stored, only its hash."""
+
+    __tablename__ = "excel_import"
+    __table_args__ = (UniqueConstraint("file_sha256"), {"schema": "raw"})
+
+    import_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    file_sha256: Mapped[str] = mapped_column(Unicode(64))
+    file_name: Mapped[str] = mapped_column(Unicode(260))
+    loaded_by: Mapped[str] = mapped_column(Unicode(320))
+    loaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ExcelCell(Base):
+    """Every numeric cell read from the workbook, exactly as read; never edited."""
+
+    __tablename__ = "excel_cell"
+    __table_args__ = ({"schema": "raw"},)
+
+    cell_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    import_id: Mapped[int] = mapped_column(ForeignKey("raw.excel_import.import_id"))
+    sheet: Mapped[str] = mapped_column(Unicode(60))
+    cell: Mapped[str] = mapped_column(Unicode(10))
+    block: Mapped[str] = mapped_column(Unicode(30))
+    group_label: Mapped[str | None] = mapped_column(Unicode(100))
+    row_label: Mapped[str] = mapped_column(Unicode(100))
+    month: Mapped[date | None] = mapped_column(Date)
+    value: Mapped[Decimal] = mapped_column(Money)
+
+
+class Transaction(Timestamps, Base):
+    """Approved money movements. Signed amounts: negative = outflow. USD only."""
+
+    __tablename__ = "transaction"
+    __table_args__ = (
+        CheckConstraint(_in("type", TXN_TYPES), name="type"),
+        CheckConstraint(_in("source", TXN_SOURCES), name="source"),
+        CheckConstraint(_in("status", TXN_STATUSES), name="status"),
+        UniqueConstraint("natural_key"),
+        {"schema": "core"},
+    )
+
+    transaction_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    natural_key: Mapped[str] = mapped_column(Unicode(64))
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("core.account.account_id"))
+    excel_cell_id: Mapped[int | None] = mapped_column(ForeignKey("raw.excel_cell.cell_id"))
+    txn_date: Mapped[date] = mapped_column(Date)
+    # First day of the month the money moved (cash basis); set by the loader from txn_date.
+    cash_month: Mapped[date] = mapped_column(Date, index=True)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    description_raw: Mapped[str] = mapped_column(Unicode(400))
+    merchant: Mapped[str | None] = mapped_column(Unicode(200))
+    pay_reference: Mapped[str | None] = mapped_column(Unicode(100))
+    notes: Mapped[str | None] = mapped_column(Unicode(1000))
+    type: Mapped[str] = mapped_column(Unicode(12))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    person: Mapped[str | None] = mapped_column(Unicode(10))
+    country: Mapped[str | None] = mapped_column(Unicode(2))
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    source: Mapped[str] = mapped_column(Unicode(15))
+    status: Mapped[str] = mapped_column(Unicode(10), default="confirmed")
+
+
+class Budget(Timestamps, Base):
+    """Planned amounts per month and category (signed like transactions)."""
+
+    __tablename__ = "budget"
+    __table_args__ = (
+        UniqueConstraint("month", "category_id", "label", "source"),
+        {"schema": "core"},
+    )
+
+    budget_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    month: Mapped[date] = mapped_column(Date)
+    category_id: Mapped[int] = mapped_column(ForeignKey("core.category.category_id"))
+    label: Mapped[str] = mapped_column(Unicode(100))
+    type: Mapped[str] = mapped_column(Unicode(12))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    source: Mapped[str] = mapped_column(Unicode(20))
+
+
+class BalanceSnapshot(Timestamps, Base):
+    """A balance at a date: what an account, investment or debt stood at."""
+
+    __tablename__ = "balance_snapshot"
+    __table_args__ = (
+        CheckConstraint(_in("kind", SNAPSHOT_KINDS), name="kind"),
+        UniqueConstraint("as_of", "name", "source"),
+        {"schema": "core"},
+    )
+
+    snapshot_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    as_of: Mapped[date] = mapped_column(Date)
+    name: Mapped[str] = mapped_column(Unicode(100))
+    kind: Mapped[str] = mapped_column(Unicode(10))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("core.account.account_id"))
+    source: Mapped[str] = mapped_column(Unicode(20))
+    notes: Mapped[str | None] = mapped_column(Unicode(400))
+
+
+class LoadLog(Base):
+    __tablename__ = "load_log"
+    __table_args__ = ({"schema": "audit"},)
+
+    load_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(Unicode(30))
+    file_sha256: Mapped[str | None] = mapped_column(Unicode(64))
+    loaded_by: Mapped[str] = mapped_column(Unicode(320))
+    loaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    rows_loaded: Mapped[int] = mapped_column(Integer)
+    summary: Mapped[str] = mapped_column(UnicodeText)
+
+
+# ---------------- mart views (read-only; created by migrations from sql/views) ----------------
+mart = MetaData()
+
+v_monthly_cashflow = Table(
+    "v_monthly_cashflow",
+    mart,
+    Column("cash_month", Date, primary_key=True),
+    Column("income", Money),
+    Column("expenses", Money),
+    Column("savings", Money),
+    Column("debt_payments", Money),
+    Column("net", Money),
+    Column("cumulative_net", Money),
+    Column("savings_rate", Numeric(9, 4)),
+    Column("transactions", Integer),
+    schema="mart",
+)
+
+v_category_month = Table(
+    "v_category_month",
+    mart,
+    Column("cash_month", Date, primary_key=True),
+    Column("type", Unicode(12), primary_key=True),
+    Column("group_id", Integer, primary_key=True),
+    Column("group_name", Unicode(100)),
+    Column("group_color", Unicode(7)),
+    Column("category_id", Integer, primary_key=True),
+    Column("category_name", Unicode(100)),
+    Column("amount", Money),
+    Column("transactions", Integer),
+    schema="mart",
+)

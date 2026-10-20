@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.seeds import v1
+from app.seeds import v1, v2
 
 
 # ---------- accounts ----------
@@ -49,7 +49,8 @@ def test_update_missing_account_is_404(client: TestClient) -> None:
 # ---------- categories ----------
 def test_categories_returned_as_groups_with_children(client: TestClient) -> None:
     groups = client.get("/api/categories").json()
-    assert [g["name"] for g in groups] == [g["name"] for g in v1.CATEGORIES]
+    new_groups = [g for g, _kind, color, _children in v2.CATEGORIES if color is not None]
+    assert [g["name"] for g in groups] == [g["name"] for g in v1.CATEGORIES] + new_groups
     housing = next(g for g in groups if g["name"] == "Housing")
     assert housing["kind"] == "expense"
     assert housing["color"] == "#6B6788"

@@ -40,7 +40,7 @@ def test_migrations_upgrade_and_downgrade() -> None:
 
 
 def test_reference_tables_seeded() -> None:
-    from app.seeds import v1
+    from app.seeds import v1, v2
 
     _alembic("upgrade", "head")
     with get_engine().connect() as conn:
@@ -48,8 +48,10 @@ def test_reference_tables_seeded() -> None:
             table: conn.execute(text(f"SELECT COUNT(*) FROM [core].[{table}]")).scalar_one()
             for table in ("account", "category", "merchant_rule")
         }
-    groups = len(v1.CATEGORIES)
-    children = sum(len(g["children"]) for g in v1.CATEGORIES)
+    groups = len(v1.CATEGORIES) + sum(1 for g in v2.CATEGORIES if g[2] is not None)
+    children = sum(len(g["children"]) for g in v1.CATEGORIES) + sum(
+        len(g[3]) for g in v2.CATEGORIES
+    )
     assert counts == {
         "account": len(v1.ACCOUNTS),
         "category": groups + children,
@@ -61,4 +63,46 @@ def test_seed_downgrade_and_reapply() -> None:
     _alembic("downgrade", "0002")
     with get_engine().connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM [core].[category]")).scalar_one() == 0
+    _alembic("upgrade", "head")
+
+
+def test_excel_history_load_on_sql_server() -> None:
+    """Load the synthetic workbook through the API and read exact decimals from the mart views."""
+    from decimal import Decimal
+
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from tests.fixtures.workbook import build
+
+    _alembic("downgrade", "0003")
+    _alembic("upgrade", "head")
+    client = TestClient(create_app())
+    resp = client.post(
+        "/api/history/excel/load",
+        files={"file": ("Cash Flow.xlsx", build(), "application/octet-stream")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["transactions"] == 13
+
+    monthly = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    jan = monthly["2026-01-01"]
+    assert Decimal(jan["income"]) == Decimal("8500.25")
+    assert Decimal(jan["expenses"]) == Decimal("135.45")
+    assert Decimal(jan["net"]) == Decimal("7664.80")
+    assert Decimal(jan["cumulative_net"]) == Decimal("9843.90")
+    assert Decimal(jan["savings_rate"]) == Decimal("0.9017")
+
+    cats = client.get("/api/cashflow/categories", params={"year": 2026}).json()
+    assert {c["group_name"] for c in cats} >= {"Salary", "Health", "Housing", "Savings & Debt"}
+
+    # Loading a second version swaps the rows in one transaction.
+    newer = client.post(
+        "/api/history/excel/load",
+        files={"file": ("Cash Flow.xlsx", build(lauren_jan_2026=3500), "application/octet-stream")},
+    )
+    assert newer.json()["replaced_transactions"] == 13
+
+    # Downgrade with data in place, then upgrade again.
+    _alembic("downgrade", "0003")
     _alembic("upgrade", "head")

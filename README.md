@@ -49,6 +49,19 @@ cd web && pnpm exec playwright install chromium && pnpm e2e
 pre-commit run --all-files
 ```
 
+## Load the Excel history
+
+In the app: Import → Excel history → choose the workbook → Preview → Load history. From a terminal
+against `DATABASE_URL`:
+
+```bash
+cd api && uv run python -m app.cli.import_excel_history "/path/to/Cash Flow.xlsx"          # preview
+cd api && uv run python -m app.cli.import_excel_history "/path/to/Cash Flow.xlsx" --load   # load
+REAL_WORKBOOK="/path/to/Cash Flow.xlsx" uv run pytest tests/unit/test_real_workbook.py      # tie-out
+```
+
+The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it is read.
+
 ## Deploy
 
 - **One-time setup:** [`infra/azure/bootstrap.sh`](infra/azure/bootstrap.sh) creates the Azure

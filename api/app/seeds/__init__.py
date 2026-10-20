@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from sqlalchemy import Connection, Table, insert, select
+from sqlalchemy import Connection, Table, delete, func, insert, select
 
-from app.seeds import v1
+from app.seeds import v1, v2
 
 
 def load_v1(
@@ -53,3 +53,65 @@ def load_v1(
         ],
     )
     return ids
+
+
+def load_v2(conn: Connection, category: Table) -> None:
+    """Add the seed v2 categories; existing groups get new subcategories, new groups are created."""
+    for group, kind, color, children in v2.CATEGORIES:
+        gid = conn.execute(
+            select(category.c.category_id).where(
+                category.c.parent_id.is_(None), category.c.name == group
+            )
+        ).scalar_one_or_none()
+        if gid is None:
+            order = conn.execute(
+                select(func.count()).select_from(category).where(category.c.parent_id.is_(None))
+            ).scalar_one()
+            gid = conn.execute(
+                insert(category).returning(category.c.category_id),
+                {
+                    "parent_id": None,
+                    "name": group,
+                    "kind": kind,
+                    "color": color,
+                    "is_fixed": False,
+                    "sort_order": order,
+                },
+            ).scalar_one()
+        start = conn.execute(
+            select(func.count()).select_from(category).where(category.c.parent_id == gid)
+        ).scalar_one()
+        if children:
+            conn.execute(
+                insert(category),
+                [
+                    {
+                        "parent_id": gid,
+                        "name": name,
+                        "kind": kind,
+                        "color": None,
+                        "is_fixed": fixed,
+                        "sort_order": start + i,
+                    }
+                    for i, (name, fixed) in enumerate(children)
+                ],
+            )
+
+
+def unload_v2(conn: Connection, category: Table) -> None:
+    """Remove what load_v2 added (subcategories first, then the groups it created)."""
+    for group, _kind, color, children in v2.CATEGORIES:
+        gid = conn.execute(
+            select(category.c.category_id).where(
+                category.c.parent_id.is_(None), category.c.name == group
+            )
+        ).scalar_one_or_none()
+        if gid is None:
+            continue
+        names = [n for n, _ in children]
+        if names:
+            conn.execute(
+                delete(category).where(category.c.parent_id == gid, category.c.name.in_(names))
+            )
+        if color is not None:
+            conn.execute(delete(category).where(category.c.category_id == gid))
