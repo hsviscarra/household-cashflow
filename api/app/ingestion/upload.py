@@ -3,7 +3,7 @@
 import hashlib
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
 from app.ingestion.detect import SOURCES, Detection, PdfError, detect, read_pdf
@@ -37,7 +37,7 @@ def resolve_accounts(db: Session, found: Detection) -> Resolution:
     at_bank = list(
         db.scalars(
             select(Account)
-            .where(Account.institution == institution, Account.is_active.is_(True))
+            .where(Account.institution == institution, Account.is_active == true())
             .order_by(Account.account_id)
         )
     )
