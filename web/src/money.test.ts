@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { niceTicks } from "./components/charts";
-import { money, monthLong, monthShort, pct, signed, short } from "./money";
+import { money, monthLong, monthShort, pct, showAmount, signed, short } from "./money";
 
 describe("money formatting", () => {
   it("formats decimal strings with two decimals and separators", () => {
     expect(money("12345.6")).toBe("12,345.60");
     expect(money(null)).toBe("0.00");
+    expect(showAmount("-0.00")).toBe("0.00");
+    expect(showAmount("-5")).toBe("5.00");
+    expect(showAmount("5")).toBe("+5.00");
     expect(signed("575")).toBe("+575.00");
     expect(signed(-20)).toBe("-20.00");
     expect(short(12500)).toBe("12.5K");

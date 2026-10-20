@@ -251,3 +251,42 @@ describe("Transactions", () => {
     expect(await screen.findByText(/Nothing loaded for August 2026 yet/)).toBeInTheDocument();
   });
 });
+
+describe("Combined statements", () => {
+  it("shows each line's account and the payer's label", async () => {
+    current = batch({
+      statement: {
+        ...STATEMENT,
+        source: "bofa",
+        source_label: "Bank of America",
+        accounts: [
+          { account_id: 1, name: "BofA Adv Plus Banking", last4: "8872" },
+          { account_id: 2, name: "BofA Regular Savings", last4: "1862" },
+        ],
+      },
+      lines: [
+        line(1, "Transfer Kenility LLC", "4000.00", {
+          type: "income",
+          category_path: "Salary / Hernan",
+          account_name: "BofA Adv Plus Banking",
+          pay_reference: "August",
+          person: "Joint",
+          cardholder: null,
+        }),
+        line(2, "Monthly Maintenance Fee", "-5.00", {
+          account_name: "BofA Regular Savings",
+          person: "Joint",
+          cardholder: null,
+        }),
+      ],
+    });
+    renderAt("/import/batches/9");
+    const table = await screen.findByRole("table", { name: "Statement lines" });
+    expect(within(table).getByRole("columnheader", { name: "Account" })).toBeInTheDocument();
+    expect(within(table).getByText("BofA Regular Savings")).toBeInTheDocument();
+    expect(within(table).getByText(/payer’s label: “August”/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "BofA Adv Plus Banking, BofA Regular Savings",
+    );
+  });
+});

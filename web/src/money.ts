@@ -38,4 +38,4 @@ export const monthLong = (iso: string) => `${LONG[parts(iso).month - 1]} ${parts
 export const monthName = (m: number) => LONG[m - 1];
 
 /** Money out without a sign, money back with + (docs/design-system.md). */
-export const showAmount = (v: string | number) => (num(v) > 0 ? signed(v) : money(-num(v)));
+export const showAmount = (v: string | number) => (num(v) > 0 ? signed(v) : money(Math.abs(num(v))));

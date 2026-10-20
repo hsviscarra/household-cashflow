@@ -82,10 +82,12 @@ def test_load_then_read_cashflow(client: TestClient, db: Session) -> None:
 def test_same_file_twice_is_refused_and_a_new_version_replaces(
     client: TestClient, db: Session
 ) -> None:
-    assert _upload(client, "load", build()).status_code == 200
-    again = _upload(client, "load", build())
+    # Build once: openpyxl stamps the save time, so two builds can differ by a second.
+    book = build()
+    assert _upload(client, "load", book).status_code == 200
+    again = _upload(client, "load", book)
     assert again.status_code == 409
-    assert _upload(client, "preview", build()).json()["already_loaded"] is True
+    assert _upload(client, "preview", book).json()["already_loaded"] is True
 
     newer = _upload(client, "load", build(lauren_jan_2026=3500))
     assert newer.status_code == 200

@@ -28,3 +28,27 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
   statement is loaded, its closing balance = this opening balance.
 - **Checked on the real Sep 4 – Oct 3, 2026 statement:** 76 lines (74 purchases, 1 payment,
   1 interest), ties out to 3,932.84.
+
+## Bank of America (combined statement, `bofa`) — F5
+
+- **Detect:** `bankofamerica.com` / `Bank of America, N.A.`; accounts from page 1
+  (`Adv Plus Banking 4460 3033 8872 $6,856.04`, `Regular Savings … 1862`); period
+  `for August 22, 2026 to September 22, 2026`.
+- **One statement, two accounts.** Each starts at `Account number: 4460 3033 8872` with an
+  Account summary (Beginning balance, Deposits and other additions, Withdrawals and other
+  subtractions, Checks, Service fees, Ending balance). Continuation pages carry
+  `Account # … 8872` in their header. The parser returns each line with its account's last four
+  digits and each account's opening and closing balance; both accounts must be linked to the
+  statement (they are, by last four digits).
+- **Lines:** `08/28/26 Description -25.00`, amounts signed as printed. Descriptions can wrap
+  (`ID:9279744380 WEB`); up to two short continuation lines are joined, scam-warning and page
+  footer text is not.
+- **Sections:** deposits, withdrawals, ATM and debit card subtractions, checks, service fees.
+  Service fees load as Financial Costs / Bank Fees.
+- **Salary label:** `Transfer Kenility LLC Via WISE … ; "August"` → `pay_reference = August`; the
+  deposit still counts in the month it lands (September).
+- **Tie-out per account:** each summary figure = its section's lines and printed section total;
+  beginning balance + lines = ending balance; and each account's opening balance = its closing
+  balance on the previous statement when that statement is loaded. Empty sections are skipped.
+- **Checked on the real Aug 22 – Sep 22, 2026 statement:** 9 lines; checking 5,968.07 →
+  6,856.04, savings 242.31 → 262.31. Zelle payments and one PayPal purchase have no rule yet.

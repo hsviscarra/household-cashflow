@@ -21,6 +21,7 @@ from app.ingestion.parsers import PARSERS
 from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError
 from app.ingestion.storage import StatementStore
 from app.models import (
+    Account,
     Category,
     ImportBatch,
     LoadLog,
@@ -75,6 +76,7 @@ class _Classified:
 
 def _classify(
     line: Line,
+    account: Account,
     rules: list[rule_engine.Rule],
     patterns: dict[int, str],
     by_path: dict[str, Category],
@@ -87,7 +89,9 @@ def _classify(
         ]
         return _Classified(type_, cat.category_id if cat else None, None, None)
 
-    default = "refund" if line.amount > 0 else "expense"
+    # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
+    money_in = "refund" if account.kind == "credit_card" else "income"
+    default = money_in if line.amount > 0 else "expense"
     hit = rule_engine.first_match(rules, line.description)
     if hit is None:
         return _Classified(default, None, None, None)
@@ -96,31 +100,49 @@ def _classify(
     return _Classified(type_, hit.category_id, hit.rule_id, patterns[hit.rule_id].strip(" *"))
 
 
-def _continuity(db: Session, sf: StatementFile, parsed: ParsedStatement) -> Check | None:
-    if parsed.opening_balance is None or not sf.accounts:
-        return None
-    account_ids = [a.account_id for a in sf.accounts]
-    prev = db.scalar(
-        select(StatementHeader)
-        .join(
-            StatementFileAccount,
-            StatementFileAccount.statement_file_id == StatementHeader.statement_file_id,
+def _balances(header: StatementHeader) -> dict[str, tuple[Decimal, Decimal]]:
+    raw = json.loads(header.totals_json).get("balances", {})
+    return {k: (Decimal(v[0]), Decimal(v[1])) for k, v in raw.items()}
+
+
+def _continuity(
+    db: Session, sf: StatementFile, parsed: ParsedStatement, accounts: dict[str | None, Account]
+) -> list[Check]:
+    """Each account's opening balance must equal its closing balance on the previous statement."""
+    checks: list[Check] = []
+    for last4, account in accounts.items():
+        opening = parsed.balances[last4][0] if last4 else parsed.opening_balance
+        if opening is None:
+            continue
+        prev = db.scalar(
+            select(StatementHeader)
+            .join(
+                StatementFileAccount,
+                StatementFileAccount.statement_file_id == StatementHeader.statement_file_id,
+            )
+            .where(
+                StatementFileAccount.account_id == account.account_id,
+                StatementHeader.statement_file_id != sf.statement_file_id,
+                StatementHeader.period_start < parsed.period_start,
+            )
+            .order_by(StatementHeader.period_end.desc())
+            .limit(1)
         )
-        .where(
-            StatementFileAccount.account_id.in_(account_ids),
-            StatementHeader.statement_file_id != sf.statement_file_id,
-            StatementHeader.period_end < parsed.period_start,
+        if prev is None:
+            continue
+        closing = _balances(prev).get(last4 or "", (None, prev.closing_balance))[1]
+        if closing is None:
+            continue
+        label = f" {account.name}" if last4 else ""
+        checks.append(
+            Check(
+                f"Opening balance{label} = closing balance of the {prev.period_end:%b %d, %Y} "
+                "statement",
+                closing,
+                opening,
+            )
         )
-        .order_by(StatementHeader.period_end.desc())
-        .limit(1)
-    )
-    if prev is None or prev.closing_balance is None:
-        return None
-    return Check(
-        f"Opening balance = closing balance of the {prev.period_end:%b %d, %Y} statement",
-        prev.closing_balance,
-        parsed.opening_balance,
-    )
+    return checks
 
 
 def _clear_preview(db: Session, sf: StatementFile) -> None:
@@ -146,14 +168,30 @@ def parse_statement(
     parser = PARSERS.get(sf.source)
     if parser is None:
         raise StageError(f"Reading {sf.source} statements is not built yet.", 422)
-    if len(sf.accounts) != 1:
+    if not sf.accounts:
         raise StageError("Choose the statement's account first.", 422)
-    account = sf.accounts[0]
 
     try:
         parsed = parser(read_pages(store.get(sf.blob_key)))
     except ParseError as exc:
         raise StageError(f"The statement could not be read: {exc}", 422) from exc
+
+    # One statement may cover several accounts (BofA checking and savings), keyed by last four.
+    accounts: dict[str | None, Account] = {}
+    if parsed.balances:
+        by_last4 = {a.last4: a for a in sf.accounts if a.last4}
+        for last4 in parsed.balances:
+            if last4 not in by_last4:
+                raise StageError(
+                    f"The statement covers account •••• {last4}, which is not linked to it. "
+                    "Set its last four digits in Settings, then upload again.",
+                    422,
+                )
+            accounts[last4] = by_last4[last4]
+    elif len(sf.accounts) == 1:
+        accounts[None] = sf.accounts[0]
+    else:
+        raise StageError("This statement is linked to several accounts; keep only one.", 422)
 
     _clear_preview(db, sf)
     db.add(
@@ -164,7 +202,12 @@ def parse_statement(
             period_end=parsed.period_end,
             opening_balance=parsed.opening_balance,
             closing_balance=parsed.closing_balance,
-            totals_json=json.dumps({k: str(v) for k, v in parsed.totals.items()}),
+            totals_json=json.dumps(
+                {
+                    **{k: str(v) for k, v in parsed.totals.items()},
+                    "balances": {k: [str(o), str(c)] for k, (o, c) in parsed.balances.items()},
+                }
+            ),
         )
     )
     for r in parsed.rejects:
@@ -177,8 +220,7 @@ def parse_statement(
                 reason=r.reason[:200],
             )
         )
-    if (cont := _continuity(db, sf, parsed)) is not None:
-        parsed.checks.append(cont)
+    parsed.checks += _continuity(db, sf, parsed, accounts)
 
     batch = ImportBatch(
         statement_file_id=sf.statement_file_id,
@@ -203,7 +245,7 @@ def parse_statement(
     patterns = {r.rule_id: r.pattern for r in rows}
     by_path, by_id = _paths(db)
 
-    seen: Counter[tuple[date, Decimal, str]] = Counter()
+    seen: Counter[tuple[int, date, Decimal, str]] = Counter()
     staged: list[StgTransaction] = []
     for line in parsed.lines:
         raw = RawLine(
@@ -219,14 +261,22 @@ def parse_statement(
                     "post_date": line.post_date.isoformat() if line.post_date else None,
                     "amount": str(line.amount),
                     "description": line.description,
+                    "account": line.account,
+                    "reference": line.reference,
                 }
             ),
         )
         db.add(raw)
         db.flush()
-        ident = (line.txn_date, line.amount, rule_engine.normalize(line.description))
+        account = accounts[line.account if parsed.balances else None]
+        ident = (
+            account.account_id,
+            line.txn_date,
+            line.amount,
+            rule_engine.normalize(line.description),
+        )
         seen[ident] += 1
-        c = _classify(line, rules, patterns, by_path, by_id)
+        c = _classify(line, account, rules, patterns, by_path, by_id)
         upper = line.description.upper()
         country = "EC" if any(p in upper for p in EC_PLACES) else account.country
         staged.append(
@@ -245,6 +295,7 @@ def parse_statement(
                 rule_id=c.rule_id,
                 person=line.person,
                 country=country,
+                pay_reference=line.reference,
                 is_duplicate=False,
             )
         )
@@ -300,6 +351,7 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
                     category_id=s.category_id,
                     person=s.person,
                     country=s.country,
+                    pay_reference=s.pay_reference,
                     is_fixed=bool(cat and cat.is_fixed),
                     source="statement",
                     status="confirmed",

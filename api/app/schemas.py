@@ -293,6 +293,8 @@ class StgLineOut(BaseModel):
     person: str | None
     country: str | None
     cardholder: str | None
+    account_name: str | None = None
+    pay_reference: str | None = None
     is_duplicate: bool
 
 

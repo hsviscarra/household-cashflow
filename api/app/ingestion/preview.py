@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.ingestion.upload import to_out
 from app.models import (
+    Account,
     Category,
     ImportBatch,
     RawLine,
@@ -53,15 +54,16 @@ def batch_out(db: Session, batch: ImportBatch) -> BatchOut:
     assert sf is not None and header is not None
     paths = category_paths(db)
     rows = db.execute(
-        select(StgTransaction, RawLine.cardholder)
+        select(StgTransaction, RawLine.cardholder, Account.name)
         .join(RawLine, RawLine.raw_line_id == StgTransaction.raw_line_id)
+        .join(Account, Account.account_id == StgTransaction.account_id)
         .where(StgTransaction.batch_id == batch.batch_id)
         .order_by(StgTransaction.txn_date, StgTransaction.stg_id)
     ).all()
 
     lines: list[StgLineOut] = []
     totals: dict[tuple[str, str], list[Decimal]] = defaultdict(lambda: [Decimal(0), Decimal(0)])
-    for s, cardholder in rows:
+    for s, cardholder, account_name in rows:
         path = paths.get(s.category_id) if s.category_id else None
         lines.append(
             StgLineOut(
@@ -77,6 +79,8 @@ def batch_out(db: Session, batch: ImportBatch) -> BatchOut:
                 person=s.person,
                 country=s.country,
                 cardholder=cardholder,
+                account_name=account_name,
+                pay_reference=s.pay_reference,
                 is_duplicate=s.is_duplicate,
             )
         )

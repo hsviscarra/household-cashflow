@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.6.0] — F5 Bank of America
+
+### F5 — Checking and savings from one combined statement
+- Bank of America parser (docs/parsers.md): two accounts per statement, wrapped descriptions,
+  deposits / withdrawals / card / checks / service fees sections; golden test on a synthetic
+  statement; the real Aug 22 – Sep 22, 2026 statement ties out for both accounts.
+- Staging handles statements that cover several accounts: each line goes to its account, each
+  account ties out and is checked for continuity against its previous statement.
+- The payer's label on a deposit (e.g. "August" on the September salary) is kept as
+  `pay_reference` (migration 0007 adds it to `stg.stg_transaction`); the salary counts in the
+  month it lands.
+- On a bank account, money in without a rule is income (on a card it stays a refund).
+- Review page shows each line's account on combined statements and the payer's label.
+
 ## [0.5.0] — F4 Capital One end to end
 
 ### F4 — Read, tie out, preview and approve a Capital One statement

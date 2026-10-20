@@ -124,7 +124,7 @@ export default function BatchPage() {
       )}
 
       <ByCategory batch={b} />
-      <Lines lines={b.lines} />
+      <Lines lines={b.lines} multi={b.statement.accounts.length > 1} />
 
       {b.rejects.length > 0 && (
         <div className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
@@ -216,7 +216,7 @@ function ByCategory({ batch }: { batch: Batch }) {
   );
 }
 
-function Lines({ lines }: { lines: StgLine[] }) {
+function Lines({ lines, multi }: { lines: StgLine[]; multi: boolean }) {
   return (
     <div className="mt-8">
       <h2 className="font-display text-2xl font-bold">Lines</h2>
@@ -232,7 +232,7 @@ function Lines({ lines }: { lines: StgLine[] }) {
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
               <span className="num">{day(ln.txn_date)}</span>
-              <span>· {ln.person}</span>
+              <span>· {multi && ln.account_name ? ln.account_name : ln.person}</span>
               <span>·</span>
               {ln.category_path ?? (
                 <span className="pill bg-attention-bg text-attention-ink">Needs a category</span>
@@ -254,7 +254,7 @@ function Lines({ lines }: { lines: StgLine[] }) {
                 Description
               </th>
               <th scope="col" className="px-4 py-2 text-left font-semibold">
-                Who
+                {multi ? "Account" : "Who"}
               </th>
               <th scope="col" className="px-4 py-2 text-left font-semibold">
                 Category
@@ -267,14 +267,23 @@ function Lines({ lines }: { lines: StgLine[] }) {
           <tbody className="divide-y divide-line">
             {lines.map((ln) => (
               <tr key={ln.stg_id} className={ln.is_duplicate ? "text-muted" : ""}>
-                <td className="num px-4 py-2">{day(ln.txn_date)}</td>
+                <td className="num whitespace-nowrap px-4 py-2">{day(ln.txn_date)}</td>
                 <td className="px-4 py-2">
                   {ln.description}
+                  {ln.pay_reference && (
+                    <span className="text-muted"> (payer’s label: “{ln.pay_reference}”)</span>
+                  )}
                   {ln.is_duplicate && <span className="pill pill-muted ml-2">Already loaded</span>}
                 </td>
                 <td className="px-4 py-2">
-                  {ln.person}
-                  {ln.cardholder && <span className="num text-muted"> #{ln.cardholder}</span>}
+                  {multi && ln.account_name ? (
+                    ln.account_name
+                  ) : (
+                    <>
+                      {ln.person}
+                      {ln.cardholder && <span className="num text-muted"> #{ln.cardholder}</span>}
+                    </>
+                  )}
                 </td>
                 <td className="px-4 py-2">
                   {ln.category_path ?? (
