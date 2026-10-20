@@ -247,6 +247,7 @@ describe("Transactions", () => {
     expect(screen.getByRole("list", { name: "Transactions (list)" })).toHaveTextContent(
       "Capital One Venture",
     );
+    expect(screen.queryByText(/covered by the Excel history/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Month"), { target: { value: "2026-08" } });
     expect(await screen.findByText(/Nothing loaded for August 2026 yet/)).toBeInTheDocument();
   });
@@ -278,6 +279,10 @@ describe("Combined statements", () => {
           person: "Joint",
           cardholder: null,
         }),
+        line(3, "TIENDA DIFERIDO", "-50.00", {
+          account_name: "BofA Adv Plus Banking",
+          pay_reference: "2/6",
+        }),
       ],
     });
     renderAt("/import/batches/9");
@@ -285,6 +290,7 @@ describe("Combined statements", () => {
     expect(within(table).getByRole("columnheader", { name: "Account" })).toBeInTheDocument();
     expect(within(table).getByText("BofA Regular Savings")).toBeInTheDocument();
     expect(within(table).getByText(/payer’s label: “August”/)).toBeInTheDocument();
+    expect(within(table).getByText(/installment 2 of 6/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "BofA Adv Plus Banking, BofA Regular Savings",
     );

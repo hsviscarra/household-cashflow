@@ -293,6 +293,84 @@ def bofa_full(
     return pdf(page1, page2, page3, page4, ["This page intentionally left blank"])
 
 
+# ---------------- a full Banco Pichincha Mastercard statement (golden test, F6) ----------------
+PICH_ACCOUNT_LINES = [
+    '19/06 682215 SU PAGO "MUCHAS GRACIAS" 300,00-',
+    "12/07 5034 INTERESES SALDO A FAVOR N/C 0,03-",
+    "12/07 INT. FINANCIAMIENTO N/D 0,50",
+    "03/07 978746 ND PRECANCELACION DIF. C. N/D 100,00",
+    "12/07 CONT_FIN_SOLCA_C.ROT** N/D 0,02",
+]
+PICH_CARD_6331 = [
+    "16/06 3541282 UBER *ONE MEMBERSHIP U V CONSUMO NLD 3,99",
+    "16/06 3541282 RET IVA SERV DIGITAL 100% N/D 0,60",
+    "17/06 3590964 GOOGLE *YouTubeA M CONSUMO USA 7,99",
+    "20/06 3703738 TIENDA DE PRUEBA DIFERIDO CONSUMO 2/6 50,00 200,00",
+]
+PICH_CARD_2829 = ["06/07 982931 CONECEL VARIOS UIO CONSUMO 1.024,14"]
+
+
+def pichincha_full(*, previous: str = "400,00", subtotal_delta: str = "0") -> bytes:
+    from decimal import Decimal
+
+    from app.ingestion.parsers.pichincha import LINE, amount
+
+    def val(line: str) -> Decimal:
+        m = LINE.match(line)
+        assert m, line
+        return amount(m.group("amt"))
+
+    acct = [val(x) for x in PICH_ACCOUNT_LINES]
+    c6331 = sum((val(x) for x in PICH_CARD_6331), Decimal(0))
+    c2829 = sum((val(x) for x in PICH_CARD_2829), Decimal(0))
+    credits = -sum((v for v in acct if v < 0), Decimal(0))
+    debits = sum((v for v in acct if v > 0), Decimal(0)) + c6331 + c2829
+    prev = amount(previous)
+    due = prev - credits + debits
+    purchases = Decimal("3.99") + Decimal("7.99") + Decimal("50.00") + Decimal("1024.14")
+
+    def us(x: Decimal) -> str:
+        return f"{x:,.2f}"
+
+    def ec(x: Decimal) -> str:
+        return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    page1 = [
+        "TARJETA MASTERCARD",
+        "BANCO PICHINCHA C.A.",
+        "inconformidad: serviciostarjetas@pichincha.com",
+        "TITULAR DE PRUEBA",
+        "546600XXXXXX2829 FECHA DE EMISIÓN: 12 JUL 2026",
+    ]
+    page2 = [
+        "TARJETA MASTERCARD",
+        "FECHA DE EMISIÓN FECHA MÁXIMA DE PAGO SIN RECARGOS PERÍODO DESDE PERÍODO HASTA",
+        "12 JUL 2026 31 JUL 2026 13/06/2026 12/07/2026",
+        "RESUMEN DE SALDO ANTERIOR PAGOS/CRÉDITOS CONSUMOS/DÉBITO TOTAL A PAGAR",
+        f"MOVIMIENTO {us(prev)} {us(credits)}- {us(debits)} {us(due)}",
+    ]
+    page3 = [
+        "TARJETA MASTERCARD",
+        "DETALLE DE MOVIMIENTOS",
+        "Fecha Referencia Descripción Operación Valores Diferido",
+        f"SALDO ANTERIOR {ec(prev)}",
+        PICH_ACCOUNT_LINES[0],
+        "SUBTOTAL PAGOS 300,00",
+        *PICH_ACCOUNT_LINES[1:],
+        "PRUEBA HERNAN TITULAR 5466-xxxx-xxxx-6331 * PRINCIPAL REEMPLAZO MSC BLACK MILES BP",
+        *PICH_CARD_6331,
+        f"SUBTOTAL : {ec(c6331 + Decimal(subtotal_delta))}",
+        "PRUEBA HERNAN TITULAR 5466-xxxx-xxxx-2829 * PRINCIPAL MSC BLACK MILES BP",
+        *PICH_CARD_2829,
+        f"SUBTOTAL : {ec(c2829)}",
+        f"TOTAL CONSUMOS MES {us(purchases)}",
+        f"TOTAL A PAGAR USD {us(due)}",
+        "PAGO MINIMO 30.00",
+        "* Contribución al financiamiento de la atención integral del cáncer, crédito diferido.",
+    ]
+    return pdf(page1, page2, page3)
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,
@@ -302,6 +380,7 @@ SAMPLES = {
     "unknown.pdf": unknown,
     "capitalone-full.pdf": capitalone_full,
     "bofa-full.pdf": bofa_full,
+    "pichincha-full.pdf": pichincha_full,
 }
 
 

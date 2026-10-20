@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.7.0] — F6 Banco Pichincha
+
+### F6 — Spanish card statement with deferred purchases
+- Banco Pichincha parser (docs/parsers.md): Spanish layout, both number formats, account-level
+  lines (payments, interest, SOLCA, IVA withheld on digital services, early payoffs of deferred
+  purchases), one block per card (replacement 6331 and original 2829), installments of deferred
+  purchases; golden test on a synthetic statement; the real Jun 13 – Jul 12, 2026 statement ties
+  out to 44.59 with every line categorized.
+- Lines without a cardholder take the account owner as the person.
+- ADR-004 and migration 0008: a month counts from the Excel history or from statements, never
+  both; statement lines in history months are kept and listed with a note.
+- Review page labels installments ("installment 2 of 6") and shows references on phones.
+
 ## [0.6.0] — F5 Bank of America
 
 ### F5 — Checking and savings from one combined statement

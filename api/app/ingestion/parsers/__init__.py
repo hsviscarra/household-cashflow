@@ -2,10 +2,11 @@
 
 from collections.abc import Callable
 
-from app.ingestion.parsers import bofa, capitalone
+from app.ingestion.parsers import bofa, capitalone, pichincha
 from app.ingestion.parsers.base import ParsedStatement
 
 PARSERS: dict[str, Callable[[list[str]], ParsedStatement]] = {
     bofa.NAME: bofa.parse,
     capitalone.NAME: capitalone.parse,
+    pichincha.NAME: pichincha.parse,
 }

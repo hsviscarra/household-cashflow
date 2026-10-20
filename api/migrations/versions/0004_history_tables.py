@@ -21,7 +21,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 VIEWS = ("mart.v_monthly_cashflow", "mart.v_category_month")
-VIEW_DIR = Path(__file__).resolve().parent.parent / "views"
+VIEW_DIR = Path(__file__).resolve().parent.parent / "views" / "0004"  # frozen copies
 MONEY = sa.Numeric(19, 4)
 
 

@@ -13,6 +13,12 @@ const longDay = (iso: string) =>
     year: "numeric",
   });
 
+/** "2/6" on a card line is an installment of a deferred purchase; anything else is the payer's label. */
+function referenceLabel(ref: string) {
+  const m = /^(\d{1,2})\/(\d{1,2})$/.exec(ref);
+  return m ? `installment ${m[1]} of ${m[2]}` : `payer’s label: “${ref}”`;
+}
+
 const TYPE_LABEL: Record<string, string> = {
   expense: "Spending",
   refund: "Refund",
@@ -227,7 +233,12 @@ function Lines({ lines, multi }: { lines: StgLine[]; multi: boolean }) {
         {lines.map((ln) => (
           <li key={ln.stg_id} className={`px-4 py-3 ${ln.is_duplicate ? "text-muted" : ""}`}>
             <div className="flex items-baseline justify-between gap-3">
-              <span className="font-semibold">{ln.description}</span>
+              <span className="font-semibold">
+                {ln.description}
+                {ln.pay_reference && (
+                  <span className="font-normal text-muted"> ({referenceLabel(ln.pay_reference)})</span>
+                )}
+              </span>
               <span className="num shrink-0">{showAmount(ln.amount)}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
@@ -271,7 +282,7 @@ function Lines({ lines, multi }: { lines: StgLine[]; multi: boolean }) {
                 <td className="px-4 py-2">
                   {ln.description}
                   {ln.pay_reference && (
-                    <span className="text-muted"> (payer’s label: “{ln.pay_reference}”)</span>
+                    <span className="text-muted"> ({referenceLabel(ln.pay_reference)})</span>
                   )}
                   {ln.is_duplicate && <span className="pill pill-muted ml-2">Already loaded</span>}
                 </td>

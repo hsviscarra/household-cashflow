@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 CAPITALONE = os.environ.get("REAL_CAPITALONE")
 BOFA = os.environ.get("REAL_BOFA")
+PICHINCHA = os.environ.get("REAL_PICHINCHA")
 
 
 @pytest.mark.skipif(not CAPITALONE, reason="REAL_CAPITALONE not set")
@@ -44,4 +45,21 @@ def test_real_bofa_ties_out_for_both_accounts_and_loads(client: TestClient) -> N
     print(f"\n{b['new_lines']} lines, uncategorized {b['uncategorized']}")
     for ln in b["lines"]:
         print(f"  {ln['txn_date']} {ln['amount']:>10} {ln['type']:<12} {ln['category_path']}")
+    assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == b["new_lines"]
+
+
+@pytest.mark.skipif(not PICHINCHA, reason="REAL_PICHINCHA not set")
+def test_real_pichincha_ties_out_and_loads(client: TestClient) -> None:
+    assert PICHINCHA
+    data = Path(PICHINCHA).read_bytes()
+    up = client.post("/api/statements", files=[("files", ("p.pdf", data, "application/pdf"))])
+    st = up.json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"], [c for c in b["checks"] if not c["ok"]]
+    print(f"\n{b['new_lines']} lines, uncategorized {b['uncategorized']}")
+    for ln in b["lines"]:
+        print(
+            f"  {ln['txn_date']} {ln['amount']:>10} {ln['type']:<12} {ln['category_path']}"
+            f"  {ln['description']}"
+        )
     assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == b["new_lines"]
