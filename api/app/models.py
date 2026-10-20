@@ -374,6 +374,7 @@ class StgTransaction(Base):
     rule_id: Mapped[int | None] = mapped_column(ForeignKey("core.merchant_rule.rule_id"))
     person: Mapped[str | None] = mapped_column(Unicode(10))
     country: Mapped[str | None] = mapped_column(Unicode(2))
+    pay_reference: Mapped[str | None] = mapped_column(Unicode(100))
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

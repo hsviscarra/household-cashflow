@@ -20,6 +20,10 @@ class Line:
     description: str
     cardholder: str | None = None  # last four digits of the card used
     person: str | None = None  # Hernan, Lauren or Joint
+    # Last four digits of the account the line belongs to, when one statement covers several.
+    account: str | None = None
+    # A label the payer gave the money, e.g. "August" on a salary that lands in September.
+    reference: str | None = None
 
 
 @dataclass
@@ -50,6 +54,8 @@ class ParsedStatement:
     closing_balance: Decimal | None
     totals: dict[str, Decimal]
     lines: list[Line] = field(default_factory=list)
+    # Per account (last four digits) when one statement covers several: (opening, closing).
+    balances: dict[str, tuple[Decimal, Decimal]] = field(default_factory=dict)
     rejects: list[Reject] = field(default_factory=list)
     checks: list[Check] = field(default_factory=list)
 

@@ -163,10 +163,85 @@ def test_read_errors(client: TestClient) -> None:
     assert client.get("/api/batches/999").status_code == 404
     assert client.post("/api/batches/999/approve").status_code == 404
     assert client.post("/api/batches/999/reject").status_code == 404
-    bofa = _upload(client, "bofa.pdf", s.bofa())
-    resp = client.post(f"/api/statements/{bofa['statement_file_id']}/read")
+    pich = _upload(client, "pich.pdf", s.pichincha())
+    resp = client.post(f"/api/statements/{pich['statement_file_id']}/read")
     assert resp.status_code == 422 and "not built yet" in resp.json()["detail"]
-    assert bofa["can_read"] is False
+    assert pich["can_read"] is False
     broken = _upload(client, "co-short.pdf", s.capitalone())  # detected, but no summary
     resp = client.post(f"/api/statements/{broken['statement_file_id']}/read")
     assert resp.status_code == 422 and "could not be read" in resp.json()["detail"]
+
+
+def test_bofa_combined_statement_loads_both_accounts(client: TestClient, db: Session) -> None:
+    st = _upload(client, "bofa.pdf", s.bofa_full())
+    assert st["can_read"] is True
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"] is True, [c for c in b["checks"] if not c["ok"]]
+    assert b["new_lines"] == 7
+
+    lines = {ln["description"].split(" Conf")[0][:30]: ln for ln in b["lines"]}
+    salary = lines["Transfer Kenility LLC Via WISE"]
+    assert (salary["type"], salary["category_path"]) == ("income", "Salary / Hernan")
+    to_sav = lines["Agent Assisted Automatic trans"]
+    assert to_sav["type"] == "transfer"
+    card = lines["CAPITAL ONE DES:MOBILE PMT ID:"]
+    assert (card["type"], card["category_path"]) == ("transfer", "Transfers / Card Payment")
+    assert lines["PAYPAL DES:PURCHASE ID:FABLETI"]["category_path"] == "Shopping / Clothing"
+    zelle = lines["Zelle payment to TEST PERSON"]
+    assert (zelle["type"], zelle["category_path"]) == ("expense", None)
+    fee = lines["Monthly Maintenance Fee"]
+    assert (fee["type"], fee["category_path"]) == ("fee_interest", "Financial Costs / Bank Fees")
+
+    assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == 7
+    rows = client.get("/api/transactions", params={"source": "statement"}).json()
+    accounts = {r["description"][:20]: r["account_name"] for r in rows}
+    assert accounts["Monthly Maintenance "] == "BofA Regular Savings"
+    assert accounts["Zelle payment to TES"] == "BofA Adv Plus Banking"
+    tx = db.scalars(select(Transaction).where(Transaction.type == "income")).one()
+    assert (tx.pay_reference, tx.cash_month.isoformat()) == ("August", "2026-09-01")
+
+    # Money in and out: the salary counts, transfers to savings and the card payment don't.
+    monthly = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    assert Decimal(monthly["2026-09-01"]["income"]) == Decimal("4000")
+    assert Decimal(monthly["2026-09-01"]["expenses"]) == Decimal("230")
+    assert Decimal(monthly["2026-08-01"]["expenses"]) == Decimal("5")
+
+
+def test_bofa_continuity_per_account(client: TestClient) -> None:
+    first = _upload(
+        client,
+        "jul.pdf",
+        s.bofa_full(
+            period=("July 22, 2026", "August 22, 2026"), chk_begin="0.00", sav_begin="80.00"
+        ),
+    )
+    client.post(f"/api/statements/{first['statement_file_id']}/read")
+    # July ends at 2,245.00 / 100.00; August opens at 2,000.00 / 100.00.
+    nxt = _upload(client, "aug.pdf", s.bofa_full())
+    b = client.post(f"/api/statements/{nxt['statement_file_id']}/read").json()
+    cont = {c["name"]: c for c in b["checks"] if c["name"].startswith("Opening balance")}
+    assert (
+        cont[
+            "Opening balance BofA Adv Plus Banking = closing balance of the Aug 22, 2026 statement"
+        ]["ok"]
+        is False
+    )
+    assert (
+        cont[
+            "Opening balance BofA Regular Savings = closing balance of the Aug 22, 2026 statement"
+        ]["ok"]
+        is True
+    )
+    assert b["tieout_ok"] is False
+
+
+def test_bofa_needs_both_accounts_linked(client: TestClient, db: Session) -> None:
+    from sqlalchemy import update
+
+    from app.models import Account
+
+    db.execute(update(Account).where(Account.name == "BofA Regular Savings").values(last4=None))
+    db.commit()
+    st = _upload(client, "bofa.pdf", s.bofa_full())
+    resp = client.post(f"/api/statements/{st['statement_file_id']}/read")
+    assert resp.status_code == 422 and "•••• 1862" in resp.json()["detail"]

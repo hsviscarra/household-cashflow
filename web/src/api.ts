@@ -284,6 +284,8 @@ export type StgLine = {
   person: string | null;
   country: string | null;
   cardholder: string | null;
+  account_name?: string | null;
+  pay_reference?: string | null;
   is_duplicate: boolean;
 };
 export type Batch = {

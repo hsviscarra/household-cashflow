@@ -120,7 +120,7 @@ export default function TransactionsPage() {
             <tbody className="divide-y divide-line">
               {data.map((t) => (
                 <tr key={t.transaction_id}>
-                  <td className="num px-4 py-2">
+                  <td className="num whitespace-nowrap px-4 py-2">
                     {new Date(`${t.txn_date}T00:00:00`).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",

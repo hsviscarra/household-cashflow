@@ -185,6 +185,114 @@ def capitalone_full(
     return pdf(page1, page2, page3, ["Page 4 of 4", *head, "Interest Charge Calculation"])
 
 
+# ---------------- a full Bank of America combined statement (golden test, F5) ----------------
+BOFA_CHK_DEPOSITS = [
+    ("09/21/26", 'Transfer Kenility LLC Via WISE from Kenility LLC ; "August"', "4,000.00")
+]
+BOFA_CHK_WITHDRAWALS = [
+    (
+        "08/28/26",
+        "Agent Assisted Automatic transfer to SAV 1862 Confirmation# 1111111111",
+        "-25.00",
+    ),
+    ("08/31/26", "CAPITAL ONE DES:MOBILE PMT ID:TEST0001 INDN:Test Holder CO", "-1,500.00"),
+    ("09/08/26", "PAYPAL DES:PURCHASE ID:FABLETICSLL INDN:Test Holder CO", "-30.00"),
+    ("09/11/26", "Zelle payment to TEST PERSON Conf# abc123", "-200.00"),
+]
+BOFA_SAV_DEPOSITS = [
+    (
+        "08/28/26",
+        "Agent Assisted Automatic transfer from CHK 8872 Confirmation# 1111111111",
+        "25.00",
+    )
+]
+BOFA_SAV_FEES = [("08/24/26", "Monthly Maintenance Fee", "-5.00")]
+
+
+def bofa_full(
+    *,
+    chk_begin: str = "2,000.00",
+    sav_begin: str = "100.00",
+    period: tuple[str, str] = ("August 22, 2026", "September 22, 2026"),
+    printed_withdrawals_delta: str = "0.00",
+) -> bytes:
+    from decimal import Decimal
+
+    def d(x: str) -> Decimal:
+        return Decimal(x.replace(",", ""))
+
+    def f(x: Decimal) -> str:
+        return f"{x:,.2f}"
+
+    dep = sum((d(a) for *_, a in BOFA_CHK_DEPOSITS), Decimal(0))
+    wd = sum((d(a) for *_, a in BOFA_CHK_WITHDRAWALS), Decimal(0))
+    chk_end = d(chk_begin) + dep + wd
+    sdep = sum((d(a) for *_, a in BOFA_SAV_DEPOSITS), Decimal(0))
+    sfee = sum((d(a) for *_, a in BOFA_SAV_FEES), Decimal(0))
+    sav_end = d(sav_begin) + sdep + sfee
+    printed_wd = wd + Decimal(printed_withdrawals_delta)
+    page1 = [
+        "Customer service information  bankofamerica.com",
+        "Your combined statement",
+        f"for {period[0]} to {period[1]}",
+        "Your deposit accounts Account/plan number Ending balance Details on",
+        f"Adv Plus Banking 0000 1111 8872 ${f(chk_end)} Page 2",
+        f"Regular Savings 0000 2222 1862 ${f(sav_end)} Page 4",
+    ]
+    page2 = [
+        "Account number: 0000 1111 8872",
+        "Your Adv Plus Banking",
+        "Account summary",
+        f"Beginning balance on {period[0]} ${chk_begin}",
+        f"Deposits and other additions {f(dep)}",
+        f"Withdrawals and other subtractions {f(printed_wd)}",
+        "Checks -0.00",
+        "Service fees -0.00",
+        f"Ending balance on {period[1]} ${f(chk_end)}",
+        "Deposits and other additions",
+        "Date Description Amount",
+        *[f"{a} {b} {c}" for a, b, c in BOFA_CHK_DEPOSITS],
+        f"Total deposits and other additions ${f(dep)}",
+        "Withdrawals and other subtractions",
+        "Date Description Amount",
+        *[f"{a} {b} {c}" for a, b, c in BOFA_CHK_WITHDRAWALS[:2]],
+        "ID:9999999 WEB",
+        "continued on the next page",
+        "Pause and verify to help prevent scams.",
+        "Page 2 of 5",
+    ]
+    page3 = [
+        "TEST HOLDER ! Account # 0000 1111 8872 ! August 22, 2026 to September 22, 2026",
+        "Withdrawals and other subtractions - continued",
+        "Date Description Amount",
+        *[f"{a} {b} {c}" for a, b, c in BOFA_CHK_WITHDRAWALS[2:]],
+        "WEB",
+        f"Total withdrawals and other subtractions -${f(-wd)}",
+        "Page 3 of 5",
+    ]
+    page4 = [
+        "Account number: 0000 2222 1862",
+        "Your Regular Savings",
+        "Account summary",
+        f"Beginning balance on {period[0]} ${sav_begin}",
+        f"Deposits and other additions {f(sdep)}",
+        "Withdrawals and other subtractions -0.00",
+        f"Service fees {f(sfee)}",
+        f"Ending balance on {period[1]} ${f(sav_end)}",
+        "Deposits and other additions",
+        "Date Description Amount",
+        *[f"{a} {b} {c}" for a, b, c in BOFA_SAV_DEPOSITS],
+        f"Total deposits and other additions ${f(sdep)}",
+        "Service fees",
+        "Date Transaction description Amount",
+        *[f"{a} {b} {c}" for a, b, c in BOFA_SAV_FEES],
+        f"Total service fees -${f(-sfee)}",
+        "Note your Ending Balance already reflects the subtraction of Service Fees.",
+        "Page 4 of 5",
+    ]
+    return pdf(page1, page2, page3, page4, ["This page intentionally left blank"])
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,
@@ -193,6 +301,7 @@ SAMPLES = {
     "diners.pdf": diners,
     "unknown.pdf": unknown,
     "capitalone-full.pdf": capitalone_full,
+    "bofa-full.pdf": bofa_full,
 }
 
 
