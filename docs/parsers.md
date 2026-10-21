@@ -139,6 +139,12 @@ account is chosen by the main cardholder's name on the `* PRINCIPAL` card line (
 Continuity (all sources): the opening balance is compared only with a statement that ends within
 a week of this one's start; a missing month is left for the data status page (F12).
 
+## Scans of any bank (OCR fallback) — 0.9.2
+
+A PDF without a text layer is read with OCR (ADR-005) and goes to the bank's own parser, so the
+same tie-out applies. Diners labels match without accents; Produbanco takes a sign OCR lost from
+the running balance. Reading takes about 15–20 s per statement.
+
 ## Pacificard (Banco del Pacífico Mastercard, `pacificard`) — F8b
 
 The statement is a screenshot of the bank's web page saved as PDF (no text, grey "COPIA"

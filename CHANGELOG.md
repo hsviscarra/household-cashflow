@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.9.2] — OCR fallback for every bank
+
+- A statement PDF without text (a scan) is recognized and read with OCR for any bank, then goes to
+  that bank's parser and tie-out (ADR-005 update). Scans of all five text formats tie out.
+- OCR adapts to the picture's resolution, keeps signs, "$" and the decimal mark of each amount, and
+  rejects impossible amounts ("00,00").
+- Diners matches labels without accents; Produbanco recovers a lost sign from the running balance;
+  Pacificard settles a tie between two printings of a total with the one the lines balance with.
+
 ## [0.9.1] — F8b Pacificard
 
 ### F8b — Banco del Pacífico Mastercard, read from a screenshot

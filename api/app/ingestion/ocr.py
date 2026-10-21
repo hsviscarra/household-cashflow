@@ -1,5 +1,6 @@
-"""OCR for statements that arrive as pictures (Pacificard prints its web statement to a PDF that
-holds one screenshot per page, with a grey "COPIA" watermark). See ADR-005.
+"""OCR for statements that arrive as pictures: Pacificard prints its web statement to a PDF that
+holds one screenshot per page (grey "COPIA" watermark), and any other bank's PDF without a text
+layer (a scan) falls back to it. See ADR-005.
 
 Tesseract runs locally (nothing leaves the server). Two passes: the whole page for words and
 lines, then every word that should be a number again with a digits-only alphabet, because the
@@ -20,21 +21,27 @@ from itertools import pairwise
 from PIL import Image, ImageOps
 from pypdf import PdfReader
 
-SCALE = 4
+WIDE = 3500  # pixels: each page picture is enlarged to about this width before reading
 WORKERS = 4  # tesseract processes at once for the re-reads
 INK = 165  # darker than the watermark (191) is text
 # A word that should be an amount: digit-like characters around a decimal point ("§.03", "a11.a9").
-NUMBER_LIKE = re.compile(r"^[\d§$SOBIZa,]{1,10}\.[\d§$SOBIZsa¢]{2,3}$")
-AMOUNT = re.compile(r"\d{1,3}(?:,?\d{3})*\.\d{2}")
+# Signs ("+570.00", "310,00-") are kept from the first reading; either decimal mark is accepted.
+NUMBER_LIKE = re.compile(r"^[+-]?[\d§$SOBIZa.,]{1,10}[.,][\d§$SOBIZsa¢]{2,3}-?$")
+# The re-read must keep the first reading's decimal mark: US 1,057.81 or Ecuadorian 1.057,78.
+# No leading zero unless the whole part is 0: "00,00" is a misread of "50,00", not an amount.
+AMOUNT = {
+    ".": re.compile(r"(?:0|[1-9]\d{0,2}(?:,?\d{3})*)\.\d{2}"),
+    ",": re.compile(r"(?:0|[1-9]\d{0,2}(?:\.?\d{3})*),\d{2}"),
+}
 DIGIT_LIKE = re.compile(r"^[\d§$SOBIZa.,]{3,10}$")
 # A word that should be a date: "SEP/0S", "4GO/28", "2MAY/2026" (a digit next to a slash).
 DATE_LIKE = re.compile(r"^(?=.*\d)[\w$§]{1,6}/[\w$§]{1,5}(?:/\w{4})?$")
 DATE = re.compile(r"(?:\d{1,2}/)?[A-Z]{3}/\d{1,2}(?:\d{3})?")
-DIGITS = "0123456789.,"
+DIGITS = "0123456789.,+-"  # signs are allowed so a "+" isn't read as a 4, then set aside
 DATE_CHARS = "0123456789/ABCDEFGIJLMNOPRSTUVY"  # digits and the letters of Spanish month names
 # Each number is read again from the original picture at several sizes and ink thresholds; the
 # answer most of them agree on wins (a single reading can turn a 4 into a 9).
-VOTES = ((3, 165), (4, 130), (4, 200), (6, 165), (3, 200))
+VOTES = ((32, 165), (40, 130), (40, 200), (56, 165), (32, 200))  # (text height px, ink)
 
 
 class OcrError(Exception):
@@ -69,9 +76,15 @@ def page_images(data: bytes) -> list[Image.Image]:
     return out
 
 
+def _scale(image: Image.Image) -> int:
+    """4x for a 880 px screenshot, 2x for a 200 dpi scan, 1x for anything larger."""
+    return max(1, round(WIDE / image.width))
+
+
 def _prepare(image: Image.Image) -> Image.Image:
     gray = ImageOps.grayscale(image)
-    big = gray.resize((gray.width * SCALE, gray.height * SCALE), Image.Resampling.BICUBIC)
+    scale = _scale(image)
+    big = gray.resize((gray.width * scale, gray.height * scale), Image.Resampling.BICUBIC)
     return big.point(lambda p: 0 if p < INK else 255)
 
 
@@ -105,29 +118,60 @@ def _words(image: Image.Image) -> list[Word]:
 
 
 def _reread(
-    gray: Image.Image, w: Word, first: str, chars: str, valid: re.Pattern[str]
+    gray: Image.Image,
+    w: Word,
+    first: str,
+    chars: str,
+    valid: re.Pattern[str],
+    clean: Callable[[str], str] = str.strip,
 ) -> str | None:
     """Majority of several readings of the word's box with a restricted alphabet; stops once three
-    readings agree (word coordinates are at SCALE, the picture is the original)."""
+    readings agree. Word coordinates are on the enlarged picture, `gray` is the original; each
+    reading enlarges the word to a given text height (Tesseract reads best at 30-60 px)."""
+    k = _scale(gray)
     pad = 8
-    left, top = (w.left - pad) // SCALE, (w.top - pad) // SCALE
-    right, bottom = (w.left + w.width + pad) // SCALE, (w.top + w.height + pad) // SCALE
+    left, top = (w.left - pad) // k, (w.top - pad) // k
+    right, bottom = (w.left + w.width + pad) // k, (w.top + w.height + pad) // k
     crop = gray.crop((left, top, right, bottom))
+    height = max(1.0, w.height / k)
     votes: Counter[str] = Counter()
-    if valid.fullmatch(first):
-        votes[first.replace(",", "")] += 1
-    for scale, ink in VOTES:
-        big = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.BICUBIC)
+    if valid.fullmatch(clean(first)):
+        votes[clean(first)] += 1
+    for target, ink in VOTES:
+        f = max(1.0, target / height)
+        size = (round(crop.width * f), round(crop.height * f))
+        big = crop.resize(size, Image.Resampling.BICUBIC)
         big = ImageOps.expand(big.point(lambda p, ink=ink: 0 if p < ink else 255), 20, 255)
-        text = _tesseract(big, "--psm", "7", "-c", f"tessedit_char_whitelist={chars}").strip()
+        text = clean(_tesseract(big, "--psm", "7", "-c", f"tessedit_char_whitelist={chars}"))
         if valid.fullmatch(text):
-            votes[text.replace(",", "")] += 1
+            votes[text] += 1
             if votes.most_common(1)[0][1] >= 3:
                 break
     if not votes:
         return None
     (best, n), *rest = votes.most_common()
     return best if not rest or rest[0][1] < n else None  # a tie is not an answer
+
+
+def _amount(gray: Image.Image, w: Word) -> str:
+    """An amount re-read digits-only, keeping the first reading's sign and decimal mark."""
+    lead = w.text[0] if w.text[0] in "+-" else ""
+    trail = "-" if w.text.endswith("-") else ""
+    core = w.text.strip("+-")
+    mark = "," if re.search(r",\S{2,3}$", core) and "." not in core[-3:] else "."
+    # A leading "$" may be a currency sign or a misread 5: only the re-readings decide then.
+    seed = "" if core.startswith("$") else core
+    best = _reread(gray, w, seed, DIGITS, AMOUNT[mark], lambda t: t.strip().strip("+-"))
+    if not best:
+        return w.text
+    # "$500.00": a dollar sign when the digits-only reading has no extra digit in its place;
+    # "$12.34" read again as "512.34" means the "$" was a 5.
+    dollar = "$" if core.startswith("$") and _digits(best) == _digits(core[1:]) else ""
+    return f"{lead}{dollar}{best}{trail}"
+
+
+def _digits(text: str) -> int:
+    return sum(c.isdigit() or c in "§SOBIZa" for c in text)
 
 
 def first_page(image: Image.Image) -> Image.Image:
@@ -148,12 +192,18 @@ def first_page(image: Image.Image) -> Image.Image:
     return image
 
 
-def header_text(data: bytes) -> str:
-    """A quick read of the top of the first page image, enough to recognize the bank."""
+def header_text(data: bytes, whole: bool = False) -> str:
+    """A quick read of the first page image to recognize the bank: the top (a screenshot's header),
+    or with `whole` the full page at its own size (a scan, whose bank name may be in the footer)."""
     images = page_images(data)
     if not images:
         return ""
-    top = images[0].crop((0, 0, images[0].width, min(images[0].height, 450)))
+    first = images[0]
+    if whole:
+        return _tesseract(
+            ImageOps.grayscale(first).point(lambda p: 0 if p < INK else 255), "--psm", "3"
+        )
+    top = first.crop((0, 0, first.width, min(first.height, 450)))
     return _tesseract(_prepare(top), "--psm", "6")
 
 
@@ -179,7 +229,7 @@ def ocr_pages(data: bytes, crop: Callable[[Image.Image], Image.Image] | None = N
 
         def better(w: Word, gray: Image.Image = gray, before_sign: set[int] = before_sign) -> str:
             if NUMBER_LIKE.match(w.text) or id(w) in before_sign:
-                return _reread(gray, w, w.text, DIGITS, AMOUNT) or w.text
+                return _amount(gray, w)
             if DATE_LIKE.match(w.text):
                 return _reread(gray, w, w.text, DATE_CHARS, DATE) or w.text
             return w.text

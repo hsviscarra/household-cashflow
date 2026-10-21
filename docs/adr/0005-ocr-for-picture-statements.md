@@ -34,3 +34,22 @@ leaves the server, needs a confirmation step); or asking for a text export the b
 - Descriptions under the watermark can carry OCR noise ("CARGO. “APITA'"); amounts and dates can't,
   because of the tie-out. Merchant rules match on words that survive (e.g. "FINANC.SOLCA").
 - Any other picture-only statement can reuse `ocr.ocr_pages` with its own parser.
+
+## Update 2026-10-21: OCR is the fallback for every bank
+
+Hernan expects real PDFs from every bank but wants OCR as the default when a PDF has no text (a
+scan, or a statement saved as a picture):
+
+- Upload: a PDF without text is recognized by OCR of its header, then of the whole first page (a
+  scan's bank name may be in the footer, as Produbanco's is).
+- "Read lines": when a bank's PDF has no text layer, its own parser gets the OCR text instead.
+- The OCR step adapts to the picture: pages are enlarged to about 3,500 px wide (4x a screenshot,
+  2x a 200 dpi scan) and each number is re-read at text heights of 32–56 px; amounts keep their
+  sign, their "$" and their decimal mark (1,057.81 or 1.057,78), and an amount can't start with
+  "00".
+- Parsers that relied on accents (Diners) match without them; Produbanco recovers a sign OCR lost
+  from the running balance; Pacificard settles a tie between two printings of a total with the
+  printed value the lines balance with.
+- Checked with 200 dpi scans of the synthetic statements of all five text banks (each ties out)
+  and the five real Pacificard statements. Photos (JPG/HEIC) are still refused; a tilted or
+  shadowed photo would need straightening first.

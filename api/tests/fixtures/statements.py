@@ -624,6 +624,24 @@ def pacificard_full(*, opening: str = "500.00") -> bytes:
     return out.getvalue()
 
 
+def scanned(data: bytes, dpi: int = 200) -> bytes:
+    """The same statement as a scan: every page a grey JPEG picture, no text layer."""
+    import pdfplumber
+    from reportlab.lib.utils import ImageReader
+
+    out = BytesIO()
+    c = canvas.Canvas(out, pagesize=letter, invariant=1)
+    with pdfplumber.open(BytesIO(data)) as doc:
+        for page in doc.pages:
+            picture = page.to_image(resolution=dpi).original.convert("L")
+            buf = BytesIO()
+            picture.save(buf, format="JPEG", quality=85)
+            c.drawImage(ImageReader(BytesIO(buf.getvalue())), 0, 0, width=612, height=792)
+            c.showPage()
+    c.save()
+    return out.getvalue()
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,

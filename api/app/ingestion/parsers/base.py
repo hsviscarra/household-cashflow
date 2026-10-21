@@ -1,5 +1,6 @@
 """The shape every statement parser returns (F4 on)."""
 
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -70,3 +71,9 @@ class ParseError(Exception):
 
 def money(text: str) -> Decimal:
     return Decimal(text.replace("$", "").replace(",", "").strip())
+
+
+def fold_accents(text: str) -> str:
+    """'PAGOS/CRÉDITOS' → 'PAGOS/CREDITOS', so labels match whether or not OCR kept the accents."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c))

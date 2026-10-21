@@ -27,10 +27,10 @@ OPENING = re.compile(rf"Saldo inicial contable: ({AMT})")
 CLOSING = re.compile(rf"Saldo final contable: ({AMT})")
 LINE = re.compile(
     rf"^(?P<city>.+?) (?P<mon>{MON}) (?P<day>\d{{1,2}}) (?P<num>\S+) (?:# )?(?P<desc>.+?) "
-    rf"(?P<amt>[+-][\d,]*\d\.\d{{2}}) (?P<bal>{AMT}) (?P<avail>{AMT})$",
+    rf"(?P<amt>[+-]?[\d,]*\d\.\d{{2}}) (?P<bal>{AMT}) (?P<avail>{AMT})$",
     re.I,
 )
-LOOKS_LIKE_LINE = re.compile(rf" [+-][\d,]*\d\.\d{{2}} {AMT} {AMT}$")
+LOOKS_LIKE_LINE = re.compile(rf" [+-]?[\d,]*\d\.\d{{2}} {AMT} {AMT}$")
 
 
 def _section(desc: str) -> str:
@@ -90,8 +90,10 @@ def parse(pages: list[str]) -> ParsedStatement:
                 out.rejects.append(Reject(page_no, line_no, line, str(exc)))
                 continue
             amount = _num(m.group("amt"))
-            running += amount
             printed = _num(m.group("bal"))
+            if m.group("amt")[0] not in "+-" and running - amount == printed:
+                amount = -amount  # the sign was lost (an OCR read): the balance shows it was out
+            running += amount
             gaps += abs(printed - running)
             running = printed  # resynchronize so one misprint is counted at most twice
             desc = m.group("desc").strip()
