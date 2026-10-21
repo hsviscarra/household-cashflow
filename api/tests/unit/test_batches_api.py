@@ -1,9 +1,11 @@
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ingestion import ocr
 from app.models import ImportBatch, LoadLog, RawLine, Transaction
 from tests.fixtures import statements as s
 
@@ -389,3 +391,33 @@ def test_continuity_skips_a_missing_month(client: TestClient) -> None:
     b2 = client.post(f"/api/statements/{sep['statement_file_id']}/read").json()
     assert b2["tieout_ok"] is True
     assert not any("closing balance of the" in c["name"] for c in b2["checks"])
+
+
+@pytest.mark.skipif(not ocr.available(), reason="tesseract is not installed")
+def test_pacificard_screenshot_is_read_with_ocr_and_loads(client: TestClient) -> None:
+    st = _upload(client, "pacificard.pdf", s.pacificard_full())
+    assert (
+        st["source"] == "pacificard" and st["accounts"][0]["name"] == "Pacificard Mastercard Black"
+    )
+    assert (st["period_start"], st["period_end"]) == ("2026-08-25", "2026-09-24")
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"] is True, [c for c in b["checks"] if not c["ok"]]
+    lines = {ln["description"]: ln for ln in b["lines"]}
+    assert lines["SUPERMAXI CUMBAYA QUITO"]["category_path"] == "Groceries / Supermarket"
+    assert lines["SU PAGO PAGO DIRECTO BDP GUAYAQUI"]["category_path"] == "Transfers / Card Payment"
+    assert lines["SERV. RENOVACION TARJ/CHIP"]["person"] == "Lauren"
+    assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == 9
+
+
+def test_ocr_failure_is_reported(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ingestion import stage
+
+    st = _upload(client, "co.pdf", s.capitalone_full())
+
+    def broken(*_a: object, **_k: object) -> list[str]:
+        raise ocr.OcrError("OCR (tesseract) is not installed on this server.")
+
+    monkeypatch.setitem(stage.OCR_SOURCES, "capitalone", ocr.first_page)
+    monkeypatch.setattr(stage.ocr, "ocr_pages", broken)
+    resp = client.post(f"/api/statements/{st['statement_file_id']}/read")
+    assert resp.status_code == 422 and "not installed" in resp.json()["detail"]

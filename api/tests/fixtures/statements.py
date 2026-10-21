@@ -518,6 +518,112 @@ def diners_full(*, previous: str = "650,00", subtotal_delta: str = "0") -> bytes
     return pdf(page1, page2, page3)
 
 
+PACIFICARD_LINES = [
+    ("AGO/28", "100001", "SEG. DESGRAVAMEN SALDO QUITO", "CONS", "3.65", None, "+"),
+    ("SEP/08", "100002", "SU PAGO PAGO DIRECTO BDP GUAYAQUI", "PAGO", "100.00", None, "-"),
+    ("SEP/24", "200001", "CARGOS CAPITAL ANTERIOR", "INT", "4.20", None, "+"),
+    ("SEP/24", "100003", "CONTRIB. FINANC.SOLCA ROT. (0.50%)", "CONS", "0.19", None, "+"),
+    ("SEP/10", "100004", "SUPERMAXI CUMBAYA QUITO", "CONS", "45.50", None, "+"),
+]
+PACIFICARD_ADDITIONAL = [
+    ("SEP/07", "100005", "SERV. RENOVACION TARJ/CHIP", "CONS", "5.03", None, "+"),
+]
+PACIFICARD_ABROAD = [
+    ("SEP/05", "100006", "SERVICIO DIGITAL DE PRUEBA SEATTLE", "CONS", "57.39", "57.39", "+"),
+    ("SEP/05", "100006", "N/D COMISION CONSUMO EXT I SEATTLE", "N/D", "1.96", None, "+"),
+    ("SEP/05", "100006", "N/D IVA SERVICIO DIGITAL SEATTLE", "N/D", "8.61", None, "+"),
+]
+
+
+def pacificard_full(*, opening: str = "500.00") -> bytes:
+    """Synthetic Pacificard statement as the bank delivers it: a PDF holding one screenshot of the
+    web statement (statement, then a second page banner and fine print), with a grey watermark."""
+    from decimal import Decimal
+
+    from PIL import Image, ImageDraw, ImageFont
+    from reportlab.lib.utils import ImageReader
+
+    rows = PACIFICARD_LINES + PACIFICARD_ADDITIONAL + PACIFICARD_ABROAD
+    signed = {"+": Decimal(1), "-": Decimal(-1)}
+    by_op: dict[str, Decimal] = {
+        "purchases": Decimal(0),
+        "payments": Decimal(0),
+        "charges": Decimal(0),
+    }
+    for _d, _r, _desc, op, amt, _fx, sign in rows:
+        group = {"PAGO": "payments", "INT": "charges"}.get(op, "purchases")
+        by_op[group] += signed[sign] * Decimal(amt)
+    prev = Decimal(opening)
+    purchases, paid, charges = by_op["purchases"], -by_op["payments"], by_op["charges"]
+    due = prev + purchases - paid + charges
+
+    def row(d: str, ref: str, desc: str, op: str, amt: str, fx: str | None, sign: str) -> str:
+        return f"{d} {ref} {desc:<38} {op:<5} {amt:>8} {fx or '':>8} {sign}"
+
+    text = [
+        "Estado de cuenta                                   PacifiCard",
+        "Cliente PRUEBA                       BANCO DEL PACIFICO S.A.",
+        "PRUEBA HERNAN TITULAR                webadminpac@pacifico.fin.ec",
+        "                                     MASTERCARD: 5451-00XX-XXXX-X123 Black",
+        "Periodo de corte desde: 25/AGO/2026 hasta 24/SEP/2026",
+        "Fecha de corte: 24/SEP/2026",
+        f"{prev:.2f} {purchases:.2f} {paid:.2f} {charges:.2f} {due:.2f}",
+        f"Deuda Total {due:.2f} 100% {due:.2f}",
+        "",
+        "DETALLE DE MOVIMIENTOS DEL PERIODO",
+        "FECHA REFER. DESCRIPCION OPERACION US$ EXTRANJERA",
+        f"****** SALDO ANTERIOR {prev:.2f}",
+        "*** DETALLE DE CONSUMOS LOCALES",
+        "0000000001 PRUEBA HERNAN TITULAR",
+        *[row(*r) for r in PACIFICARD_LINES],
+        "0000000002 PRUEBA LAUREN ADICIONAL",
+        *[row(*r) for r in PACIFICARD_ADDITIONAL],
+        "*** DETALLE DE CONSUMOS EN EL EXTERIOR",
+        "0000000001 PRUEBA HERNAN TITULAR",
+        *[row(*r) for r in PACIFICARD_ABROAD],
+        f"TOTAL PAGO DE CONTADO {due:.2f}",
+        f"SALDO ACTUAL ROTATIVO {due:.2f}",
+        "SALDO ACTUAL DIFERIDO 0.00",
+        f"SUBTOTAL CONSUMOS PERIODO {purchases:.2f}",
+        f"SUBTOTAL PAGOS/CREDITOS {paid:.2f}",
+        "INTERES FINANCIAMIENTO 0.00",
+        "INTERES POR MORA 0.00",
+        "ORIGINAL - CLIENTE",
+    ]
+    fine_print = ["CONCEPTOS BASICOS", *["Texto informativo de prueba 1.00 2.00 3.00"] * 12]
+    width, step = 980, 20
+    height = 60 + step * (len(text) + len(fine_print)) + 120
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=14)
+    draw.rectangle((40, 10, width - 40, 40), fill=(28, 43, 74))  # page 1 banner
+    y = 60
+    for line in text:
+        draw.text((50, y), line, fill="black", font=font)
+        y += step
+    draw.rectangle((40, y + 30, width - 40, y + 60), fill=(28, 43, 74))  # "Pag. 2" banner
+    y += 90
+    for line in fine_print:
+        draw.text((50, y), line, fill="black", font=font)
+        y += step
+    mark = ImageFont.load_default(size=160)
+    draw.text((180, 250), "COPIA", fill=(191, 191, 191), font=mark)  # watermark under the text
+    for i, line in enumerate(
+        text[9:16]
+    ):  # the watermark covers part of the detail, like the real one
+        draw.text((50, 60 + step * (9 + i)), line, fill="black", font=font)
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=92)
+    out = BytesIO()
+    c = canvas.Canvas(out, pagesize=letter, invariant=1)
+    picture = ImageReader(BytesIO(buf.getvalue()))
+    for _ in range(2):  # both pages show the same picture, as the bank's PDF does
+        c.drawImage(picture, 20, 20, width=572, height=752, preserveAspectRatio=True)
+        c.showPage()
+    c.save()
+    return out.getvalue()
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,
@@ -530,6 +636,7 @@ SAMPLES = {
     "pichincha-full.pdf": pichincha_full,
     "produbanco-full.pdf": produbanco_full,
     "diners-full.pdf": diners_full,
+    "pacificard-full.pdf": pacificard_full,
 }
 
 

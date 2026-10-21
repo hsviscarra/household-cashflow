@@ -108,3 +108,26 @@ def test_real_diners_ties_out_and_loads(client: TestClient) -> None:
             )
         loaded = client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"]
         assert loaded == b["new_lines"]
+
+
+PACIFICARD = os.environ.get("REAL_PACIFICARD")  # one or more paths separated by ":"
+
+
+@pytest.mark.skipif(not PACIFICARD, reason="REAL_PACIFICARD not set")
+def test_real_pacificard_ties_out_and_loads(client: TestClient) -> None:
+    assert PACIFICARD
+    for path in PACIFICARD.split(":"):
+        data = Path(path).read_bytes()
+        up = client.post("/api/statements", files=[("files", ("p.pdf", data, "application/pdf"))])
+        st = up.json()[0]["statement"]
+        assert st["source"] == "pacificard" and st["accounts"], st
+        b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+        assert b["tieout_ok"], [c for c in b["checks"] if not c["ok"]]
+        print(f"\n{b['period_start']} {b['new_lines']} lines, uncategorized {b['uncategorized']}")
+        for ln in b["lines"]:
+            print(
+                f"  {ln['txn_date']} {ln['amount']:>10} {ln['type']:<12} {ln['category_path']}"
+                f"  {ln['person']}  {ln['description']}"
+            )
+        loaded = client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"]
+        assert loaded == b["new_lines"]

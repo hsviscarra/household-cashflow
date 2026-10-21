@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
+from app.ingestion import ocr
 from app.ingestion.detect import SOURCES, Detection, PdfError, detect, read_pdf
 from app.ingestion.parsers import PARSERS
 from app.ingestion.storage import StatementStore
@@ -19,6 +20,7 @@ INSTITUTIONS = {
     "pichincha": "Banco Pichincha",
     "produbanco": "Produbanco",
     "diners": "Diners Club",
+    "pacificard": "Pacificard",
 }
 
 
@@ -101,7 +103,14 @@ def store_statement(
     except PdfError as exc:
         return UploadResultOut(file_name=name, outcome="rejected", message=str(exc))
 
-    found = detect(info.text)
+    text = info.text
+    if not text.strip() and ocr.available():
+        # A screenshot saved as PDF (Pacificard): read the header with OCR to recognize the bank.
+        try:
+            text = ocr.header_text(data)
+        except ocr.OcrError:
+            text = ""
+    found = detect(text)
     res = resolve_accounts(db, found)
     status = (
         "unknown_format"

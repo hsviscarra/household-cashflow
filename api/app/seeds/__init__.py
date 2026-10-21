@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Table, delete, func, insert, select
 
-from app.seeds import v1, v2
+from app.seeds import v1, v2, v3
 
 
 def load_v1(
@@ -115,3 +115,32 @@ def unload_v2(conn: Connection, category: Table) -> None:
             )
         if color is not None:
             conn.execute(delete(category).where(category.c.category_id == gid))
+
+
+def _category_ids(conn: Connection, category: Table) -> dict[str, int]:
+    rows = list(conn.execute(select(category.c.category_id, category.c.name, category.c.parent_id)))
+    names = {r.category_id: r.name for r in rows}
+    return {
+        (f"{names[r.parent_id]}/{r.name}" if r.parent_id is not None else r.name): r.category_id
+        for r in rows
+    }
+
+
+def load_v3(conn: Connection, account: Table, category: Table, merchant_rule: Table) -> None:
+    """Add the Pacificard account and its merchant rules."""
+    conn.execute(insert(account), [dict(a) for a in v3.ACCOUNTS])
+    ids = _category_ids(conn, category)
+    conn.execute(
+        insert(merchant_rule),
+        [
+            {"pattern": p, "match_type": m, "category_id": ids[path], "priority": prio}
+            for p, m, path, prio in v3.MERCHANT_RULES
+        ],
+    )
+
+
+def unload_v3(conn: Connection, account: Table, merchant_rule: Table) -> None:
+    conn.execute(
+        delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v3.MERCHANT_RULES]))
+    )
+    conn.execute(delete(account).where(account.c.name.in_([a["name"] for a in v3.ACCOUNTS])))

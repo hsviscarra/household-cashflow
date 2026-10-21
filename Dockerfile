@@ -17,8 +17,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy
 
 # Microsoft ODBC Driver 18 for SQL Server (pyodbc needs it); amd64 in Azure/CI, arm64 on Apple Silicon.
+# Tesseract reads statements that arrive as pictures (Pacificard, ADR-005).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl gnupg ca-certificates unixodbc \
+ && apt-get install -y --no-install-recommends curl gnupg ca-certificates unixodbc tesseract-ocr \
  && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
  && apt-get update \

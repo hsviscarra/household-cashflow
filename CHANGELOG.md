@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.9.1] — F8b Pacificard
+
+### F8b — Banco del Pacífico Mastercard, read from a screenshot
+- Pacificard statements are pictures (a saved web page with a "COPIA" watermark): they are read
+  with Tesseract OCR inside the app (ADR-005), amounts and dates re-read digits-only and decided by
+  majority; the parser handles OCR noise and the tie-out blocks any misread digit. The real Apr –
+  Sep 2026 statements tie out and chain month to month.
+- New account "Pacificard Mastercard Black" (Lauren's additional card goes to Lauren) and rules for
+  SOLCA, IVA on digital services, credit-life insurance and AWS (migration 0009, seed v3);
+  `raw.statement_file` accepts the new source.
+- The Import page explains the wait while a picture is read.
+- `tesseract-ocr` in the Docker image and CI.
+
 ## [0.9.0] — F8 Diners Club
 
 ### F8 — Diners statements, main and additional cards

@@ -35,5 +35,5 @@ test("read a Capital One statement, check the tie-out, approve, see the lines", 
   await page.goto("/transactions?month=2026-09");
   // A table on desktop, a list on phones: check whichever is shown.
   await expect(page.getByText("SUPERMAXI EL JARDIN QUITO").filter({ visible: true })).toBeVisible();
-  await expect(page.getByText("Groceries / Supermarket").filter({ visible: true })).toBeVisible();
+  await expect(page.getByText("Groceries / Supermarket").filter({ visible: true }).first()).toBeVisible();
 });
