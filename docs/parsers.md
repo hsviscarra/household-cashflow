@@ -102,3 +102,39 @@ digits after `CUENTA:`, or Produbanco's only account without digits on file (Lau
 - **Checked on the real Jun, Jul and Aug 2026 statements:** 17, 10 and 15 lines; Jul ties 297.71
   to 6.73, and each month opens at the previous month's close. Interbank transfers (empleada,
   condo fee, office rent in, Dad's insurance) still need a category: F9 rules and F10 matching.
+
+## Diners Club (`diners`) — F8
+
+Hernan's and Lauren's statements share one layout. Neither account has card digits on file, so the
+account is chosen by the main cardholder's name on the `* PRINCIPAL` card line (Hernan or Lauren).
+
+- **Detect:** `dinersclub` / `Diners Club`; cards `0036-xxxx-xxxx-1234` (every card on the
+  statement); period on page 1, `04 JUN 2026 AL 03 JUL 2026` (Spanish months).
+- **Summary (page 1):** one figure per line, other text may follow on the same line:
+  `SALDO ANTERIOR: 708,82`, `PAGOS/CRÉDITOS: 708,82-`, `CONSUMOS: 439,81`, `DÉBITOS: 0,00`,
+  `Total a pagar: 439,81`. Ecuadorian number format throughout.
+- **Purchases:** `Consumo período actual`, one block per card (`NAME 0036-xxxx-xxxx-1234 *
+  PRINCIPAL …` or `* ADICIONAL`) ending in `SUBTOTAL DE CONSUMOS:`, then
+  `TOTAL DE CONSUMOS: <purchases> <remaining deferred balance>`. A line is
+  `26/06 10001 TIENDA DE PRUEBA 17,25`; a deferred purchase adds its installment and remaining
+  balance: `10/11 1 COLEGIO DE PRUEBA CUMBAYA (8/12) 300,00 1.200,00`. The installment keeps the
+  original purchase date; when that is before the period, the line is dated on the closing date
+  (the month it is billed) and `8/12` is kept as its reference.
+- **Debits and credits:** `Detalle débitos y créditos` (may continue on the next page):
+  `DETALLE DE DÉBITOS` (`INT. FINANCIAMIENTO N/D`, `INTERESES DE MORA N/D`,
+  `GASTO GESTION COBRANZAS N/D T15`, `CONT_FIN_SOLCA_C.ROT** N/D`), `DETALLE DE PAGOS Y CRÉDITOS`
+  (`SU PAGO "MUCHAS GRACIAS" 708,82-`), up to `TOTAL A PAGAR:`.
+- **Ignored:** `Consumo en el exterior` repeats foreign purchases already listed (AWS); the
+  interest, minimum-payment and fee tables on pages 4–6.
+- **Sections:** payment, interest (financing and late interest), fee (collection fee), charge
+  (SOLCA, IVA withheld), purchase.
+- **Tie-out:** purchases, charges and payments against the summary; previous − payments +
+  purchases + charges = total due; each card's subtotal; each cardholder in `Resumen consumos por
+  cliente`; totals printed in the detail; the remaining deferred balance; continuity with the
+  previous statement.
+- **Checked on the real Jul, Aug and Oct 2026 statements:** 9, 9 and 6 lines, every check passes.
+  September is missing, so October's opening isn't compared (a gap is no longer treated as a
+  mismatch). August shows a late-payment interest and a collection fee (10.81 together).
+
+Continuity (all sources): the opening balance is compared only with a statement that ends within
+a week of this one's start; a missing month is left for the data status page (F12).

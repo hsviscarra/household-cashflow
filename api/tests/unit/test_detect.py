@@ -13,7 +13,7 @@ from tests.fixtures import statements as s
         (s.capitalone, "capitalone", ["4003"], (date(2026, 9, 4), date(2026, 10, 3))),
         (s.pichincha, "pichincha", ["2829"], (date(2026, 6, 13), date(2026, 7, 12))),
         (s.produbanco, "produbanco", ["3721"], (date(2026, 7, 1), date(2026, 7, 31))),
-        (s.diners, "diners", ["1234"], (None, None)),
+        (s.diners, "diners", ["1234"], (date(2026, 6, 4), date(2026, 7, 3))),
         (s.unknown, "unknown", [], (None, None)),
     ],
 )

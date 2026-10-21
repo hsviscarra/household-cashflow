@@ -201,6 +201,9 @@ function StatementList({ statements, error }: { statements: Statement[] | undefi
                         {s.last4_found.length ? ` (file shows •••• ${s.last4_found.join(", ")})` : ""}
                       </div>
                     )}
+                    {s.account_match === "owner" && (
+                      <div className="text-muted">Matched by the cardholder’s name</div>
+                    )}
                   </>
                 )}
               </td>

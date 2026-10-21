@@ -70,8 +70,16 @@ def produbanco(account: str = "99999993721") -> bytes:
     )
 
 
-def diners() -> bytes:
-    return pdf(["DINERS CLUB DEL ECUADOR", "www.dinersclub.com.ec", "TARJETA XXXX XXXX 1234"])
+def diners(name: str = "PRUEBA HERNAN TITULAR", card: str = "1234") -> bytes:
+    return pdf(
+        [
+            "Estado de cuenta",
+            "Período actual:",
+            "04 JUN 2026 AL 03 JUL 2026",
+            f"{name} 0036-xxxx-xxxx-{card} * PRINCIPAL DC SPHAERA MILES",
+            "www.dinersclub.com.ec",
+        ]
+    )
 
 
 def unknown() -> bytes:
@@ -422,6 +430,94 @@ def produbanco_full(
     )
 
 
+DINERS_HERNAN = [
+    "10/11 1 COLEGIO DE PRUEBA CUMBAYA (8/12) 300,00 1.200,00",
+    "26/06 10001 TIENDA DE PRUEBA 17,25",
+    "10/06 10002 PTP - SEGURO DE PRUEBA 9,50",
+    "14/06 10003 LAVANDERIA DE PRUEBA 1.038,59",
+    "02/07 10004 DN AMAZON WEB SERVICES 0,45",
+    "02/07 10004 RET IVA SERV DIGITAL 100% 0,07",
+]
+DINERS_ADDITIONAL = ["20/06 10005 SUPERMAXI CUMBAYA 45,50"]
+DINERS_DEBITS = [
+    "03/07 GASTO GESTION COBRANZAS N/D T15 9,57",
+    "03/07 INTERESES DE MORA N/D 1,24",
+    "03/07 INT. FINANCIAMIENTO N/D 0,60",
+    "03/07 CONT_FIN_SOLCA_C.ROT** N/D 0,02",
+]
+
+
+def diners_full(*, previous: str = "650,00", subtotal_delta: str = "0") -> bytes:
+    """Synthetic Diners statement: a main card, an additional card, deferred purchase, charges."""
+    from decimal import Decimal
+
+    from app.ingestion.parsers.pichincha import amount
+
+    def total(lines: list[str]) -> Decimal:  # the last amount on each line
+        return sum((amount(x.split()[-1]) for x in lines), Decimal(0))
+
+    def ec(x: Decimal) -> str:
+        return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    hernan = Decimal("300.00") + total(DINERS_HERNAN[1:])  # the installment, not its balance
+    extra = total(DINERS_ADDITIONAL)
+    debits = total(DINERS_DEBITS)
+    prev = amount(previous)
+    purchases = hernan + extra
+    due = purchases + debits  # the previous balance is paid in full
+    main = "PRUEBA HERNAN TITULAR"
+    page1 = [
+        "Estado de cuenta",
+        f"{main} FECHA DE CORTE:",
+        "Período actual:",
+        "QUITO 04 JUN 2026 AL 03 JUL 2026",
+        f"SALDO ANTERIOR: {ec(prev)}",
+        f"PAGOS/CRÉDITOS: {ec(prev)}- SALUD: 9,50 (1%)",
+        f"CONSUMOS: {ec(purchases)} HOGAR: 10,00 (1%)",
+        f"DÉBITOS: {ec(debits)}",
+        f"Total a pagar: {ec(due)} OTROS: 0,07 (0%)",
+        "www.dinersclub.com.ec",
+    ]
+    page2 = [
+        "Detalle de movimientos",
+        "Consumo período actual",
+        "FECHA Nº VALE ESTABLECIMIENTO CUOTA VALOR IVA SALDO DIF.",
+        f"{main} 0036-xxxx-xxxx-1234 * PRINCIPAL DC SPHAERA MILES PAGO MIN",
+        *DINERS_HERNAN,
+        f"SUBTOTAL DE CONSUMOS: {ec(hernan + Decimal(subtotal_delta))}",
+        "PRUEBA LAUREN ADICIONAL 0036-xxxx-xxxx-5678 * ADICIONAL DC SPHAERA MILES",
+        *DINERS_ADDITIONAL,
+        f"SUBTOTAL DE CONSUMOS: {ec(extra)}",
+        f"TOTAL DE CONSUMOS: {ec(purchases)} 1.200,00",
+        "Detalle débitos y créditos",
+        "FECHA Nº VALE DESCRIPCIÓN VALOR",
+        f"SALDO ANTERIOR {ec(prev)}",
+        "DETALLE DE DÉBITOS",
+        *DINERS_DEBITS,
+        f"TOTAL DÉBITOS: {ec(debits)}",
+        "DETALLE DE PAGOS Y CRÉDITOS",
+        f'16/06 11111 SU PAGO "MUCHAS GRACIAS" {ec(prev)}-',
+        "SIGUE A LA SIGUIENTE PÁGINA",
+    ]
+    page3 = [
+        "Detalle de movimientos",
+        "Detalle débitos y créditos",
+        "FECHA Nº VALE DESCRIPCIÓN VALOR",
+        f"TOTAL PAGOS Y CRÉDITOS: {ec(prev)}-",
+        f"TOTAL A PAGAR: {ec(due)}",
+        "MÍNIMO A PAGAR: 320,00",
+        "Resumen consumos por cliente",
+        f"{main} {ec(hernan)}",
+        f"PRUEBA LAUREN ADICIONAL {ec(extra)}",
+        f"TOTAL CONSUMO POR CLIENTE: {ec(purchases)}",
+        "Consumo en el exterior",
+        "FECHA ESTABLECIMIENTO M/E* VALORUSD IVA** IVA*** TARIFA TOTAL",
+        f"{main} 0036-xxxx-xxxx-1234 * PRINCIPAL DC SPHAERA MILES",
+        "02/07 DN AMAZON WEB SERVICES 0,00 0,45 0,07 0,00 0,00 0,52",
+    ]
+    return pdf(page1, page2, page3)
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,
@@ -433,6 +529,7 @@ SAMPLES = {
     "bofa-full.pdf": bofa_full,
     "pichincha-full.pdf": pichincha_full,
     "produbanco-full.pdf": produbanco_full,
+    "diners-full.pdf": diners_full,
 }
 
 

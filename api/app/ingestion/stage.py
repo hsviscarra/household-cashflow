@@ -10,7 +10,7 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, select
@@ -123,7 +123,10 @@ def _balances(header: StatementHeader) -> dict[str, tuple[Decimal, Decimal]]:
 def _continuity(
     db: Session, sf: StatementFile, parsed: ParsedStatement, accounts: dict[str | None, Account]
 ) -> list[Check]:
-    """Each account's opening balance must equal its closing balance on the previous statement."""
+    """Each account's opening balance must equal its closing balance on the previous statement.
+
+    Only an adjacent statement counts: when a month is missing, the balances can't be compared
+    and the gap is left for the data status page (F12) instead of blocking a correct statement."""
     checks: list[Check] = []
     for last4, account in accounts.items():
         opening = parsed.balances[last4][0] if last4 else parsed.opening_balance
@@ -143,7 +146,7 @@ def _continuity(
             .order_by(StatementHeader.period_end.desc())
             .limit(1)
         )
-        if prev is None:
+        if prev is None or prev.period_end < parsed.period_start - timedelta(days=7):
             continue
         closing = _balances(prev).get(last4 or "", (None, prev.closing_balance))[1]
         if closing is None:
@@ -182,7 +185,7 @@ def parse_statement(
 ) -> ImportBatch:
     parser = PARSERS.get(sf.source)
     if parser is None:
-        raise StageError(f"Reading {sf.source} statements is not built yet.", 422)
+        raise StageError("This statement's format isn't recognized, so it can't be read.", 422)
     if not sf.accounts:
         raise StageError("Choose the statement's account first.", 422)
 

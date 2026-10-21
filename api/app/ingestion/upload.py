@@ -30,8 +30,8 @@ class Resolution:
 
 def resolve_accounts(db: Session, found: Detection) -> Resolution:
     """Last four digits first. Otherwise the bank's one account without last four digits on file,
-    or the bank's only account (a replacement card has new digits). Anything else is left for
-    Hernan to pick."""
+    the one whose owner is the statement's main cardholder (Diners), or the bank's only account
+    (a replacement card has new digits). Anything else is left for Hernan to pick."""
     institution = INSTITUTIONS.get(found.source)
     if institution is None:
         return Resolution([], None)
@@ -48,6 +48,9 @@ def resolve_accounts(db: Session, found: Detection) -> Resolution:
     without_digits = [a for a in at_bank if not a.last4]
     if len(without_digits) == 1:
         return Resolution(without_digits, "by_bank")
+    by_owner = [a for a in without_digits if found.owner and a.owner == found.owner]
+    if len(by_owner) == 1:
+        return Resolution(by_owner, "owner")
     if len(at_bank) == 1:
         return Resolution(at_bank, "by_bank")
     return Resolution([], None)

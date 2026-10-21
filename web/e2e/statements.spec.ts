@@ -22,7 +22,7 @@ test("upload statements, see them detected, and a re-upload is refused", async (
   await expect(row("sample-produbanco.pdf")).toContainText("Produbanco Ahorros Hernan");
   await expect(row("sample-unknown.pdf")).toContainText("Unknown format");
 
-  // Diners has two cards without digits on file: choose one (first run only).
+  // Diners is matched by the cardholder's name; the picker only shows if that fails.
   const picker = page.getByLabel("Account for sample-diners.pdf");
   if (await picker.isVisible()) {
     await picker.selectOption({ label: "Diners Club Hernan" });
