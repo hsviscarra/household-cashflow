@@ -371,6 +371,57 @@ def pichincha_full(*, previous: str = "400,00", subtotal_delta: str = "0") -> by
     return pdf(page1, page2, page3)
 
 
+PRODU_LINES = [
+    ("Jul 1", "100000000001", "TRANSFERENCIA INTERBANCARIA B.L.", "-150.00"),
+    ("Jul 1", "100000000002", "# TARIFA POR TRANSF.INTERBANCARIA B.L", "-0.41"),
+    ("Jul 3", "100000000003", "TRANSFERENCIA CTAS TERCEROS BCA ENL", "+600.00"),
+    ("Jul 8", "100000000004", "PAGO IESS BANCA EN LINEA", "-100.00"),
+    ("Jul 8", "100000000005", "# TARIFA IESS BANCA EN LINEA", "-0.35"),
+    ("Jul 9", "100000000006", "PAGO IESS BANCA EN LINEA", "-500.00"),
+    ("Jul 15", "400000XXXXXX0001", "DEBITO VISA", "-25.50"),
+    ("Jul 20", "20000000-0001", "PAGO TARJETA CREDITO PAGO DIRECTO B", "-1,080.00"),
+    ("Jul 20", "100000000007", "# TARIFA PAGO TARJETA OTRO EMISOR BL", "-0.35"),
+    ("Jul 31", "20260731", "CAPITALIZACION DE INTERESES EN CUEN", "+0.01"),
+]
+
+
+def produbanco_full(
+    *,
+    account: str = "99999993721",
+    opening: str = "1500.00",
+    period: str = "Del 01 Jul 2026 Al 31 Jul 2026",
+    lines: list[tuple[str, str, str, str]] | None = None,
+    balance_delta: str = "0",
+) -> bytes:
+    """Synthetic Produbanco savings statement; balance_delta misprints one running balance."""
+    from decimal import Decimal
+
+    rows = PRODU_LINES if lines is None else lines
+    bal = Decimal(opening)
+    detail = []
+    for i, (day, ref, desc, amt) in enumerate(rows):
+        bal += Decimal(amt.replace(",", ""))
+        shown = bal + (Decimal(balance_delta) if i == 3 else 0)
+        detail.append(f"Quito {day} {ref} {desc} {amt} {shown:,.2f} {shown:,.2f}")
+    return pdf(
+        [
+            "Cuenta de ahorros Estado Digital de Cuenta",
+            "TITULAR DE PRUEBA",
+            f"CUENTA: {account} / TELF.:",
+            f"Fecha Corte: {period}",
+            "Resumen de transacciones",
+            f"Saldo inicial contable: {Decimal(opening):,.2f}",
+            f"Saldo final contable: {bal:,.2f}",
+            "(#) TOTAL BASE IMPONIBLE IVA 15% 0.96",
+            "(#) TOTAL IVA 15% 0.15",
+            "Detalle de Transacciones",
+            "Ciudad Fecha Número Descripción Valor Contable Disponible",
+            *detail,
+            "produbanco.com",
+        ]
+    )
+
+
 SAMPLES = {
     "bofa.pdf": bofa,
     "capitalone.pdf": capitalone,
@@ -381,6 +432,7 @@ SAMPLES = {
     "capitalone-full.pdf": capitalone_full,
     "bofa-full.pdf": bofa_full,
     "pichincha-full.pdf": pichincha_full,
+    "produbanco-full.pdf": produbanco_full,
 }
 
 

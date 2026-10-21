@@ -76,3 +76,29 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
   totals printed in the detail = the summary; continuity with the previous statement.
 - **Checked on the real Jun 13 – Jul 12, 2026 statement:** 26 lines, ties out to 44.59; every
   line categorized by the seeded rules.
+
+## Produbanco (savings, `produbanco`) — F7
+
+Hernan's account (•••• 3721) and Lauren's share one layout; the account is chosen by the last four
+digits after `CUENTA:`, or Produbanco's only account without digits on file (Lauren's).
+
+- **Detect:** `produbanco.com` / `Banco de la Producción`; `CUENTA: …3721` (only the last four digits are kept);
+  period `Fecha Corte: Del 01 Jul 2026 Al 31 Jul 2026`.
+- **Summary:** `Saldo inicial contable: 297.71`, `Saldo final contable: 6.73`; an optional IVA box
+  (`(#) TOTAL BASE IMPONIBLE IVA 15%`, `(#) TOTAL IVA 15%`) is informational only.
+- **Detail:** after `Ciudad Fecha Número Descripción Valor Contable Disponible`, one line per
+  movement: `Quito Jul 8 100000000004 PAGO IESS BANCA EN LINEA -100.00 1,849.59 1,849.59` (city,
+  Spanish month and day, number, description, signed amount, book balance, available balance).
+  Numbers may contain `X` or `-` (`400000XXXXXX0001`, `20000000-0001`); `# ` before a description
+  marks a fee that carries IVA and is removed.
+- **Sections:** `TARIFA …` → fee (Bank Fees); `PAGO TARJETA CREDITO …` → card payment;
+  `CAPITALIZACION DE INTERESES …` → Interest Earned; everything else is a movement classified by
+  merchant rules.
+- **IESS and BIESS:** both print as `PAGO IESS BANCA EN LINEA`; staging splits them by amount
+  (under 300 → Household Staff / Empleada IESS, otherwise Housing / Mortgage BIESS) until rules can
+  carry amount ranges (F9).
+- **Tie-out:** opening + lines = closing; every printed running balance equals the previous one
+  plus the line (the total gap must be 0.00); continuity with the previous statement.
+- **Checked on the real Jun, Jul and Aug 2026 statements:** 17, 10 and 15 lines; Jul ties 297.71
+  to 6.73, and each month opens at the previous month's close. Interbank transfers (empleada,
+  condo fee, office rent in, Dad's insurance) still need a category: F9 rules and F10 matching.

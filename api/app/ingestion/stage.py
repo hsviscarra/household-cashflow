@@ -41,6 +41,18 @@ SECTION_PATHS = {
     "payment": "Transfers/Card Payment",
     "interest": "Financial Costs/Credit Card Interest",
     "fee": "Financial Costs/Bank Fees",
+    "interest_earned": "Interest Earned",
+}
+SECTION_TYPES = {
+    "payment": "transfer",
+    "interest": "fee_interest",
+    "fee": "fee_interest",
+    "interest_earned": "income",
+}
+# One description, two bills: Produbanco prints every IESS payment as "PAGO IESS BANCA EN LINEA".
+# Hernan's decision (F7): split by amount until rules can carry amount ranges (F9).
+AMOUNT_SPLITS = {
+    "PAGO IESS": (Decimal(300), "Household Staff/Empleada IESS", "Housing/Mortgage BIESS"),
 }
 
 
@@ -84,10 +96,13 @@ def _classify(
 ) -> _Classified:
     if line.section in SECTION_PATHS:
         cat = by_path.get(SECTION_PATHS[line.section])
-        type_ = {"payment": "transfer", "interest": "fee_interest", "fee": "fee_interest"}[
-            line.section
-        ]
+        type_ = SECTION_TYPES[line.section]
         return _Classified(type_, cat.category_id if cat else None, None, None)
+    upper = rule_engine.normalize(line.description)
+    for prefix, (limit, below, above) in AMOUNT_SPLITS.items():
+        if upper.startswith(prefix) and line.amount < 0:
+            cat = by_path.get(below if -line.amount < limit else above)
+            return _Classified("expense", cat.category_id if cat else None, None, None)
 
     # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
     money_in = "refund" if account.kind == "credit_card" else "income"
