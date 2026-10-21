@@ -63,3 +63,25 @@ def test_real_pichincha_ties_out_and_loads(client: TestClient) -> None:
             f"  {ln['description']}"
         )
     assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == b["new_lines"]
+
+
+PRODUBANCO = os.environ.get("REAL_PRODUBANCO")  # one or more paths separated by ":"
+
+
+@pytest.mark.skipif(not PRODUBANCO, reason="REAL_PRODUBANCO not set")
+def test_real_produbanco_ties_out_and_loads(client: TestClient) -> None:
+    assert PRODUBANCO
+    for path in sorted(PRODUBANCO.split(":")):
+        data = Path(path).read_bytes()
+        up = client.post("/api/statements", files=[("files", ("p.pdf", data, "application/pdf"))])
+        st = up.json()[0]["statement"]
+        b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+        assert b["tieout_ok"], [c for c in b["checks"] if not c["ok"]]
+        print(f"\n{b['period_start']} {b['new_lines']} lines, uncategorized {b['uncategorized']}")
+        for ln in b["lines"]:
+            print(
+                f"  {ln['txn_date']} {ln['amount']:>10} {ln['type']:<12} {ln['category_path']}"
+                f"  {ln['description']}"
+            )
+        loaded = client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"]
+        assert loaded == b["new_lines"]

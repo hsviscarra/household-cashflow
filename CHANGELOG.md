@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.8.0] — F7 Produbanco
+
+### F7 — Savings accounts with a running balance
+- Produbanco parser (docs/parsers.md) for Hernan's and Lauren's accounts: Spanish month names,
+  signed amounts, `#` IVA marks removed; ties out opening + lines = closing and checks every
+  printed running balance; golden test on a synthetic statement; the real Jun, Jul and Aug 2026
+  statements tie out (Jul 297.71 → 6.73) and chain month to month.
+- Fees (`TARIFA`), card payments and capitalized interest are categorized by section.
+- The two IESS payments that print the same are split by amount: the empleada's IESS and the
+  BIESS house loan.
+
 ## [0.7.0] — F6 Banco Pichincha
 
 ### F6 — Spanish card statement with deferred purchases

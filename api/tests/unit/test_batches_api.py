@@ -163,10 +163,10 @@ def test_read_errors(client: TestClient) -> None:
     assert client.get("/api/batches/999").status_code == 404
     assert client.post("/api/batches/999/approve").status_code == 404
     assert client.post("/api/batches/999/reject").status_code == 404
-    prod = _upload(client, "prod.pdf", s.produbanco())
-    resp = client.post(f"/api/statements/{prod['statement_file_id']}/read")
+    din = _upload(client, "din.pdf", s.diners())
+    resp = client.post(f"/api/statements/{din['statement_file_id']}/read")
     assert resp.status_code == 422 and "not built yet" in resp.json()["detail"]
-    assert prod["can_read"] is False
+    assert din["can_read"] is False
     broken = _upload(client, "co-short.pdf", s.capitalone())  # detected, but no summary
     resp = client.post(f"/api/statements/{broken['statement_file_id']}/read")
     assert resp.status_code == 422 and "could not be read" in resp.json()["detail"]
@@ -305,3 +305,46 @@ def test_months_with_excel_history_do_not_count_statement_lines(
     assert not [c for c in cats if c["cash_month"] == "2026-09-01" and c["type"] == "expense"]
     # The lines are still loaded and listed.
     assert len(client.get("/api/transactions", params={"month": "2026-09-01"}).json()) == 10
+
+
+def test_produbanco_statement_loads_with_iess_split(client: TestClient) -> None:
+    st = _upload(client, "prod.pdf", s.produbanco_full())
+    assert st["can_read"] is True and st["accounts"][0]["name"] == "Produbanco Ahorros Hernan"
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"] is True, [c for c in b["checks"] if not c["ok"]]
+    by_amount = {ln["amount"]: ln for ln in b["lines"]}
+    expect = {
+        "-100.0000": ("expense", "Household Staff / Empleada IESS"),
+        "-500.0000": ("expense", "Housing / Mortgage BIESS"),
+        "-0.4100": ("fee_interest", "Financial Costs / Bank Fees"),
+        "-1080.0000": ("transfer", "Transfers / Card Payment"),
+        "0.0100": ("income", "Interest Earned"),
+        "600.0000": ("income", None),  # who sent it is a question for F9
+    }
+    for amt, (type_, path) in expect.items():
+        ln = by_amount[amt]
+        assert (ln["type"], ln["category_path"]) == (type_, path), ln["description"]
+        assert ln["person"] == "Hernan"
+    assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == 10
+
+
+def test_produbanco_lauren_and_continuity(client: TestClient) -> None:
+    jul = _upload(client, "jul.pdf", s.produbanco_full(account="88888885555"))
+    assert jul["accounts"][0]["name"] == "Produbanco Lauren"
+    b = client.post(f"/api/statements/{jul['statement_file_id']}/read").json()
+    assert b["tieout_ok"] and {ln["person"] for ln in b["lines"]} == {"Lauren"}
+    client.post(f"/api/batches/{b['batch_id']}/approve")
+    aug_lines = [("Ago 3", "1", "DEBITO VISA", "-10.00")]
+    aug = _upload(
+        client,
+        "aug.pdf",
+        s.produbanco_full(
+            account="88888885555",
+            opening="999.00",  # July closed at 243.40
+            period="Del 01 Ago 2026 Al 31 Ago 2026",
+            lines=aug_lines,
+        ),
+    )
+    b2 = client.post(f"/api/statements/{aug['statement_file_id']}/read").json()
+    failed = [c["name"] for c in b2["checks"] if not c["ok"]]
+    assert failed == ["Opening balance = closing balance of the Jul 31, 2026 statement"]
