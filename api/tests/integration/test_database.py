@@ -40,7 +40,7 @@ def test_migrations_upgrade_and_downgrade() -> None:
 
 
 def test_reference_tables_seeded() -> None:
-    from app.seeds import v1, v2
+    from app.seeds import v1, v2, v3
 
     _alembic("upgrade", "head")
     with get_engine().connect() as conn:
@@ -53,9 +53,9 @@ def test_reference_tables_seeded() -> None:
         len(g[3]) for g in v2.CATEGORIES
     )
     assert counts == {
-        "account": len(v1.ACCOUNTS),
+        "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS),
         "category": groups + children,
-        "merchant_rule": len(v1.MERCHANT_RULES),
+        "merchant_rule": len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES),
     }
 
 
@@ -161,4 +161,38 @@ def test_capital_one_read_and_approve_on_sql_server(tmp_path: object) -> None:
 
     # Downgrade with loaded statement lines, then upgrade again.
     _alembic("downgrade", "0005")
+    _alembic("upgrade", "head")
+
+
+def test_pacificard_source_and_guarded_downgrade(tmp_path: object) -> None:
+    """Migration 0009 accepts the new source; its downgrade refuses while such statements exist."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion import ocr
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    if not ocr.available():
+        pytest.skip("tesseract is not installed")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("pc.pdf", s.pacificard_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    assert st["source"] == "pacificard"
+    assert st["accounts"][0]["name"] == "Pacificard Mastercard Black"
+
+    with pytest.raises(subprocess.CalledProcessError):
+        _alembic("downgrade", "0008")
+    with get_engine().begin() as conn:
+        ids = "SELECT [statement_file_id] FROM [raw].[statement_file] WHERE [source] = 'pacificard'"
+        conn.execute(
+            text(f"DELETE FROM [raw].[statement_file_account] WHERE [statement_file_id] IN ({ids})")
+        )
+        conn.execute(text("DELETE FROM [raw].[statement_file] WHERE [source] = 'pacificard'"))
+    _alembic("downgrade", "0008")
     _alembic("upgrade", "head")
