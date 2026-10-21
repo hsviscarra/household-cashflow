@@ -229,7 +229,7 @@ export type Statement = {
   source_label: string;
   status: "detected" | "needs_account" | "unknown_format";
   accounts: { account_id: number; name: string; last4: string | null }[];
-  account_match: "last4" | "by_bank" | "manual" | null;
+  account_match: "last4" | "by_bank" | "owner" | "manual" | null;
   last4_found: string[];
   period_start: string | null;
   period_end: string | null;

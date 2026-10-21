@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.9.0] — F8 Diners Club
+
+### F8 — Diners statements, main and additional cards
+- Diners Club parser (docs/parsers.md) for Hernan's and Lauren's statements: one block per card,
+  deferred purchases (installment billed on the closing date, remaining balance checked),
+  interest, late and collection charges, SOLCA, payments across a page break; golden test with a
+  main and an additional card; the real Jul, Aug and Oct 2026 statements tie out.
+- Upload matches a Diners statement to Hernan's or Lauren's account by the main cardholder's name
+  ("Matched by the cardholder's name" on the Import page); detection now reads Diners card digits
+  and the period.
+- Continuity compares only with an adjacent statement, so a missing month no longer blocks a
+  correct statement.
+- Reading an unrecognized format says so plainly.
+
 ## [0.8.0] — F7 Produbanco
 
 ### F7 — Savings accounts with a running balance

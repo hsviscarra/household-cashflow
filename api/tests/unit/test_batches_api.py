@@ -163,10 +163,10 @@ def test_read_errors(client: TestClient) -> None:
     assert client.get("/api/batches/999").status_code == 404
     assert client.post("/api/batches/999/approve").status_code == 404
     assert client.post("/api/batches/999/reject").status_code == 404
-    din = _upload(client, "din.pdf", s.diners())
-    resp = client.post(f"/api/statements/{din['statement_file_id']}/read")
-    assert resp.status_code == 422 and "not built yet" in resp.json()["detail"]
-    assert din["can_read"] is False
+    other = _upload(client, "other.pdf", s.unknown())
+    resp = client.post(f"/api/statements/{other['statement_file_id']}/read")
+    assert resp.status_code == 422 and "isn't recognized" in resp.json()["detail"]
+    assert other["can_read"] is False
     broken = _upload(client, "co-short.pdf", s.capitalone())  # detected, but no summary
     resp = client.post(f"/api/statements/{broken['statement_file_id']}/read")
     assert resp.status_code == 422 and "could not be read" in resp.json()["detail"]
@@ -348,3 +348,44 @@ def test_produbanco_lauren_and_continuity(client: TestClient) -> None:
     b2 = client.post(f"/api/statements/{aug['statement_file_id']}/read").json()
     failed = [c["name"] for c in b2["checks"] if not c["ok"]]
     assert failed == ["Opening balance = closing balance of the Jul 31, 2026 statement"]
+
+
+def test_diners_statement_loads_with_cardholders(client: TestClient) -> None:
+    st = _upload(client, "din.pdf", s.diners_full())
+    assert st["accounts"][0]["name"] == "Diners Club Hernan" and st["can_read"] is True
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"] is True, [c for c in b["checks"] if not c["ok"]]
+    lines = {ln["description"]: ln for ln in b["lines"]}
+    expect = {
+        'SU PAGO "MUCHAS GRACIAS"': ("transfer", "Transfers / Card Payment"),
+        "INTERESES DE MORA": ("fee_interest", "Financial Costs / Credit Card Interest"),
+        "GASTO GESTION COBRANZAS": ("fee_interest", "Financial Costs / Bank Fees"),
+        "CONT_FIN_SOLCA_C.ROT**": ("expense", "Financial Costs / SOLCA Contribution"),
+        "RET IVA SERV DIGITAL 100%": ("expense", "Financial Costs / Taxes on Digital Services"),
+        "SUPERMAXI CUMBAYA": ("expense", "Groceries / Supermarket"),
+    }
+    for desc, (type_, path) in expect.items():
+        assert (lines[desc]["type"], lines[desc]["category_path"]) == (type_, path), desc
+    assert lines["SUPERMAXI CUMBAYA"]["person"] == "Lauren"  # the additional card
+    assert lines['SU PAGO "MUCHAS GRACIAS"']["person"] == "Hernan"  # the account owner
+    assert lines["COLEGIO DE PRUEBA CUMBAYA"]["pay_reference"] == "8/12"
+    assert client.post(f"/api/batches/{b['batch_id']}/approve").json()["loaded"] == 12
+
+
+def test_continuity_skips_a_missing_month(client: TestClient) -> None:
+    jul = _upload(client, "jul.pdf", s.produbanco_full())
+    b = client.post(f"/api/statements/{jul['statement_file_id']}/read").json()
+    client.post(f"/api/batches/{b['batch_id']}/approve")
+    # September, with August missing: nothing to compare the opening balance with.
+    sep = _upload(
+        client,
+        "sep.pdf",
+        s.produbanco_full(
+            opening="50.00",
+            period="Del 01 Sep 2026 Al 30 Sep 2026",
+            lines=[("Sep 3", "1", "DEBITO VISA", "-10.00")],
+        ),
+    )
+    b2 = client.post(f"/api/statements/{sep['statement_file_id']}/read").json()
+    assert b2["tieout_ok"] is True
+    assert not any("closing balance of the" in c["name"] for c in b2["checks"])

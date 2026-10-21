@@ -192,6 +192,19 @@ describe("Import: statements", () => {
     expect(calls.find((c) => c.method === "PATCH")?.body).toBe(JSON.stringify({ account_ids: [8] }));
   });
 
+  it("says when the account was matched by the cardholder's name", async () => {
+    listed = [
+      {
+        ...DINERS,
+        status: "detected",
+        accounts: [{ account_id: 7, name: "Diners Club Hernan", last4: null }],
+        account_match: "owner",
+      },
+    ];
+    renderCard();
+    expect(await screen.findByText("Matched by the cardholder’s name")).toBeInTheDocument();
+  });
+
   it("accepts dropped files", async () => {
     renderCard();
     await screen.findByText("No statements uploaded yet.");

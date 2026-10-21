@@ -50,6 +50,7 @@ class Detection:
     last4: list[str] = field(default_factory=list)
     period_start: date | None = None
     period_end: date | None = None
+    owner: str | None = None  # the main cardholder, when the statement names one (Diners)
 
     @property
     def label(self) -> str:
@@ -135,6 +136,7 @@ class Fingerprint:
     marks: tuple[str, ...]
     last4: str  # regex with one group: the last four digits
     period: Callable[[str], tuple[date | None, date | None]]
+    owner: str | None = None  # regex with one group: the main cardholder's name
 
 
 FINGERPRINTS = (
@@ -165,10 +167,20 @@ FINGERPRINTS = (
     Fingerprint(
         "diners",
         ("dinersclub", "diners club"),
-        r"(?:X|\*){4,}\s?(\d{4})",
-        lambda t: (None, None),
+        r"\b\d{4}-x{4}-x{4}-(\d{4})\b",
+        lambda t: _period(t, r"(\d{1,2} \w{3} \d{4}) AL (\d{1,2} \w{3} \d{4})", _es),
+        r"^(.+?) \d{4}-x{4}-x{4}-\d{4} \* PRINCIPAL",
     ),
 )
+
+
+PEOPLE = {"HERNAN": "Hernan", "LAUREN": "Lauren"}
+
+
+def _owner(fp: Fingerprint, text: str) -> str | None:
+    m = re.search(fp.owner, text, re.IGNORECASE | re.MULTILINE) if fp.owner else None
+    words = m.group(1).upper().split() if m else []
+    return next((PEOPLE[w] for w in words if w in PEOPLE), None)
 
 
 def detect(text: str) -> Detection:
@@ -177,5 +189,5 @@ def detect(text: str) -> Detection:
         if any(mark in low for mark in fp.marks):
             last4 = list(dict.fromkeys(re.findall(fp.last4, text, re.IGNORECASE)))
             start, end = fp.period(text)
-            return Detection(fp.source, last4, start, end)
+            return Detection(fp.source, last4, start, end, _owner(fp, text))
     return Detection("unknown")

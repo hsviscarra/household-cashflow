@@ -95,8 +95,14 @@ def test_account_resolution_fallbacks(client: TestClient, db: Session) -> None:
     lau = _post(client, ("l.pdf", s.produbanco("88888885555"))).json()[0]["statement"]
     assert lau["accounts"][0]["name"] == "Produbanco Lauren"
 
-    # Diners: two cards without digits, so Hernan chooses.
-    din = _post(client, ("d.pdf", s.diners())).json()[0]
+    # Diners: two cards without digits on file; the main cardholder's name decides.
+    her = _post(client, ("h.pdf", s.diners())).json()[0]["statement"]
+    assert her["accounts"][0]["name"] == "Diners Club Hernan" and her["account_match"] == "owner"
+    lau_d = _post(client, ("ld.pdf", s.diners("PRUEBA LAUREN TITULAR", "4321"))).json()[0]
+    assert lau_d["statement"]["accounts"][0]["name"] == "Diners Club Lauren"
+
+    # No name to go by: Hernan chooses.
+    din = _post(client, ("d.pdf", s.diners("TITULAR DE PRUEBA", "9999"))).json()[0]
     assert din["statement"]["status"] == "needs_account" and "which account" in din["message"]
     acct = db.scalar(select(Account).where(Account.name == "Diners Club Lauren"))
     assert acct is not None
