@@ -105,9 +105,11 @@ def store_statement(
 
     text = info.text
     if not text.strip() and ocr.available():
-        # A screenshot saved as PDF (Pacificard): read the header with OCR to recognize the bank.
+        # A picture-only PDF (Pacificard's screenshot, or a scan): recognize the bank with OCR.
         try:
             text = ocr.header_text(data)
+            if detect(text).source == "unknown":  # a scan: the bank's name may be anywhere
+                text = ocr.header_text(data, whole=True)
         except ocr.OcrError:
             text = ""
     found = detect(text)

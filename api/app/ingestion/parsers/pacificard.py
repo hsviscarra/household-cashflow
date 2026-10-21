@@ -216,8 +216,32 @@ def parse(pages: list[str]) -> ParsedStatement:
             )
         )
 
+    _settle_ties(
+        out, moved, found["opening"], found["closing"] + found["revolving"] + found["owed"]
+    )
     _tie_out(out, moved)
     return out
+
+
+def _settle_ties(
+    out: ParsedStatement,
+    moved: dict[str, Decimal],
+    openings: list[Decimal],
+    closings: list[Decimal],
+) -> None:
+    """When a total's printings disagree evenly (480.00 vs 400.00), keep the printed value that
+    the lines balance with. Only printed values can win, so a misread can't be made up."""
+    flow = moved["purchases"] + moved["payments"] + moved["charges"]  # payments are negative
+
+    def tied(values: list[Decimal]) -> bool:
+        counts = Counter(values).most_common(2)
+        return len(counts) == 2 and counts[0][1] == counts[1][1]
+
+    t = out.totals
+    if tied(openings) and t["closing"] - flow in openings:
+        t["opening"] = out.opening_balance = t["closing"] - flow
+    if tied(closings) and t["opening"] + flow in closings:
+        t["closing"] = out.closing_balance = t["opening"] + flow
 
 
 def _tie_out(out: ParsedStatement, moved: dict[str, Decimal]) -> None:

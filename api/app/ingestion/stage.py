@@ -193,7 +193,10 @@ def parse_statement(
     try:
         data = store.get(sf.blob_key)
         crop = OCR_SOURCES.get(sf.source)
-        parsed = parser(ocr.ocr_pages(data, crop) if crop is not None else read_pages(data))
+        pages = ocr.ocr_pages(data, crop) if crop is not None else read_pages(data)
+        if crop is None and not "".join(pages).strip() and ocr.available():
+            pages = ocr.ocr_pages(data)  # a scan: no text layer, so read the page pictures
+        parsed = parser(pages)
     except (ParseError, ocr.OcrError) as exc:
         raise StageError(f"The statement could not be read: {exc}", 422) from exc
 

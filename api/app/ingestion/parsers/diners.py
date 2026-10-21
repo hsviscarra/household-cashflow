@@ -15,7 +15,14 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.ingestion.detect import ES_MONTHS, PEOPLE
-from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError, Reject
+from app.ingestion.parsers.base import (
+    Check,
+    Line,
+    ParsedStatement,
+    ParseError,
+    Reject,
+    fold_accents,
+)
 from app.ingestion.parsers.pichincha import amount
 
 NAME = "diners"
@@ -24,9 +31,9 @@ NUM = r"\d{1,3}(?:\.\d{3})*,\d{2}-?"
 PERIOD = re.compile(r"(\d{1,2}) ([A-Z]{3}) (\d{4}) AL (\d{1,2}) ([A-Z]{3}) (\d{4})")
 SUMMARY = {
     "previous_balance": re.compile(rf"^SALDO ANTERIOR: ({NUM})", re.M),
-    "payments_credits": re.compile(rf"^PAGOS/CRÉDITOS: ({NUM})", re.M),
+    "payments_credits": re.compile(rf"^PAGOS/CREDITOS: ({NUM})", re.M),
     "purchases": re.compile(rf"^CONSUMOS: ({NUM})", re.M),
-    "debits": re.compile(rf"^DÉBITOS: ({NUM})", re.M),
+    "debits": re.compile(rf"^DEBITOS: ({NUM})", re.M),
     "total_due": re.compile(rf"^Total a pagar: ({NUM})", re.M | re.I),
 }
 CARD = re.compile(r"^(?P<name>.+?) \d{4}-x{4}-x{4}-(?P<card>\d{4})\b", re.I)
@@ -41,8 +48,8 @@ PRINTED = {
     "printed_card_subtotal": re.compile(rf"^SUBTOTAL DE CONSUMOS: ({NUM})$"),
     "printed_purchases": re.compile(rf"^TOTAL DE CONSUMOS: ({NUM})(?: ({NUM}))?$"),
     "printed_previous": re.compile(rf"^SALDO ANTERIOR ({NUM})$"),
-    "printed_debits": re.compile(rf"^TOTAL DÉBITOS: ({NUM})$"),
-    "printed_credits": re.compile(rf"^TOTAL PAGOS Y CRÉDITOS: ({NUM})$"),
+    "printed_debits": re.compile(rf"^TOTAL DEBITOS: ({NUM})$"),
+    "printed_credits": re.compile(rf"^TOTAL PAGOS Y CREDITOS: ({NUM})$"),
     "printed_total_due": re.compile(rf"^TOTAL A PAGAR: ({NUM})$"),
     "printed_by_client": re.compile(rf"^TOTAL CONSUMO POR CLIENTE: ({NUM})$"),
 }
@@ -73,6 +80,7 @@ def _person(name: str) -> str | None:
 
 
 def parse(pages: list[str]) -> ParsedStatement:
+    pages = [fold_accents(p) for p in pages]  # OCR of a scan drops them: match without accents
     text = "\n".join(pages)
     p = PERIOD.search(text)
     if not p:
@@ -106,16 +114,16 @@ def parse(pages: list[str]) -> ParsedStatement:
     for page_no, page in enumerate(pages, start=1):
         for line_no, raw in enumerate(page.splitlines(), start=1):
             line = raw.strip()
-            if line == "Consumo período actual":
+            if line == "Consumo periodo actual":
                 block = "purchases"
                 continue
-            if line == "Detalle débitos y créditos":
+            if line == "Detalle debitos y creditos":
                 block = block if block in ("debits", "credits") else "debits"
                 continue
-            if line == "DETALLE DE DÉBITOS":
+            if line == "DETALLE DE DEBITOS":
                 block = "debits"
                 continue
-            if line == "DETALLE DE PAGOS Y CRÉDITOS":
+            if line == "DETALLE DE PAGOS Y CREDITOS":
                 block = "credits"
                 continue
             if line == "Resumen consumos por cliente":
