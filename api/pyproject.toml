@@ -17,6 +17,7 @@ dependencies = [
     "azure-storage-blob>=12.20",
     "azure-identity>=1.17",
     "pillow>=10.1",
+    "pypdf>=5",
 ]
 
 [dependency-groups]
@@ -28,7 +29,6 @@ dev = [
     "mypy>=1.13",
     "types-openpyxl>=3.1.5.20261017",
     "reportlab>=4.2",
-    "pypdf>=5",
 ]
 
 [tool.ruff]
