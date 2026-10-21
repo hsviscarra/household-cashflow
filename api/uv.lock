@@ -161,7 +161,7 @@ wheels = [
 
 [[package]]
 name = "cashflow-api"
-version = "0.9.0"
+version = "0.9.1"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
@@ -170,9 +170,11 @@ dependencies = [
     { name = "fastapi" },
     { name = "openpyxl" },
     { name = "pdfplumber" },
+    { name = "pillow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyodbc" },
+    { name = "pypdf" },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
@@ -182,7 +184,6 @@ dependencies = [
 dev = [
     { name = "httpx" },
     { name = "mypy" },
-    { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "reportlab" },
@@ -198,9 +199,11 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pdfplumber", specifier = ">=0.11" },
+    { name = "pillow", specifier = ">=10.1" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "pyodbc", specifier = ">=5.2" },
+    { name = "pypdf", specifier = ">=5" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
@@ -210,7 +213,6 @@ requires-dist = [
 dev = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=1.13" },
-    { name = "pypdf", specifier = ">=5" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "reportlab", specifier = ">=4.2" },

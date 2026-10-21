@@ -47,6 +47,8 @@ jobs:
           sudo apt-get update
           sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc
           odbcinst -q -d
+      - name: Tesseract OCR (Pacificard statements are pictures)
+        run: sudo apt-get install -y --no-install-recommends tesseract-ocr && tesseract --version
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

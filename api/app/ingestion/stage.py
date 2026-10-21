@@ -16,8 +16,9 @@ from decimal import Decimal
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.ingestion import ocr
 from app.ingestion.detect import read_pages
-from app.ingestion.parsers import PARSERS
+from app.ingestion.parsers import OCR_SOURCES, PARSERS
 from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError
 from app.ingestion.storage import StatementStore
 from app.models import (
@@ -190,8 +191,10 @@ def parse_statement(
         raise StageError("Choose the statement's account first.", 422)
 
     try:
-        parsed = parser(read_pages(store.get(sf.blob_key)))
-    except ParseError as exc:
+        data = store.get(sf.blob_key)
+        crop = OCR_SOURCES.get(sf.source)
+        parsed = parser(ocr.ocr_pages(data, crop) if crop is not None else read_pages(data))
+    except (ParseError, ocr.OcrError) as exc:
         raise StageError(f"The statement could not be read: {exc}", 422) from exc
 
     # One statement may cover several accounts (BofA checking and savings), keyed by last four.

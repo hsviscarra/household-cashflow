@@ -1,12 +1,12 @@
 from fastapi.testclient import TestClient
 
-from app.seeds import v1, v2
+from app.seeds import v1, v2, v3
 
 
 # ---------- accounts ----------
 def test_seeded_accounts_listed_with_last4_only(client: TestClient) -> None:
     accounts = client.get("/api/accounts").json()
-    assert len(accounts) == len(v1.ACCOUNTS)
+    assert len(accounts) == len(v1.ACCOUNTS) + len(v3.ACCOUNTS)
     capital_one = next(a for a in accounts if a["name"] == "Capital One Venture")
     assert capital_one["last4"] == "4003"
     assert all(a["last4"] is None or len(a["last4"]) == 4 for a in accounts)
@@ -99,7 +99,7 @@ def test_update_category_color_and_reject_bad_color(client: TestClient) -> None:
 # ---------- merchant rules ----------
 def test_rules_listed_in_priority_order_with_paths(client: TestClient) -> None:
     rules = client.get("/api/merchant-rules").json()
-    assert len(rules) == len(v1.MERCHANT_RULES)
+    assert len(rules) == len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES)
     priorities = [r["priority"] for r in rules]
     assert priorities == sorted(priorities)
     uber_eats = next(r for r in rules if r["pattern"] == "UBER EATS")

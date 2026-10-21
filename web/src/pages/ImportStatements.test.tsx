@@ -132,6 +132,7 @@ beforeEach(() => {
         ];
         return Promise.resolve(new Response(JSON.stringify(listed[1])));
       }
+      if (url.endsWith("/read")) return new Promise<Response>(() => {}); // still reading
       return Promise.resolve(new Response("{}", { status: 404 }));
     }),
   );
@@ -203,6 +204,23 @@ describe("Import: statements", () => {
     ];
     renderCard();
     expect(await screen.findByText("Matched by the cardholder’s name")).toBeInTheDocument();
+  });
+
+  it("explains the wait while a picture statement is read with OCR", async () => {
+    listed = [
+      {
+        ...base,
+        statement_file_id: 3,
+        file_name: "pacificard.pdf",
+        source: "pacificard",
+        source_label: "Pacificard (Banco del Pacífico)",
+        accounts: [{ account_id: 9, name: "Pacificard Mastercard Black", last4: null }],
+        can_read: true,
+      },
+    ];
+    renderCard();
+    fireEvent.click(await screen.findByRole("button", { name: "Read lines of pacificard.pdf" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("read with OCR");
   });
 
   it("accepts dropped files", async () => {

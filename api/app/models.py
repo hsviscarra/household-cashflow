@@ -34,7 +34,15 @@ TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest
 TXN_SOURCES = ("statement", "manual", "excel_history")
 TXN_STATUSES = ("pending", "confirmed", "matched")
 SNAPSHOT_KINDS = ("asset", "liability")
-STATEMENT_SOURCES = ("bofa", "capitalone", "pichincha", "produbanco", "diners", "unknown")
+STATEMENT_SOURCES = (
+    "bofa",
+    "capitalone",
+    "pichincha",
+    "produbanco",
+    "diners",
+    "pacificard",
+    "unknown",
+)
 STATEMENT_STATUSES = ("detected", "needs_account", "unknown_format")
 ACCOUNT_MATCHES = ("last4", "by_bank", "manual")
 BATCH_STATUSES = ("preview", "approved", "rejected")

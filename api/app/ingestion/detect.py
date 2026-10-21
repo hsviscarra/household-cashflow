@@ -25,6 +25,7 @@ SOURCES = {
     "pichincha": "Banco Pichincha",
     "produbanco": "Produbanco",
     "diners": "Diners Club",
+    "pacificard": "Pacificard (Banco del Pacífico)",
     "unknown": "Unknown format",
 }
 
@@ -93,6 +94,10 @@ def _en(fmt: str) -> Callable[[str], date]:
 def _es(s: str) -> date:
     day, mon, year = s.split()
     return date(int(year), ES_MONTHS[mon[:3].lower()], int(day))
+
+
+def _es_slash(s: str) -> date:
+    return _es(s.replace("/", " "))
 
 
 def _dmy(s: str) -> date:
@@ -170,6 +175,15 @@ FINGERPRINTS = (
         r"\b\d{4}-x{4}-x{4}-(\d{4})\b",
         lambda t: _period(t, r"(\d{1,2} \w{3} \d{4}) AL (\d{1,2} \w{3} \d{4})", _es),
         r"^(.+?) \d{4}-x{4}-x{4}-\d{4} \* PRINCIPAL",
+    ),
+    # Read with OCR (the PDF is a screenshot): only the three digits Pacificard prints are kept.
+    Fingerprint(
+        "pacificard",
+        ("pacificard", "pacifico.fin.ec", "banco del pacifico s.a."),
+        r"XXXX-X(\d{3})\b",
+        lambda t: _period(
+            t, r"desde:?\s*(\d{1,2}/\w{3}/\d{4}) hasta:?\s*(\d{1,2}/\w{3}/\d{4})", _es_slash
+        ),
     ),
 )
 

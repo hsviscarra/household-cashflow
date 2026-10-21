@@ -138,3 +138,34 @@ account is chosen by the main cardholder's name on the `* PRINCIPAL` card line (
 
 Continuity (all sources): the opening balance is compared only with a statement that ends within
 a week of this one's start; a missing month is left for the data status page (F12).
+
+## Pacificard (Banco del Pacífico Mastercard, `pacificard`) — F8b
+
+The statement is a screenshot of the bank's web page saved as PDF (no text, grey "COPIA"
+watermark), read with OCR (ADR-005). One account: Pacificard Mastercard Black (Hernan, with an
+additional card for Lauren). The card is printed `NNNN-NNXX-XXXX-XNNN`: only three digits, so no
+last four are stored; the statement is matched as Pacificard's only account.
+
+- **Detect:** a quick OCR of the page header; `pacificard` / `pacifico.fin.ec` /
+  `Banco del Pacifico S.A.`; period `Periodo de corte desde: 25/AGO/2026 hasta 24/SEP/2026`.
+- **Summary:** `RESUMEN DE MOVIMIENTOS` prints previous debt, purchases and debits, payments,
+  interest and charges, total debt (`400.00 148.85 80.00 4.10 472.95`); `Deuda Total X 100% X`.
+- **Detail:** `DETALLE DE MOVIMIENTOS DEL PERIODO`: `****** SALDO ANTERIOR 400.00`, a block per
+  cardholder (`<id> NAME`, local purchases then `DETALLE DE CONSUMOS EN EL EXTERIOR`), lines
+  `SEP/08 100002 SU PAGO PAGO DIRECTO BDP GUAYAQUI PAGO 80.00 -`: date (Spanish month/day),
+  reference, description, operation (`CONS`, `PAGO`, `INT`, `CARG`, `N/D`, `N/C`), US$ amount,
+  foreign amount for purchases abroad, `+` (adds to the debt) or `-`. Then `TOTAL PAGO DE
+  CONTADO`, `SALDO ACTUAL ROTATIVO`, `SALDO ACTUAL DIFERIDO`, `SUBTOTAL CONSUMOS PERIODO`,
+  `SUBTOTAL PAGOS/CREDITOS`.
+- **OCR noise handled:** months `4GO`/`AG0` (AGO), days `0S` (05), operations `Cons`, `CONS3`,
+  `W/D`, `N/D-`; cardholder names `HERWAN`, `LAUREW`; an unreadable start date falls back to the day
+  after the same day a month before the cut. Amounts and dates are re-read digits-only (ADR-005).
+- **Sections:** payment; interest (`CARGOS CAPITAL ANTERIOR`); fee (`GESTION DE COBRANZA`,
+  foreign-purchase commission, card renewal); charge (SOLCA, `SEG. DESGRAVAMEN` credit-life
+  insurance, IVA on digital services); purchase.
+- **Tie-out:** purchases and debits = `SUBTOTAL CONSUMOS`; payments = `SUBTOTAL PAGOS`; interest
+  and charges = the summary; previous + purchases − payments + charges = total due (each total is
+  the value most of its printings agree on); no deferred balance (not seen yet: a statement with
+  one stops instead of loading wrong); continuity.
+- **Checked on the real statements Apr 25 – Sep 24, 2026 (five months):** 8, 6, 6, 8 and 9 lines,
+  all tie out and chain month to month; about 15–20 s each to read.

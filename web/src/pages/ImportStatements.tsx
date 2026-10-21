@@ -59,9 +59,9 @@ export function StatementsCard() {
     <div className="mt-8 rounded-2xl bg-surface p-4 md:p-6">
       <h2 className="font-display text-2xl font-bold">Statements</h2>
       <p className="mt-1 text-muted">
-        Upload PDFs from Bank of America, Capital One, Banco Pichincha, Produbanco or Diners, one or many at a
-        time. Each file is kept as it is; the same file is never saved twice. Reading the lines comes with the
-        next features.
+        Upload PDFs from Bank of America, Capital One, Banco Pichincha, Produbanco, Diners or Pacificard, one
+        or many at a time. Each file is kept as it is; the same file is never saved twice. Read lines checks a
+        statement against its own totals before anything is loaded.
       </p>
 
       <form
@@ -316,6 +316,11 @@ function StatementAction({ statement: s }: { statement: Statement }) {
       >
         {read.isPending ? "Reading…" : "Read lines"}
       </button>
+      {read.isPending && s.source === "pacificard" && (
+        <span className="text-muted" role="status">
+          This statement is a picture, so it’s read with OCR; it takes up to a minute.
+        </span>
+      )}
       {read.error && <span className="text-danger-ink">{(read.error as Error).message}</span>}
     </>
   );
