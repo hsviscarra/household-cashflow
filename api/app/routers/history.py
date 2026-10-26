@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
-from app.models import Budget, v_category_month, v_monthly_cashflow
+from app.models import Budget, v_category_month, v_monthly_cash, v_monthly_cashflow
 from app.schemas import (
     CategoryMonthOut,
     HistoryLoadOut,
@@ -61,8 +61,12 @@ def monthly_cashflow(
     db: DB,
     start: Annotated[date | None, Query(alias="from")] = None,
     end: Annotated[date | None, Query(alias="to")] = None,
+    view: Annotated[
+        Literal["spending", "cash"],
+        Query(description="spending: card purchases when made; cash: bank money only (ADR-007)"),
+    ] = "spending",
 ) -> list[MonthlyCashflowOut]:
-    v = v_monthly_cashflow
+    v = v_monthly_cash if view == "cash" else v_monthly_cashflow
     q = select(v).order_by(v.c.cash_month)
     if start:
         q = q.where(v.c.cash_month >= start)

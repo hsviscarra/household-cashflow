@@ -15,7 +15,7 @@ from app.ingestion.storage import StatementStore, get_store
 from app.models import Account, ImportBatch, StatementFile, Transaction
 from app.routers.classify import transaction_out
 from app.schemas import ApproveOut, BatchOut, TransactionOut
-from app.services import classify
+from app.services import classify, transfers
 
 router = APIRouter(prefix="/api", tags=["batches"])
 DB = Annotated[Session, Depends(get_session)]
@@ -96,4 +96,10 @@ def list_transactions(
     paths = category_paths(db)
     found = list(db.execute(q))
     parts = classify.part_counts(db, [t.transaction_id for t, _ in found])
-    return [transaction_out(t, name, paths, parts.get(t.transaction_id, 0)) for t, name in found]
+    others = transfers.other_legs(db, [t for t, _ in found])
+    return [
+        transaction_out(
+            t, name, paths, parts.get(t.transaction_id, 0), others.get(t.transaction_id)
+        )
+        for t, name in found
+    ]

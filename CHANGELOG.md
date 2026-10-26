@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.11.0] — F10 Transfers and two views
+
+### F10 — Card payments left out of spending and shown in the cash view
+- Transfer matching across accounts (ADR-007): opposite, equal amounts on two accounts within 5
+  days are linked (`transfer_group_id`) and categorized *Card Payment* or *Between Own Accounts*;
+  runs after approve, after resolving or editing a line into a transfer, and on demand. A category
+  chosen by hand is never overridden; a wrong pair is unlinked in one click; every change logged.
+- New `mart.v_monthly_cash` and `GET /api/cashflow/monthly?view=cash`: bank accounts only, card
+  payments counted as cash out, moves between own accounts left out.
+- Overview: Spending view / Cash view toggle. Transactions: a matched line names the other
+  account and date. Review: "Transfers without their other side", with "Match transfers again".
+- Migration 0011 (column, index, `category_source = 'match'`, the view) with a working downgrade.
+
 ## [0.10.3] — Claude suggestions answer with ids
 
 - The log showed the real cause: a merchant description with double quotes (a Zelle payment

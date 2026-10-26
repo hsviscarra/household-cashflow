@@ -254,3 +254,39 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     assert client.delete(url).status_code == 204
     _alembic("downgrade", "0009")
     _alembic("upgrade", "head")
+
+
+def test_transfers_and_cash_view_on_sql_server(tmp_path: object) -> None:
+    """F10 on SQL Server: own-account transfer matched on approve, both views, 0011 down and up."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa10.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b.get("tieout_ok") is True, b
+    client.post(f"/api/batches/{b['batch_id']}/approve")
+
+    aug = client.get("/api/transactions", params={"month": "2026-08-01"}).json()
+    legs = [t for t in aug if t["amount"] in ("-25.0000", "25.0000")]
+    assert len({t["transfer_group_id"] for t in legs}) == 1 and legs[0]["transfer_with"]
+
+    cash = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly?view=cash").json()}
+    spend = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    # August: the Capital One payment from checking is cash out as a card payment, not spending.
+    assert Decimal(cash["2026-08-01"]["card_payments"]) == Decimal("1500")
+    assert Decimal(spend["2026-08-01"]["card_payments"]) == 0
+
+    _alembic("downgrade", "0010")
+    _alembic("upgrade", "head")

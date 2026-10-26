@@ -24,8 +24,9 @@ from app.schemas import (
     SuggestOut,
     TransactionOut,
     TransactionPatch,
+    TransferLegOut,
 )
-from app.services import classify
+from app.services import classify, transfers
 from app.services import suggest as suggestions
 
 router = APIRouter(prefix="/api", tags=["classification"])
@@ -45,7 +46,11 @@ def _row(db: Session, transaction_id: int) -> Transaction:
 
 
 def transaction_out(
-    t: Transaction, account_name: str | None, paths: dict[int, str], parts: int = 0
+    t: Transaction,
+    account_name: str | None,
+    paths: dict[int, str],
+    parts: int = 0,
+    other: transfers.Leg | None = None,
 ) -> TransactionOut:
     return TransactionOut(
         transaction_id=t.transaction_id,
@@ -68,13 +73,16 @@ def transaction_out(
         category_source=t.category_source,
         parent_transaction_id=t.parent_transaction_id,
         parts=parts,
+        transfer_group_id=t.transfer_group_id,
+        transfer_with=TransferLegOut(**vars(other)) if other else None,
     )
 
 
 def _one_out(db: Session, t: Transaction) -> TransactionOut:
     name = db.scalar(select(Account.name).where(Account.account_id == t.account_id))
     parts = classify.part_counts(db, [t.transaction_id]).get(t.transaction_id, 0)
-    return transaction_out(t, name, category_paths(db), parts)
+    other = transfers.other_legs(db, [t]).get(t.transaction_id)
+    return transaction_out(t, name, category_paths(db), parts, other)
 
 
 def _fail(exc: classify.ClassifyError) -> HTTPException:

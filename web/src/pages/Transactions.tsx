@@ -8,6 +8,7 @@ import {
   fetchTransactions,
   removeSplit,
   splitTransaction,
+  unlinkTransfer,
   updateTransaction,
   type Txn,
 } from "../api";
@@ -28,6 +29,7 @@ const HOW: Record<string, string> = {
   suggestion: "Claude, accepted",
   excel: "workbook",
   split: "split part",
+  match: "matched transfer",
 };
 
 function thisMonth() {
@@ -232,10 +234,42 @@ function CategoryCell({ t }: { t: Txn }) {
   return (
     <span>
       {t.category_path}
-      {t.category_source && t.category_source !== "split" && (
+      {t.category_source && t.category_source !== "split" && t.category_source !== "match" && (
         <span className="text-xs text-muted"> · {HOW[t.category_source] ?? t.category_source}</span>
       )}
+      {t.transfer_with && (
+        <span className="block text-xs text-muted">
+          ↔ {t.transfer_with.account_name ?? "another account"}, {day(t.transfer_with.txn_date)}
+        </span>
+      )}
     </span>
+  );
+}
+
+function UnlinkTransfer({ t }: { t: Txn }) {
+  const invalidate = useInvalidate();
+  const unlink = useMutation({
+    mutationFn: () => unlinkTransfer(t.transfer_group_id!),
+    onSuccess: invalidate,
+  });
+  if (!t.transfer_group_id || !t.transfer_with) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-info-bg px-4 py-3 text-sm">
+      <span>
+        Matched transfer: the other side is <strong>{t.transfer_with.description}</strong> on{" "}
+        {t.transfer_with.account_name ?? "another account"}, {day(t.transfer_with.txn_date)} (
+        <span className="num">{showAmount(t.transfer_with.amount)}</span>).
+      </span>
+      <button
+        type="button"
+        className="btn btn-quiet h-9 px-3"
+        disabled={unlink.isPending}
+        onClick={() => unlink.mutate()}
+      >
+        Not the same money: unlink
+      </button>
+      {unlink.error && <span className="text-danger-ink">{(unlink.error as Error).message}</span>}
+    </div>
   );
 }
 
@@ -263,7 +297,10 @@ function EditToggle({
 
 function useInvalidate() {
   const qc = useQueryClient();
-  return () => ["transactions", "review", "cashflow"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  return () =>
+    ["transactions", "review", "cashflow", "transfers"].forEach((k) =>
+      qc.invalidateQueries({ queryKey: [k] }),
+    );
 }
 
 function TxnEditor({ t, options, onDone }: { t: Txn; options: Option[]; onDone: () => void }) {
@@ -355,7 +392,8 @@ function TxnEditor({ t, options, onDone }: { t: Txn; options: Option[]; onDone: 
         )}
       </div>
 
-      {!t.parent_transaction_id && <SplitEditor t={t} options={options} />}
+      <UnlinkTransfer t={t} />
+      {!t.parent_transaction_id && !t.transfer_group_id && <SplitEditor t={t} options={options} />}
 
       <details>
         <summary className="cursor-pointer text-sm text-primary">History of this line</summary>

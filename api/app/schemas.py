@@ -209,6 +209,7 @@ class MonthlyCashflowOut(BaseModel):
     cash_month: date
     income: Decimal
     expenses: Decimal
+    card_payments: Decimal = Decimal(0)  # cash view only: bank-to-card payments (F10)
     savings: Decimal
     debt_payments: Decimal
     net: Decimal
@@ -366,6 +367,8 @@ class TransactionOut(BaseModel):
     category_source: str | None = None
     parent_transaction_id: int | None = None
     parts: int = 0  # > 0: split into this many parts, which count instead of this line
+    transfer_group_id: int | None = None
+    transfer_with: "TransferLegOut | None" = None  # the other side of a matched transfer
 
 
 # ---------------- F9: classification ----------------
@@ -448,3 +451,21 @@ class SuggestOut(BaseModel):
     asked: int
     suggested: int
     model: str
+
+
+# ---------------- F10: transfers ----------------
+class TransferLegOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    amount: Decimal
+    description: str
+    account_id: int | None
+    account_name: str | None
+    account_kind: str | None
+
+
+class MatchOut(BaseModel):
+    pairs: int
+
+
+TransactionOut.model_rebuild()

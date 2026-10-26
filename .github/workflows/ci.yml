@@ -155,7 +155,13 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
-          pnpm e2e
+          set -o pipefail
+          pnpm e2e 2>&1 | tee /tmp/e2e.log
+      - name: Surface end-to-end failure as an annotation
+        if: failure()
+        run: |
+          [ -f /tmp/e2e.log ] || exit 0
+          echo "::error title=End-to-end tests::$(grep -v '^ *✓' /tmp/e2e.log | tail -120 | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
       - name: App logs
         if: failure()
         run: docker logs app

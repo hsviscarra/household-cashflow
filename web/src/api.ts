@@ -133,6 +133,7 @@ export type MonthlyCashflow = {
   cash_month: string;
   income: Money;
   expenses: Money;
+  card_payments?: Money; // cash view only (F10)
   savings: Money;
   debt_payments: Money;
   net: Money;
@@ -218,7 +219,9 @@ async function upload<T>(path: string, file: File): Promise<T> {
   return data as T;
 }
 
-export const fetchMonthly = () => send<MonthlyCashflow[]>("GET", "/api/cashflow/monthly");
+export type CashView = "spending" | "cash";
+export const fetchMonthly = (view: CashView = "spending") =>
+  send<MonthlyCashflow[]>("GET", `/api/cashflow/monthly${view === "cash" ? "?view=cash" : ""}`);
 export const fetchCategoryMonths = (year: number) =>
   send<CategoryMonth[]>("GET", `/api/cashflow/categories?year=${year}`);
 export const fetchPlan = () => send<PlanMonth[]>("GET", "/api/cashflow/plan");
@@ -330,9 +333,20 @@ export type Txn = {
   source: string;
   statement_file_id: number | null;
   notes: string | null;
-  category_source: "rule" | "section" | "manual" | "suggestion" | "excel" | "split" | null;
+  category_source: "rule" | "section" | "manual" | "suggestion" | "excel" | "split" | "match" | null;
   parent_transaction_id: number | null;
   parts: number; // > 0: split into this many parts, which count instead of this line
+  transfer_group_id?: number | null;
+  transfer_with?: TransferLeg | null; // the other side of a matched transfer (F10)
+};
+export type TransferLeg = {
+  transaction_id: number;
+  txn_date: string;
+  amount: Money;
+  description: string;
+  account_id: number | null;
+  account_name: string | null;
+  account_kind: string | null;
 };
 
 export const readStatement = (id: number) => send<Batch>("POST", `/api/statements/${id}/read`);
@@ -412,3 +426,9 @@ export const splitTransaction = (id: number, parts: PartInput[]) =>
   send<Txn[]>("PUT", `/api/transactions/${id}/split`, { parts });
 export const removeSplit = (id: number) => send<void>("DELETE", `/api/transactions/${id}/split`);
 export const fetchHistory = (id: number) => send<Change[]>("GET", `/api/transactions/${id}/history`);
+
+// ---------- transfers (F10) ----------
+export const fetchUnmatchedTransfers = (month?: string | null) =>
+  send<Txn[]>("GET", `/api/transfers/unmatched${month ? `?month=${month}` : ""}`);
+export const matchTransfers = () => send<{ pairs: number }>("POST", "/api/transfers/match");
+export const unlinkTransfer = (group: number) => send<void>("DELETE", `/api/transfers/${group}`);

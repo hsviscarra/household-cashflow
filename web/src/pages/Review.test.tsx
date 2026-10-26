@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -71,6 +71,7 @@ const txn = (over: Partial<Txn>): Txn => ({
   ...over,
 });
 let txns: Txn[];
+let unmatched: Txn[];
 
 beforeEach(() => {
   calls = [];
@@ -136,12 +137,52 @@ beforeEach(() => {
       category_source: "rule",
     }),
     txn({ transaction_id: 11, amount: "-40.24", description: "DEBITO VISA", type: "expense" }),
+    txn({
+      transaction_id: 12,
+      txn_date: "2026-07-20",
+      description: "PAGO TARJETA CREDITO",
+      amount: "-150.00",
+      type: "transfer",
+      category_id: 3,
+      category_path: "Transfers / Card Payment",
+      category_source: "match",
+      transfer_group_id: 12,
+      transfer_with: {
+        transaction_id: 40,
+        txn_date: "2026-07-21",
+        amount: "150.00",
+        description: "SU PAGO",
+        account_id: 7,
+        account_name: "Diners Club",
+        account_kind: "credit_card",
+      },
+    }),
+  ];
+  unmatched = [
+    txn({
+      transaction_id: 20,
+      txn_date: "2026-07-25",
+      description: "PAGO TARJETA OTRO BANCO",
+      amount: "-300.00",
+      type: "transfer",
+    }),
   ];
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.startsWith("/api/transfers/unmatched")) return json(unmatched);
+      if (url === "/api/transfers/match" && method === "POST") {
+        unmatched = [];
+        return json({ pairs: 1 });
+      }
+      if (url === "/api/transfers/12" && method === "DELETE") {
+        txns = txns.map((t) =>
+          t.transaction_id === 12 ? { ...t, transfer_group_id: null, transfer_with: null } : t,
+        );
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
       if (url.startsWith("/api/review/suggest"))
         return json({ asked: 1, suggested: 1, model: "claude-haiku-5-5" });
       if (url === "/api/review/resolve") {
@@ -233,6 +274,17 @@ describe("Review", () => {
     expect(await screen.findByText(/Claude suggested a category for 1 of 1 merchants/)).toBeInTheDocument();
   });
 
+  it("lists transfers without their other side and matches again", async () => {
+    renderAt("/review?month=2026-07");
+    const list = await screen.findByRole("list", { name: "Unmatched transfers" });
+    expect(within(list).getByText("PAGO TARJETA OTRO BANCO")).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/api/transfers/unmatched?month=2026-07-01")).toBe(true);
+    expect(screen.getByRole("link", { name: "Upload a statement" })).toHaveAttribute("href", "/import");
+    fireEvent.click(screen.getByRole("button", { name: "Match transfers again" }));
+    expect(await screen.findByText("Matched 1 transfer with their other side.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Unmatched transfers" })).toBeNull());
+  });
+
   it("says when suggestions are off and when nothing is left", async () => {
     review = { ...review, suggestions_available: false };
     const { unmount } = renderAt("/review");
@@ -266,10 +318,22 @@ describe("Transactions editing", () => {
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ category_id: 3 });
   });
 
+  it("shows a matched transfer's other side and unlinks it", async () => {
+    renderAt("/transactions?month=2026-07");
+    const table = await screen.findByRole("table", { name: "Transactions in July 2026" });
+    expect(within(table).getByText(/↔ Diners Club/)).toBeInTheDocument();
+    fireEvent.click(within(table).getByRole("button", { name: /Edit PAGO TARJETA CREDITO/ }));
+    expect(await within(table).findByText(/Matched transfer: the other side is/)).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: "Split across categories" })).toBeNull();
+    fireEvent.click(within(table).getByRole("button", { name: "Not the same money: unlink" }));
+    await waitFor(() => expect(within(table).queryByText(/↔ Diners Club/)).toBeNull());
+    expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/transfers/12")).toBe(true);
+  });
+
   it("splits a line only when the parts add up", async () => {
     renderAt("/transactions?month=2026-07");
     const table = await screen.findByRole("table", { name: "Transactions in July 2026" });
-    fireEvent.click(within(table).getByRole("button", { name: /Edit PAGO TARJETA/ }));
+    fireEvent.click(within(table).getByRole("button", { name: /Edit PAGO TARJETA on/ }));
     fireEvent.click(await within(table).findByRole("button", { name: "Split across categories" }));
     const form = within(table).getByRole("form", { name: "Split PAGO TARJETA" });
     const save = within(form).getByRole("button", { name: "Save split" });
