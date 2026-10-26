@@ -1,5 +1,6 @@
 """F9: review queue, resolving a merchant and its rule, edits with history, splits, suggestions."""
 
+import json
 from collections.abc import Iterator
 from decimal import Decimal
 from types import SimpleNamespace
@@ -416,7 +417,7 @@ def test_call_claude_reads_the_structured_answer(
     calls: list[dict[str, Any]] = []
     stop = ["end_turn"]
     answer = (
-        '{"suggestions": [{"merchant_key": "A", "category_path": "Pets", '
+        '{"suggestions": [{"merchant_id": "m1", "category_id": "c1", '
         '"confidence": 0.8, "reason": "vet"}]}'
     )
 
@@ -441,7 +442,11 @@ def test_call_claude_reads_the_structured_answer(
     fmt = calls[0]["output_config"]["format"]
     assert fmt["type"] == "json_schema"
     item = fmt["schema"]["properties"]["suggestions"]["items"]["properties"]
-    assert item["category_path"]["enum"] == ["Pets"] and item["merchant_key"]["enum"] == ["A"]
+    # Only ids go back and forth: a description with quotes can't break the answer.
+    assert item["category_id"]["enum"] == ["c1"] and item["merchant_id"]["enum"] == ["m1"]
+    sent_payload = json.loads(calls[0]["messages"][0]["content"])
+    assert sent_payload["categories"] == [{"id": "c1", "path": "Pets"}]
+    assert sent_payload["merchants"][0]["id"] == "m1"
     assert calls[0]["model"] == "claude-haiku-5-5"
     # Haiku thinks first and that counts toward max_tokens: low effort, room for the answer.
     assert calls[0]["output_config"]["effort"] == "low" and calls[0]["max_tokens"] >= 16000
@@ -486,6 +491,16 @@ LOOSE = '{"merchant": "A", "category": "Pets", "confidence": "0.8", "reason": "v
 )
 def test_parse_answer_tolerates_wrapping(text: str) -> None:
     assert suggest.parse_answer(text) == [suggest.Answer("A", "Pets", Decimal("0.8"), "vet")]
+
+
+def test_parse_answer_maps_ids_back() -> None:
+    quoted = 'ZELLE PAYMENT TO CARGO CORP FOR "TEST ORDER";'
+    text = (
+        '{"suggestions": [{"merchant_id": "m2", "category_id": "c1", '
+        '"confidence": 0.4, "reason": "r"}]}'
+    )
+    got = suggest.parse_answer(text, {"m1": "A", "m2": quoted}, {"c1": "Shopping / Online"})
+    assert got == [suggest.Answer(quoted, "Shopping / Online", Decimal("0.4"), "r")]
 
 
 def test_parse_answer_skips_bad_items_and_reports_nothing_usable() -> None:

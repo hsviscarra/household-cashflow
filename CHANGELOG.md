@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.10.3] — Claude suggestions answer with ids
+
+- The log showed the real cause: a merchant description with double quotes (a Zelle payment
+  "FOR \"… ORDER\";") came back unescaped inside Claude's JSON, so the whole answer failed. Claude
+  now answers with short ids for merchants and categories ("m1", "c3"), mapped back on the server,
+  so no description or category name is ever repeated inside the JSON.
+
 ## [0.10.2] — Claude suggestions, tolerant reading
 
 - Claude's reply finished normally but wasn't in the exact expected shape, so it was rejected. The
