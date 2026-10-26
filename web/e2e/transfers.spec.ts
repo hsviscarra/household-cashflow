@@ -19,6 +19,8 @@ test("transfers: both sides are matched, and the cash view counts card payments"
   if (await read.isVisible()) await read.click();
   else await row.getByRole("link", { name: /Review|View/ }).click();
   const approve = page.getByRole("button", { name: "Approve import" });
+  // Wait for the batch page to load: either it can be approved or it is already loaded.
+  await expect(approve.or(page.getByText(/Loaded by/)).first()).toBeVisible();
   if (await approve.isVisible()) {
     await approve.click();
     await expect(page.getByText("Import approved.")).toBeVisible();
@@ -26,8 +28,18 @@ test("transfers: both sides are matched, and the cash view counts card payments"
 
   // Each side of the checking → savings move names the other account.
   await page.goto("/transactions?month=2026-08");
-  await expect(page.getByText(/↔ BofA Regular Savings/).filter({ visible: true }).first()).toBeVisible();
-  await expect(page.getByText(/↔ BofA Adv Plus Banking/).filter({ visible: true }).first()).toBeVisible();
+  await expect(
+    page
+      .getByText(/↔ BofA Regular Savings/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(/↔ BofA Adv Plus Banking/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
 
   // The card payment's other side (the Capital One statement) may not be loaded: Review lists it.
   await page.goto("/review?month=2026-08");
