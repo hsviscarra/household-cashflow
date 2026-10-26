@@ -69,6 +69,8 @@ function seed(): Db {
         category_path: "Dining / Food Delivery",
         priority: 20,
         is_active: true,
+        amount_min: null,
+        amount_max: null,
       },
     ],
   };

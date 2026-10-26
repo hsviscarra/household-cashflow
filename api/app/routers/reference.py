@@ -1,14 +1,15 @@
 """Reference data: accounts, categories and merchant rules (F1)."""
 
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
-from app.models import Account, Category, MerchantRule
+from app.models import Account, Category, MerchantRule, StgTransaction, Transaction
 from app.schemas import (
     AccountIn,
     AccountOut,
@@ -138,7 +139,14 @@ def _rule_out(rule: MerchantRule, paths: dict[int, str]) -> RuleOut:
         category_path=paths.get(rule.category_id, "?"),
         priority=rule.priority,
         is_active=rule.is_active,
+        amount_min=rule.amount_min,
+        amount_max=rule.amount_max,
     )
+
+
+def _check_range(low: Decimal | None, high: Decimal | None) -> None:
+    if low is not None and high is not None and low > high:
+        raise HTTPException(422, "The lowest amount must not be above the highest.")
 
 
 def _check_rule(db: Session, pattern: str | None, match_type: str, category_id: int | None) -> None:
@@ -160,6 +168,7 @@ def list_rules(db: DB) -> list[RuleOut]:
 @router.post("/merchant-rules", response_model=RuleOut, status_code=status.HTTP_201_CREATED)
 def create_rule(body: RuleIn, db: DB) -> RuleOut:
     _check_rule(db, body.pattern, body.match_type, body.category_id)
+    _check_range(body.amount_min, body.amount_max)
     rule = MerchantRule(**body.model_dump())
     db.add(rule)
     _commit(db, "Could not save the rule.")
@@ -176,6 +185,9 @@ def update_rule(rule_id: int, body: RulePatch, db: DB) -> RuleOut:
         changes.get("match_type", rule.match_type),
         changes.get("category_id"),
     )
+    _check_range(
+        changes.get("amount_min", rule.amount_min), changes.get("amount_max", rule.amount_max)
+    )
     for field, value in changes.items():
         setattr(rule, field, value)
     _commit(db, "Could not save the rule.")
@@ -185,19 +197,23 @@ def update_rule(rule_id: int, body: RulePatch, db: DB) -> RuleOut:
 @router.delete("/merchant-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rule(rule_id: int, db: DB) -> Response:
     rule = _get(db, MerchantRule, rule_id, "Rule")
+    # Lines it classified keep their category; they just no longer point at the rule.
+    db.execute(update(StgTransaction).where(StgTransaction.rule_id == rule_id).values(rule_id=None))
+    db.execute(update(Transaction).where(Transaction.rule_id == rule_id).values(rule_id=None))
     db.delete(rule)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/merchant-rules/test", response_model=RuleTestOut)
-def test_rules(db: DB, description: Annotated[str, Query(min_length=1)]) -> RuleTestOut:
+def test_rules(
+    db: DB,
+    description: Annotated[str, Query(min_length=1)],
+    amount: Annotated[Decimal | None, Query()] = None,
+) -> RuleTestOut:
     rows = list(db.scalars(select(MerchantRule)))
-    candidates = [
-        rule_engine.Rule(r.rule_id, r.pattern, r.match_type, r.category_id, r.priority, r.is_active)
-        for r in rows
-    ]
-    hit = rule_engine.first_match(candidates, description)
+    candidates = [rule_engine.Rule.of(r) for r in rows]
+    hit = rule_engine.first_match(candidates, description, amount)
     if hit is None:
         return RuleTestOut(description=description, rule=None)
     match = next(r for r in rows if r.rule_id == hit.rule_id)

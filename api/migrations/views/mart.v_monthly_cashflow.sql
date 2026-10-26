@@ -33,5 +33,11 @@ FROM (
                     AND [h].[cash_month] = [t].[cash_month]
             )
         )
+        -- A line split into parts (F9) counts through its parts only.
+        AND NOT EXISTS (
+            SELECT 1
+            FROM [core].[transaction] AS [p]
+            WHERE [p].[parent_transaction_id] = [t].[transaction_id]
+        )
     GROUP BY [t].[cash_month]
 ) AS [m];

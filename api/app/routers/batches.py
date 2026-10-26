@@ -13,7 +13,9 @@ from app.ingestion import stage
 from app.ingestion.preview import batch_out, category_paths
 from app.ingestion.storage import StatementStore, get_store
 from app.models import Account, ImportBatch, StatementFile, Transaction
+from app.routers.classify import transaction_out
 from app.schemas import ApproveOut, BatchOut, TransactionOut
+from app.services import classify
 
 router = APIRouter(prefix="/api", tags=["batches"])
 DB = Annotated[Session, Depends(get_session)]
@@ -92,24 +94,6 @@ def list_transactions(
     if source:
         q = q.where(Transaction.source == source)
     paths = category_paths(db)
-    return [
-        TransactionOut(
-            transaction_id=t.transaction_id,
-            txn_date=t.txn_date,
-            post_date=t.post_date,
-            cash_month=t.cash_month,
-            account_id=t.account_id,
-            account_name=name,
-            description=t.description_raw,
-            merchant=t.merchant,
-            amount=t.amount,
-            type=t.type,
-            category_id=t.category_id,
-            category_path=paths.get(t.category_id) if t.category_id else None,
-            person=t.person,
-            country=t.country,
-            source=t.source,
-            statement_file_id=t.statement_file_id,
-        )
-        for t, name in db.execute(q)
-    ]
+    found = list(db.execute(q))
+    parts = classify.part_counts(db, [t.transaction_id for t, _ in found])
+    return [transaction_out(t, name, paths, parts.get(t.transaction_id, 0)) for t, name in found]

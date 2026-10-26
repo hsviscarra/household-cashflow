@@ -33,6 +33,9 @@ MATCH_TYPES = ("contains", "starts_with", "regex")
 TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest", "debt_payment")
 TXN_SOURCES = ("statement", "manual", "excel_history")
 TXN_STATUSES = ("pending", "confirmed", "matched")
+# How a line got its category (F9): a merchant rule, the statement section, Hernan's choice, an
+# accepted Claude suggestion, the Excel history, or a split of a parent line.
+CATEGORY_SOURCES = ("rule", "section", "manual", "suggestion", "excel", "split")
 SNAPSHOT_KINDS = ("asset", "liability")
 STATEMENT_SOURCES = (
     "bofa",
@@ -130,6 +133,10 @@ class MerchantRule(Timestamps, Base):
     # Lower runs first; the first matching active rule wins.
     priority: Mapped[int] = mapped_column(Integer, default=50, server_default="50")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Optional range on the absolute amount (F9): the same description can mean two bills
+    # ("PAGO IESS" is the empleada's IESS under 300 and the BIESS house loan above).
+    amount_min: Mapped[Decimal | None] = mapped_column(Money)
+    amount_max: Mapped[Decimal | None] = mapped_column(Money)
 
     category: Mapped[Category] = relationship()
 
@@ -173,6 +180,7 @@ class Transaction(Timestamps, Base):
         CheckConstraint(_in("type", TXN_TYPES), name="type"),
         CheckConstraint(_in("source", TXN_SOURCES), name="source"),
         CheckConstraint(_in("status", TXN_STATUSES), name="status"),
+        CheckConstraint(_in("category_source", CATEGORY_SOURCES), name="category_source"),
         UniqueConstraint("natural_key"),
         {"schema": "core"},
     )
@@ -202,6 +210,14 @@ class Transaction(Timestamps, Base):
     is_fixed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     source: Mapped[str] = mapped_column(Unicode(15))
     status: Mapped[str] = mapped_column(Unicode(10), default="confirmed")
+    # F9: splits, and where the category came from.
+    parent_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.transaction.transaction_id"), index=True
+    )
+    rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.merchant_rule.rule_id", ondelete="SET NULL")
+    )
+    category_source: Mapped[str | None] = mapped_column(Unicode(12))
 
 
 class Budget(Timestamps, Base):
@@ -253,6 +269,40 @@ class LoadLog(Base):
     loaded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     rows_loaded: Mapped[int] = mapped_column(Integer)
     summary: Mapped[str] = mapped_column(UnicodeText)
+
+
+class ChangeLog(Base):
+    """Every edit to a loaded line (F9): who changed which column, from what to what."""
+
+    __tablename__ = "change_log"
+    __table_args__ = ({"schema": "audit"},)
+
+    change_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    table_name: Mapped[str] = mapped_column(Unicode(60))
+    row_id: Mapped[int] = mapped_column(Integer, index=True)
+    column_name: Mapped[str] = mapped_column(Unicode(60))
+    old_value: Mapped[str | None] = mapped_column(Unicode(400))
+    new_value: Mapped[str | None] = mapped_column(Unicode(400))
+    reason: Mapped[str] = mapped_column(Unicode(200))
+    changed_by: Mapped[str] = mapped_column(Unicode(320))
+    changed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class MerchantSuggestion(Base):
+    """Claude's category suggestion for a merchant nobody has categorized yet (F9)."""
+
+    __tablename__ = "merchant_suggestion"
+    __table_args__ = (UniqueConstraint("merchant_key"), {"schema": "core"})
+
+    suggestion_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    merchant_key: Mapped[str] = mapped_column(Unicode(200))
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("core.category.category_id", ondelete="CASCADE")
+    )
+    confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3))
+    reason: Mapped[str] = mapped_column(Unicode(400))
+    model: Mapped[str] = mapped_column(Unicode(60))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 # ---------------- F3: uploaded statements ----------------

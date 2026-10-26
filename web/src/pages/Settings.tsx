@@ -21,7 +21,10 @@ import {
   type CategoryKind,
   type MatchType,
   type Rule,
+  type RuleInput,
 } from "../api";
+import { categoryOptions } from "../categories";
+import { money } from "../money";
 
 const TABS = [
   { id: "accounts", label: "Accounts" },
@@ -41,6 +44,16 @@ const MATCH_LABEL: Record<MatchType, string> = {
   starts_with: "starts with",
   regex: "regex",
 };
+/** "any amount", "up to 299.99", "from 300", "50 to 100" — on the amount without its sign. */
+export function amountRange(r: Pick<Rule, "amount_min" | "amount_max">): string {
+  const lo = r.amount_min ? money(r.amount_min) : null;
+  const hi = r.amount_max ? money(r.amount_max) : null;
+  if (lo && hi) return `${lo} to ${hi}`;
+  if (lo) return `from ${lo}`;
+  if (hi) return `up to ${hi}`;
+  return "any amount";
+}
+
 const ACCOUNT_KIND_LABEL = { checking: "Checking", savings: "Savings", credit_card: "Credit card" };
 
 type Notify = (message: string, tone?: "good" | "bad") => void;
@@ -636,12 +649,6 @@ function CategoryForm(props: {
 }
 
 // ---------------- merchant rules ----------------
-function categoryOptions(groups: CategoryGroup[]) {
-  return groups.flatMap((g) => [
-    { id: g.category_id, label: g.name },
-    ...g.children.map((c) => ({ id: c.category_id, label: `${g.name} / ${c.name}` })),
-  ]);
-}
 
 function RulesTab({ notify }: { notify: Notify }) {
   const rules = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
@@ -710,6 +717,7 @@ function RulesTab({ notify }: { notify: Notify }) {
               <th className="px-4 py-3 font-semibold">Pattern</th>
               <th className="px-4 py-3 font-semibold">Match</th>
               <th className="px-4 py-3 font-semibold">Category</th>
+              <th className="px-4 py-3 font-semibold">Amount</th>
               <th className="px-4 py-3 text-right font-semibold">Priority</th>
               <th className="px-4 py-3 font-semibold">Active</th>
               <th className="px-4 py-3">
@@ -723,6 +731,9 @@ function RulesTab({ notify }: { notify: Notify }) {
                 <td className="px-4 py-2 font-mono text-sm">{r.pattern}</td>
                 <td className="px-4 py-2 text-sm">{MATCH_LABEL[r.match_type]}</td>
                 <td className="px-4 py-2">{r.category_path}</td>
+                <td className={`num px-4 py-2 text-sm ${r.amount_min || r.amount_max ? "" : "text-muted"}`}>
+                  {amountRange(r)}
+                </td>
                 <td className="num px-4 py-2 text-right">{r.priority}</td>
                 <td className="px-4 py-2">
                   <input
@@ -759,7 +770,7 @@ function RulesTab({ notify }: { notify: Notify }) {
             ))}
             {!shown.length && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-muted">
+                <td colSpan={7} className="px-4 py-6 text-center text-muted">
                   No rules match “{filter}”.
                 </td>
               </tr>
@@ -775,12 +786,14 @@ function RuleForm(props: {
   options: { id: number; label: string }[];
   busy: boolean;
   onCancel: () => void;
-  onSubmit: (b: { pattern: string; match_type: MatchType; category_id: number; priority: number }) => void;
+  onSubmit: (b: RuleInput) => void;
 }) {
   const [pattern, setPattern] = useState("");
   const [matchType, setMatchType] = useState<MatchType>("contains");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [priority, setPriority] = useState(50);
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
   return (
     <form
       className="grid gap-4 md:grid-cols-4"
@@ -792,6 +805,8 @@ function RuleForm(props: {
           match_type: matchType,
           category_id: categoryId,
           priority,
+          amount_min: amountMin.trim() || null,
+          amount_max: amountMax.trim() || null,
         });
       }}
     >
@@ -846,6 +861,33 @@ function RuleForm(props: {
           ))}
         </select>
       </label>
+      <label>
+        <span className="label">Only amounts from (optional)</span>
+        <input
+          className="field num"
+          type="number"
+          min={0}
+          step="0.01"
+          inputMode="decimal"
+          value={amountMin}
+          onChange={(e) => setAmountMin(e.target.value)}
+        />
+      </label>
+      <label>
+        <span className="label">Up to (optional)</span>
+        <input
+          className="field num"
+          type="number"
+          min={0}
+          step="0.01"
+          inputMode="decimal"
+          value={amountMax}
+          onChange={(e) => setAmountMax(e.target.value)}
+        />
+      </label>
+      <p className="text-sm text-muted md:col-span-4">
+        Amounts are compared without their sign: “up to 299.99” catches a 104.11 payment, not a 505.19 one.
+      </p>
       <div className="flex items-end gap-2 md:col-span-2">
         <button type="submit" className="btn btn-primary" disabled={props.busy}>
           Add rule
@@ -860,6 +902,7 @@ function RuleForm(props: {
 
 function RuleTester() {
   const [text, setText] = useState("");
+  const [amount, setAmount] = useState("");
   const tester = useMutation({ mutationFn: testRule });
   const result = tester.data;
   return (
@@ -868,7 +911,7 @@ function RuleTester() {
         className="flex flex-wrap items-end gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          if (text.trim()) tester.mutate(text.trim());
+          if (text.trim()) tester.mutate({ description: text.trim(), amount: amount.trim() || undefined });
         }}
       >
         <label className="min-w-56 flex-1">
@@ -878,6 +921,18 @@ function RuleTester() {
             placeholder="UBER EATS SAN JOSE"
             value={text}
             onChange={(e) => setText(e.target.value)}
+          />
+        </label>
+        <label className="w-36">
+          <span className="label">Amount (optional)</span>
+          <input
+            className="field num"
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            placeholder="-104.11"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
           />
         </label>
         <button type="submit" className="btn btn-secondary" disabled={tester.isPending}>

@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.seeds import v1, v2, v3
+from app.seeds import v1, v2, v3, v4
 
 
 # ---------- accounts ----------
@@ -99,7 +99,7 @@ def test_update_category_color_and_reject_bad_color(client: TestClient) -> None:
 # ---------- merchant rules ----------
 def test_rules_listed_in_priority_order_with_paths(client: TestClient) -> None:
     rules = client.get("/api/merchant-rules").json()
-    assert len(rules) == len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES)
+    assert len(rules) == len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES) + len(v4.MERCHANT_RULES)
     priorities = [r["priority"] for r in rules]
     assert priorities == sorted(priorities)
     uber_eats = next(r for r in rules if r["pattern"] == "UBER EATS")

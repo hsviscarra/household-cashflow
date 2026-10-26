@@ -27,7 +27,7 @@ def _recreate(folder: Path) -> None:
 
 
 def upgrade() -> None:
-    _recreate(ROOT)
+    _recreate(ROOT / "0008")  # frozen: the current definitions need later columns
 
 
 def downgrade() -> None:

@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Table, delete, func, insert, select
 
-from app.seeds import v1, v2, v3
+from app.seeds import v1, v2, v3, v4
 
 
 def load_v1(
@@ -144,3 +144,31 @@ def unload_v3(conn: Connection, account: Table, merchant_rule: Table) -> None:
         delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v3.MERCHANT_RULES]))
     )
     conn.execute(delete(account).where(account.c.name.in_([a["name"] for a in v3.ACCOUNTS])))
+
+
+def load_v4(conn: Connection, category: Table, merchant_rule: Table) -> None:
+    """Add the amount-range rules (F9)."""
+    ids = _category_ids(conn, category)
+    conn.execute(
+        insert(merchant_rule),
+        [
+            {
+                "pattern": p,
+                "match_type": m,
+                "category_id": ids[path],
+                "priority": prio,
+                "amount_min": lo,
+                "amount_max": hi,
+            }
+            for p, m, path, prio, lo, hi in v4.MERCHANT_RULES
+        ],
+    )
+
+
+def unload_v4(conn: Connection, merchant_rule: Table) -> None:
+    conn.execute(
+        delete(merchant_rule).where(
+            merchant_rule.c.pattern.in_({p for p, *_ in v4.MERCHANT_RULES}),
+            (merchant_rule.c.amount_min.is_not(None)) | (merchant_rule.c.amount_max.is_not(None)),
+        )
+    )

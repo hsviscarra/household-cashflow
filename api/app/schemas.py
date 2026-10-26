@@ -93,6 +93,8 @@ class RuleIn(BaseModel):
     category_id: int
     priority: int = Field(default=50, ge=0, le=999)
     is_active: bool = True
+    amount_min: Decimal | None = Field(default=None, ge=0)
+    amount_max: Decimal | None = Field(default=None, ge=0)
 
     @field_validator("pattern")
     @classmethod
@@ -106,6 +108,8 @@ class RulePatch(BaseModel):
     category_id: int | None = None
     priority: int | None = Field(default=None, ge=0, le=999)
     is_active: bool | None = None
+    amount_min: Decimal | None = Field(default=None, ge=0)
+    amount_max: Decimal | None = Field(default=None, ge=0)
 
 
 class RuleOut(_Out):
@@ -116,6 +120,8 @@ class RuleOut(_Out):
     category_path: str
     priority: int
     is_active: bool
+    amount_min: Decimal | None
+    amount_max: Decimal | None
 
 
 class RuleTestOut(BaseModel):
@@ -356,3 +362,89 @@ class TransactionOut(BaseModel):
     country: str | None
     source: str
     statement_file_id: int | None
+    notes: str | None = None
+    category_source: str | None = None
+    parent_transaction_id: int | None = None
+    parts: int = 0  # > 0: split into this many parts, which count instead of this line
+
+
+# ---------------- F9: classification ----------------
+class SuggestionOut(BaseModel):
+    category_id: int
+    category_path: str
+    confidence: Decimal
+    reason: str
+    model: str
+
+
+class ReviewLineOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    amount: Decimal
+    description: str
+    account_name: str | None
+    person: str | None
+
+
+class ReviewGroupOut(BaseModel):
+    merchant_key: str
+    lines: list[ReviewLineOut]
+    total: Decimal
+    suggestion: SuggestionOut | None
+
+
+class ReviewOut(BaseModel):
+    month: date | None
+    groups: list[ReviewGroupOut]
+    uncategorized_lines: int
+    suggestions_available: bool
+
+
+class ResolveIn(BaseModel):
+    merchant_key: str = Field(min_length=1, max_length=200)
+    category_id: int
+    transaction_ids: list[int] | None = None
+    save_rule: bool = True
+    pattern: str | None = Field(default=None, max_length=200)
+    match_type: MatchType = "contains"
+    amount_min: Decimal | None = Field(default=None, ge=0)
+    amount_max: Decimal | None = Field(default=None, ge=0)
+    from_suggestion: bool = False
+
+
+class ResolveOut(BaseModel):
+    categorized: int
+    rule_id: int | None
+    also_by_rule: int
+
+
+class TransactionPatch(BaseModel):
+    category_id: int | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+    person: Owner | None = None
+
+
+class PartIn(BaseModel):
+    amount: Decimal
+    category_id: int
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class SplitIn(BaseModel):
+    parts: list[PartIn] = Field(min_length=2, max_length=20)
+
+
+class ChangeOut(_Out):
+    change_id: int
+    column_name: str
+    old_value: str | None
+    new_value: str | None
+    reason: str
+    changed_by: str
+    changed_at: datetime
+
+
+class SuggestOut(BaseModel):
+    asked: int
+    suggested: int
+    model: str

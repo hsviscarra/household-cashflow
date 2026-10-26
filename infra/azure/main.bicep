@@ -40,6 +40,10 @@ param authClientId string = ''
 @description('Client secret of the sign-in app registration.')
 param authClientSecret string = ''
 
+@secure()
+@description('Claude API key for category suggestions (F9). Empty = suggestions off.')
+param anthropicApiKey string = ''
+
 @description('Email for the monthly budget alert.')
 param alertEmail string
 
@@ -154,7 +158,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
       secrets: concat([
         { name: 'database-url', value: databaseUrl }
         { name: 'ghcr-token', value: ghcrToken }
-      ], enableAuth ? [ { name: 'microsoft-provider-secret', value: authClientSecret } ] : [])
+      ], enableAuth ? [ { name: 'microsoft-provider-secret', value: authClientSecret } ] : [],
+        empty(anthropicApiKey) ? [] : [ { name: 'anthropic-api-key', value: anthropicApiKey } ])
     }
     template: {
       containers: [
@@ -162,12 +167,12 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'app'
           image: image
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          env: [
+          env: concat([
             { name: 'APP_ENV', value: 'azure' }
             { name: 'DATABASE_URL', secretRef: 'database-url' }
             { name: 'ALLOWED_EMAILS', value: allowedEmails }
             { name: 'STORAGE_ACCOUNT_URL', value: storage.properties.primaryEndpoints.blob }
-          ]
+          ], empty(anthropicApiKey) ? [] : [ { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' } ])
         }
       ]
       scale: { minReplicas: 0, maxReplicas: 1 }

@@ -229,6 +229,7 @@ def load(
                     notes=f"{where} ({r.cell.group})" if r.cell.group else where,
                     type=r.mapping.type,
                     category_id=cat.category_id,
+                    category_source="excel",
                     person=r.mapping.person,
                     country=r.mapping.country,
                     is_fixed=cat.is_fixed,
