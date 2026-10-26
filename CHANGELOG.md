@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.10.1] — Claude suggestions fix
+
+- "Claude's answer could not be read": Claude Haiku 5.5 thinks before answering and that counts
+  toward max_tokens, so the JSON was cut off. Suggestions now run at low effort with a 16,000-token
+  limit and at most 20 merchants per request; a cut-off or declined answer is reported as such.
+
 ## [0.10.0] — F9 Classification
 
 ### F9 — Unknown merchants of a month resolved in one screen

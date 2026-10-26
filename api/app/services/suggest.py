@@ -8,10 +8,11 @@ nothing is categorized until Hernan accepts one.
 """
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,7 +22,14 @@ from app.ingestion.preview import category_paths
 from app.models import Account, Category, MerchantSuggestion, Transaction
 from app.services import classify
 
-MAX_MERCHANTS = 40  # per request; a month rarely has more unknown merchants
+log = logging.getLogger(__name__)
+
+MAX_MERCHANTS = 40  # per click; a month rarely has more unknown merchants
+PER_CALL = 20  # merchants per request, so each answer stays short
+# Claude Haiku 5.5 thinks before answering and the thinking counts toward max_tokens: low effort
+# (the documented setting for simple, high-volume classification) and room for the answer.
+EFFORT: Final = "low"
+MAX_TOKENS = 16000
 SAMPLES = 3  # lines shown per merchant
 
 SYSTEM = (
@@ -95,18 +103,28 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
     try:
         response = client.messages.create(
             model=settings.anthropic_model,
-            max_tokens=4000,
+            max_tokens=MAX_TOKENS,
             system=SYSTEM,
             messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             output_config={
+                "effort": EFFORT,
                 "format": {
                     "type": "json_schema",
                     "schema": _schema(categories, [a.merchant_key for a in asked]),
-                }
+                },
             },
         )
     except anthropic.APIError as exc:
         raise SuggestError(f"Claude could not be reached: {exc.__class__.__name__}.") from exc
+    stop = getattr(response, "stop_reason", None)
+    if stop == "max_tokens":
+        log.warning("Claude suggestions cut off at max_tokens (%s merchants)", len(asked))
+        raise SuggestError(
+            "Claude's answer was cut off; try again with fewer merchants (one month)."
+        )
+    if stop == "refusal":
+        log.warning("Claude declined to suggest categories (%s merchants)", len(asked))
+        raise SuggestError("Claude declined to answer this request.")
     text = next((b.text for b in response.content if b.type == "text"), "")
     try:
         items = json.loads(text)["suggestions"]
@@ -120,6 +138,7 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
             for i in items
         ]
     except (ValueError, KeyError, TypeError) as exc:
+        log.warning("Claude suggestions unreadable: stop_reason=%s, %s characters", stop, len(text))
         raise SuggestError("Claude's answer could not be read.") from exc
 
 
@@ -162,7 +181,11 @@ def suggest(db: Session, month: date | None = None) -> tuple[int, int]:
     parents = {c.parent_id for c in db.scalars(select(Category)) if c.parent_id is not None}
     offered = sorted(p for cid, p in paths.items() if cid not in parents)
 
-    answers = call_claude(asked, offered)
+    answers = [
+        a
+        for i in range(0, len(asked), PER_CALL)
+        for a in call_claude(asked[i : i + PER_CALL], offered)
+    ]
     keys = {a.merchant_key for a in asked}
     model = get_settings().anthropic_model
     stored = 0

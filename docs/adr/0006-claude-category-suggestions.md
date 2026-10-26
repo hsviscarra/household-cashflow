@@ -17,7 +17,9 @@ merchants, never as the source of truth.
   the review queue. The answer must follow a JSON schema (`output_config.format`, structured
   outputs) whose `category_path` is an enum of Hernan's own leaf categories and whose
   `merchant_key` is an enum of the merchants asked, plus a confidence (0–1) and a short reason.
-  The model is configurable (`ANTHROPIC_MODEL`).
+  The model is configurable (`ANTHROPIC_MODEL`). Haiku 5.5 thinks before answering and the
+  thinking counts toward `max_tokens`, so requests use `output_config.effort = "low"`, a
+  16,000-token limit and at most 20 merchants each (0.10.1).
 - **What leaves the server:** per merchant, up to three lines with the description as printed,
   amount, date, the bank's name and country and the account kind. No account numbers, no names
   of the household's people, no balances, no files. Descriptions can contain a payee's name

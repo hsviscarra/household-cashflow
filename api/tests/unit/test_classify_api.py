@@ -327,20 +327,23 @@ def test_suggestions_are_stored_shown_and_accepted(
 
     def fake(asked: list[suggest.Asked], categories: list[str]) -> list[suggest.Answer]:
         sent.append((asked, categories))
-        return [
-            suggest.Answer("DEBITO VISA", "Groceries / Supermarket", Decimal("0.62"), "card debit"),
-            suggest.Answer(
-                "TRANSFERENCIA CTAS TERCEROS BCA ENL", "Office Rent", Decimal("1.7"), "rent"
-            ),
-            suggest.Answer("UNKNOWN", "Office Rent", Decimal("0.9"), "ignored"),
-            suggest.Answer(
-                "TRANSFERENCIA INTERBANCARIA B.L.", "Not A Category", Decimal("0.5"), "x"
-            ),
-        ]
+        keys = {x.merchant_key for x in asked} | {"UNKNOWN"}
+        return [a for a in ANSWERS if a.merchant_key in keys]
+
+    ANSWERS = [
+        suggest.Answer("DEBITO VISA", "Groceries / Supermarket", Decimal("0.62"), "card debit"),
+        suggest.Answer(
+            "TRANSFERENCIA CTAS TERCEROS BCA ENL", "Office Rent", Decimal("1.7"), "rent"
+        ),
+        suggest.Answer("UNKNOWN", "Office Rent", Decimal("0.9"), "ignored"),
+        suggest.Answer("TRANSFERENCIA INTERBANCARIA B.L.", "Not A Category", Decimal("0.5"), "x"),
+    ]
 
     monkeypatch.setattr(suggest, "call_claude", fake)
+    monkeypatch.setattr(suggest, "PER_CALL", 2)  # three merchants: two requests
     out = loaded.post("/api/review/suggest", params={"month": JUL}).json()
     assert (out["asked"], out["suggested"], out["model"]) == (3, 2, "claude-haiku-5-5")
+    assert [len(a) for a, _ in sent] == [2, 1]
     asked, categories = sent[0]
     # Only description, amount, date and the bank leave the server.
     assert set(asked[0].lines[0]) == {
@@ -411,6 +414,7 @@ def test_call_claude_reads_the_structured_answer(
     import anthropic
 
     calls: list[dict[str, Any]] = []
+    stop = ["end_turn"]
     answer = (
         '{"suggestions": [{"merchant_key": "A", "category_path": "Pets", '
         '"confidence": 0.8, "reason": "vet"}]}'
@@ -419,7 +423,13 @@ def test_call_claude_reads_the_structured_answer(
     class FakeMessages:
         def create(self, **kwargs: Any) -> Any:
             calls.append(kwargs)
-            return SimpleNamespace(content=[SimpleNamespace(type="text", text=answer)])
+            return SimpleNamespace(
+                stop_reason=stop[0],
+                content=[
+                    SimpleNamespace(type="thinking", thinking="..."),
+                    SimpleNamespace(type="text", text=answer),
+                ],
+            )
 
     class FakeClient:
         def __init__(self, **_kw: Any) -> None:
@@ -433,6 +443,16 @@ def test_call_claude_reads_the_structured_answer(
     item = fmt["schema"]["properties"]["suggestions"]["items"]["properties"]
     assert item["category_path"]["enum"] == ["Pets"] and item["merchant_key"]["enum"] == ["A"]
     assert calls[0]["model"] == "claude-haiku-5-5"
+    # Haiku thinks first and that counts toward max_tokens: low effort, room for the answer.
+    assert calls[0]["output_config"]["effort"] == "low" and calls[0]["max_tokens"] >= 16000
+
+    stop[0] = "max_tokens"
+    with pytest.raises(suggest.SuggestError, match="cut off"):
+        suggest.call_claude([suggest.Asked("A", [])], ["Pets"])
+    stop[0] = "refusal"
+    with pytest.raises(suggest.SuggestError, match="declined"):
+        suggest.call_claude([suggest.Asked("A", [])], ["Pets"])
+    stop[0] = "end_turn"
 
     answer = "not json"
     with pytest.raises(suggest.SuggestError, match="could not be read"):
