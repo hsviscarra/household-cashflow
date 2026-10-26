@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.10.2] — Claude suggestions, tolerant reading
+
+- Claude's reply finished normally but wasn't in the exact expected shape, so it was rejected. The
+  reply is now read even with a code fence or words around the JSON, a bare list, or
+  "merchant"/"category" field names; one bad item is skipped instead of failing all; category
+  names match regardless of spacing and case. An unreadable reply logs the parse error and its
+  first 300 characters.
+
 ## [0.10.1] — Claude suggestions fix
 
 - "Claude's answer could not be read": Claude Haiku 5.5 thinks before answering and that counts

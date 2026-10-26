@@ -125,21 +125,60 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
     if stop == "refusal":
         log.warning("Claude declined to suggest categories (%s merchants)", len(asked))
         raise SuggestError("Claude declined to answer this request.")
-    text = next((b.text for b in response.content if b.type == "text"), "")
+    text = "".join(b.text for b in response.content if b.type == "text")
     try:
-        items = json.loads(text)["suggestions"]
-        return [
-            Answer(
-                i["merchant_key"],
-                i["category_path"],
-                Decimal(str(i["confidence"])),
-                str(i["reason"]),
-            )
-            for i in items
-        ]
-    except (ValueError, KeyError, TypeError) as exc:
-        log.warning("Claude suggestions unreadable: stop_reason=%s, %s characters", stop, len(text))
+        return parse_answer(text)
+    except ValueError as exc:
+        # Merchant descriptions and category names only; no keys or account data.
+        log.warning(
+            "Claude suggestions unreadable: stop_reason=%s, %s characters, %s; starts: %r",
+            stop,
+            len(text),
+            exc,
+            text[:300],
+        )
         raise SuggestError("Claude's answer could not be read.") from exc
+
+
+def _fold(path: str) -> str:
+    """'Groceries/Supermarket' and 'groceries / supermarket' name the same category."""
+    return "".join(path.split()).casefold()
+
+
+def parse_answer(text: str) -> list[Answer]:
+    """The suggestions in Claude's reply. Tolerant of a code fence or words around the JSON, of a
+    bare list instead of {"suggestions": [...]}, and of "merchant"/"category" for the field names;
+    an item without a merchant or category is skipped. ValueError when nothing can be read."""
+    start = min((i for i in (text.find("{"), text.find("[")) if i >= 0), default=-1)
+    if start < 0:
+        raise ValueError("no JSON in the reply")
+    data, _ = json.JSONDecoder().raw_decode(text[start:])
+    if isinstance(data, dict):
+        items = data.get("suggestions")
+        if items is None:
+            items = next((v for v in data.values() if isinstance(v, list)), None)
+    else:
+        items = data
+    if not isinstance(items, list):
+        shape = sorted(data) if isinstance(data, dict) else type(data).__name__
+        raise ValueError(f"no list of suggestions ({shape})")
+    answers = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("merchant_key") or item.get("merchant")
+        path = item.get("category_path") or item.get("category")
+        if not key or not path:
+            continue
+        try:
+            confidence = Decimal(str(item.get("confidence", 0)))
+        except ArithmeticError:
+            confidence = Decimal(0)
+        answers.append(Answer(str(key), str(path), confidence, str(item.get("reason", ""))))
+    if items and not answers:
+        first = sorted(items[0]) if isinstance(items[0], dict) else repr(items[0])
+        raise ValueError(f"no usable item (first item: {first})")
+    return answers
 
 
 def suggest(db: Session, month: date | None = None) -> tuple[int, int]:
@@ -176,7 +215,7 @@ def suggest(db: Session, month: date | None = None) -> tuple[int, int]:
         asked.append(Asked(g.merchant_key, lines))
 
     paths = category_paths(db)
-    by_path = {p: cid for cid, p in paths.items()}
+    by_path = {_fold(p): cid for cid, p in paths.items()}
     # Groups only (no subcategories) are offered when they have no children.
     parents = {c.parent_id for c in db.scalars(select(Category)) if c.parent_id is not None}
     offered = sorted(p for cid, p in paths.items() if cid not in parents)
@@ -190,7 +229,7 @@ def suggest(db: Session, month: date | None = None) -> tuple[int, int]:
     model = get_settings().anthropic_model
     stored = 0
     for a in answers:
-        cid = by_path.get(a.category_path)
+        cid = by_path.get(_fold(a.category_path))
         if a.merchant_key not in keys or cid is None:
             continue  # the schema prevents this; never trust it blindly
         confidence = min(max(a.confidence, Decimal(0)), Decimal(1)).quantize(Decimal("0.001"))
