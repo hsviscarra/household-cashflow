@@ -28,6 +28,8 @@ test("review: categorize a merchant once and save the rule", async ({ page }) =>
 
   await page.goto("/review?month=2026-07");
   await expect(page.getByRole("heading", { level: 1, name: "Review" })).toBeVisible();
+  // Wait for the queue itself: the heading renders before the data, and isVisible() doesn't wait.
+  await expect(page.getByText(/(need a category|Every line has a category) in July 2026\./)).toBeVisible();
   const visa = page.getByRole("listitem", { name: "DEBITO VISA" });
   if (await visa.isVisible()) {
     await visa.getByLabel("Category for DEBITO VISA").selectOption({ label: "Groceries / Supermarket" });
