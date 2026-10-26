@@ -34,8 +34,9 @@ SAMPLES = 3  # lines shown per merchant
 
 SYSTEM = (
     "You categorize household bank and credit card transactions for a family in Quito, Ecuador, "
-    "that also has US accounts. Amounts are USD; negative means money out. For each merchant, "
-    "pick the single best category path from the list given, a confidence from 0 to 1 (how sure "
+    "that also has US accounts. Amounts are USD; negative means money out. For each merchant "
+    "(by its id), pick the single best category (by its id) from the list given, a confidence "
+    "from 0 to 1 (how sure "
     "you are this merchant belongs there), and a reason of at most 15 words. Use a low confidence "
     "when the description is ambiguous (for example a bare bank transfer). Spanish descriptions "
     "are common: TRANSFERENCIA = transfer, DEBITO = debit, PAGO = payment, CONSUMO = purchase."
@@ -66,7 +67,10 @@ class Answer:
     reason: str
 
 
-def _schema(paths: list[str], keys: list[str]) -> dict[str, Any]:
+def _schema(category_ids: list[str], merchant_ids: list[str]) -> dict[str, Any]:
+    """Claude answers with short ids only ("m1", "c3"). Repeating a description with double
+    quotes ('ZELLE ... FOR "AN ORDER";') inside the JSON broke it: the quotes came back
+    unescaped."""
     return {
         "type": "object",
         "properties": {
@@ -75,12 +79,12 @@ def _schema(paths: list[str], keys: list[str]) -> dict[str, Any]:
                 "items": {
                     "type": "object",
                     "properties": {
-                        "merchant_key": {"type": "string", "enum": keys},
-                        "category_path": {"type": "string", "enum": paths},
+                        "merchant_id": {"type": "string", "enum": merchant_ids},
+                        "category_id": {"type": "string", "enum": category_ids},
                         "confidence": {"type": "number"},
                         "reason": {"type": "string"},
                     },
-                    "required": ["merchant_key", "category_path", "confidence", "reason"],
+                    "required": ["merchant_id", "category_id", "confidence", "reason"],
                     "additionalProperties": False,
                 },
             }
@@ -96,9 +100,13 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
 
     settings = get_settings()
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key, max_retries=2, timeout=60)
+    merchant_ids = {f"m{i}": a.merchant_key for i, a in enumerate(asked, start=1)}
+    category_ids = {f"c{i}": path for i, path in enumerate(categories, start=1)}
     payload = {
-        "categories": categories,
-        "merchants": [{"merchant_key": a.merchant_key, "lines": a.lines} for a in asked],
+        "categories": [{"id": cid, "path": path} for cid, path in category_ids.items()],
+        "merchants": [
+            {"id": mid, "lines": a.lines} for mid, a in zip(merchant_ids, asked, strict=True)
+        ],
     }
     try:
         response = client.messages.create(
@@ -110,7 +118,7 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
                 "effort": EFFORT,
                 "format": {
                     "type": "json_schema",
-                    "schema": _schema(categories, [a.merchant_key for a in asked]),
+                    "schema": _schema(list(category_ids), list(merchant_ids)),
                 },
             },
         )
@@ -127,7 +135,7 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
         raise SuggestError("Claude declined to answer this request.")
     text = "".join(b.text for b in response.content if b.type == "text")
     try:
-        return parse_answer(text)
+        return parse_answer(text, merchant_ids, category_ids)
     except ValueError as exc:
         # Merchant descriptions and category names only; no keys or account data.
         log.warning(
@@ -145,10 +153,17 @@ def _fold(path: str) -> str:
     return "".join(path.split()).casefold()
 
 
-def parse_answer(text: str) -> list[Answer]:
+def parse_answer(
+    text: str,
+    merchant_ids: dict[str, str] | None = None,
+    category_ids: dict[str, str] | None = None,
+) -> list[Answer]:
     """The suggestions in Claude's reply. Tolerant of a code fence or words around the JSON, of a
     bare list instead of {"suggestions": [...]}, and of "merchant"/"category" for the field names;
-    an item without a merchant or category is skipped. ValueError when nothing can be read."""
+    an item without a merchant or category is skipped. Ids ("m1", "c3") are mapped back to the
+    merchant and category they stand for. ValueError when nothing can be read."""
+    merchant_ids = merchant_ids or {}
+    category_ids = category_ids or {}
     start = min((i for i in (text.find("{"), text.find("[")) if i >= 0), default=-1)
     if start < 0:
         raise ValueError("no JSON in the reply")
@@ -166,8 +181,10 @@ def parse_answer(text: str) -> list[Answer]:
     for item in items:
         if not isinstance(item, dict):
             continue
-        key = item.get("merchant_key") or item.get("merchant")
-        path = item.get("category_path") or item.get("category")
+        key = item.get("merchant_id") or item.get("merchant_key") or item.get("merchant")
+        path = item.get("category_id") or item.get("category_path") or item.get("category")
+        key = merchant_ids.get(str(key), key)
+        path = category_ids.get(str(path), path)
         if not key or not path:
             continue
         try:
