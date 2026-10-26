@@ -209,6 +209,8 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     from app.main import create_app
     from tests.fixtures import statements as s
 
+    # Start from empty statement tables: an earlier test loaded the same synthetic statement.
+    _alembic("downgrade", "0004")
     _alembic("upgrade", "head")
     with get_engine().begin() as conn:
         conn.execute(text("DELETE FROM [core].[transaction] WHERE [source] = 'statement'"))
@@ -218,6 +220,7 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     files = [("files", ("co9.pdf", s.capitalone_full(), "application/pdf"))]
     st = client.post("/api/statements", files=files).json()[0]["statement"]
     b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b.get("tieout_ok") is True, b
     client.post(f"/api/batches/{b['batch_id']}/approve")
 
     review = client.get("/api/review", params={"month": "2026-10-01"}).json()
