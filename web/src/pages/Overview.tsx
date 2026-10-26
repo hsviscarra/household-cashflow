@@ -6,18 +6,40 @@ import {
   fetchCategoryMonths,
   fetchMonthly,
   fetchPlan,
+  type CashView,
   type CategoryMonth,
   type MonthlyCashflow,
 } from "../api";
 import { InOutColumns, Legend, TrendLine, type ColumnDatum } from "../components/charts";
 import { money, monthLong, monthShort, num, parts, pct, signed } from "../money";
 
-const outflows = (m: MonthlyCashflow) => num(m.expenses) + num(m.savings) + num(m.debt_payments);
+const outflows = (m: MonthlyCashflow) =>
+  num(m.expenses) + num(m.card_payments) + num(m.savings) + num(m.debt_payments);
+
+const VIEWS: { id: CashView; label: string; help: string }[] = [
+  {
+    id: "spending",
+    label: "Spending view",
+    help: "Card purchases count when you make them; paying the card is a transfer and doesn’t count again.",
+  },
+  {
+    id: "cash",
+    label: "Cash view",
+    help: "Only money in and out of the bank accounts: a card counts when you pay it, as a card payment.",
+  },
+];
 
 export default function Overview() {
-  const monthly = useQuery({ queryKey: ["cashflow", "monthly"], queryFn: fetchMonthly });
-  const plan = useQuery({ queryKey: ["cashflow", "plan"], queryFn: fetchPlan });
   const [params, setParams] = useSearchParams();
+  const view: CashView = params.get("view") === "cash" ? "cash" : "spending";
+  const monthly = useQuery({ queryKey: ["cashflow", "monthly", view], queryFn: () => fetchMonthly(view) });
+  const plan = useQuery({ queryKey: ["cashflow", "plan"], queryFn: fetchPlan });
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(params);
+    if (value === null) next.delete(key);
+    else next.set(key, value);
+    setParams(next);
+  };
 
   const years = useMemo(
     () => [...new Set((monthly.data ?? []).map((m) => parts(m.cash_month).year))].sort(),
@@ -43,6 +65,7 @@ export default function Overview() {
   const expenses = inYear.reduce((s, m) => s + num(m.expenses), 0);
   const saved = inYear.reduce((s, m) => s + num(m.savings), 0);
   const debt = inYear.reduce((s, m) => s + num(m.debt_payments), 0);
+  const cards = inYear.reduce((s, m) => s + num(m.card_payments), 0);
   // Plan months only where no actual month exists yet (statements replace the plan).
   const actualMonths = new Set(inYear.map((m) => m.cash_month));
   const planInYear = (plan.data ?? []).filter(
@@ -98,13 +121,27 @@ export default function Overview() {
         statements. A month is complete once every account’s statement for it is loaded.
       </p>
 
-      <div role="group" aria-label="Year" className="mt-6 flex gap-2 overflow-x-auto pb-1">
+      <div role="group" aria-label="View" className="mt-6 flex flex-wrap gap-2">
+        {VIEWS.map((v) => (
+          <button
+            key={v.id}
+            aria-pressed={v.id === view}
+            className={`btn ${v.id === view ? "bg-ink text-ground" : "btn-secondary"}`}
+            onClick={() => setParam("view", v.id === "spending" ? null : v.id)}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-sm text-muted">{VIEWS.find((v) => v.id === view)?.help}</p>
+
+      <div role="group" aria-label="Year" className="mt-4 flex gap-2 overflow-x-auto pb-1">
         {years.map((y) => (
           <button
             key={y}
             aria-pressed={y === year}
             className={`btn ${y === year ? "bg-ink text-ground" : "btn-secondary"}`}
-            onClick={() => setParams({ year: String(y) })}
+            onClick={() => setParam("year", String(y))}
           >
             {y}
           </button>
@@ -118,8 +155,14 @@ export default function Overview() {
         <Tile label="Share kept" value={pct(income ? net / income : null)} />
       </dl>
       <p className="mt-3 text-sm text-muted">
-        Money out = spending <span className="num">{money(expenses)}</span> + savings and investing{" "}
-        <span className="num">{money(saved)}</span> + card and loan payments{" "}
+        Money out = spending <span className="num">{money(expenses)}</span>
+        {view === "cash" && (
+          <>
+            {" "}
+            + card payments <span className="num">{money(cards)}</span>
+          </>
+        )}{" "}
+        + savings and investing <span className="num">{money(saved)}</span> + loan payments{" "}
         <span className="num">{money(debt)}</span>.
       </p>
 

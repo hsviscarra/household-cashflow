@@ -5,6 +5,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   fetchCategories,
   fetchReview,
+  fetchUnmatchedTransfers,
+  matchTransfers,
   resolveMerchant,
   suggestCategories,
   type MatchType,
@@ -136,6 +138,78 @@ export default function ReviewPage() {
           )}
         </>
       )}
+
+      <UnmatchedTransfers month={month} monthDay={monthDay} notify={notify} />
+    </section>
+  );
+}
+
+/** Transfers whose other side is not loaded: usually the other account's statement is missing. */
+function UnmatchedTransfers({
+  month,
+  monthDay,
+  notify,
+}: {
+  month: string | null;
+  monthDay: string | null;
+  notify: Notify;
+}) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["transfers", "unmatched", month],
+    queryFn: () => fetchUnmatchedTransfers(monthDay),
+  });
+  const again = useMutation({
+    mutationFn: matchTransfers,
+    onSuccess: (r) => {
+      ["transfers", "transactions", "cashflow", "review"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k] }),
+      );
+      notify(
+        r.pairs
+          ? `Matched ${r.pairs} ${r.pairs === 1 ? "transfer" : "transfers"} with their other side.`
+          : "No new pairs: the other side of these transfers is not loaded yet.",
+      );
+    },
+    onError: (e: Error) => notify(e.message, "bad"),
+  });
+  const rows = q.data ?? [];
+  if (!rows.length) return null;
+  return (
+    <section className="mt-10" aria-labelledby="unmatched-heading">
+      <h2 id="unmatched-heading" className="font-display text-2xl font-bold">
+        Transfers without their other side
+      </h2>
+      <p className="mt-2 text-muted">
+        These lines are transfers or card payments, but the matching line on the other account is not loaded.
+        Upload that account’s statement for the same dates, or change the category if it is not a transfer.
+      </p>
+      <ul
+        className="mt-4 divide-y divide-line rounded-2xl border border-line"
+        aria-label="Unmatched transfers"
+      >
+        {rows.map((t) => (
+          <li
+            key={t.transaction_id}
+            className="flex flex-wrap items-baseline justify-between gap-x-3 px-4 py-2"
+          >
+            <span>
+              <span className="num">{day(t.txn_date)}</span>
+              <span className="text-muted"> · {t.account_name ?? "—"}</span>
+              <span className="block font-mono text-xs text-muted">{t.description}</span>
+            </span>
+            <span className="num">{showAmount(t.amount)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button className="btn btn-secondary" disabled={again.isPending} onClick={() => again.mutate()}>
+          {again.isPending ? "Matching…" : "Match transfers again"}
+        </button>
+        <Link to="/import" className="btn btn-quiet">
+          Upload a statement
+        </Link>
+      </div>
     </section>
   );
 }

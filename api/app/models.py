@@ -34,8 +34,9 @@ TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest
 TXN_SOURCES = ("statement", "manual", "excel_history")
 TXN_STATUSES = ("pending", "confirmed", "matched")
 # How a line got its category (F9): a merchant rule, the statement section, Hernan's choice, an
-# accepted Claude suggestion, the Excel history, or a split of a parent line.
-CATEGORY_SOURCES = ("rule", "section", "manual", "suggestion", "excel", "split")
+# accepted Claude suggestion, the Excel history, a split of a parent line, or a matched transfer
+# (F10).
+CATEGORY_SOURCES = ("rule", "section", "manual", "suggestion", "excel", "split", "match")
 SNAPSHOT_KINDS = ("asset", "liability")
 STATEMENT_SOURCES = (
     "bofa",
@@ -218,6 +219,8 @@ class Transaction(Timestamps, Base):
         ForeignKey("core.merchant_rule.rule_id", ondelete="SET NULL")
     )
     category_source: Mapped[str | None] = mapped_column(Unicode(12))
+    # F10: both legs of a transfer between own accounts share this id (the smaller transaction id).
+    transfer_group_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
 
 class Budget(Timestamps, Base):
@@ -461,6 +464,22 @@ v_monthly_cashflow = Table(
     Column("cash_month", Date, primary_key=True),
     Column("income", Money),
     Column("expenses", Money),
+    Column("savings", Money),
+    Column("debt_payments", Money),
+    Column("net", Money),
+    Column("cumulative_net", Money),
+    Column("savings_rate", Numeric(9, 4)),
+    Column("transactions", Integer),
+    schema="mart",
+)
+
+v_monthly_cash = Table(
+    "v_monthly_cash",
+    mart,
+    Column("cash_month", Date, primary_key=True),
+    Column("income", Money),
+    Column("expenses", Money),
+    Column("card_payments", Money),
     Column("savings", Money),
     Column("debt_payments", Money),
     Column("net", Money),

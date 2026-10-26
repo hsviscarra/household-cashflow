@@ -36,6 +36,7 @@ from app.models import (
     Transaction,
 )
 from app.services import rules as rule_engine
+from app.services import transfers
 
 EC_PLACES = ("QUITO", "GUAYAQUIL", "ECUADOR", "RUMINAHUI", "CUMBAYA", "MEJIA", "PICHIN")
 SECTION_PATHS = {
@@ -396,6 +397,8 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
     except Exception:
         db.rollback()
         raise
+    # The other side of a card payment or own-account transfer may already be loaded (F10).
+    transfers.match(db, user)
     return len(new), len(staged) - len(new)
 
 

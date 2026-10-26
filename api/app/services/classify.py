@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.models import Account, Category, ChangeLog, MerchantRule, MerchantSuggestion, Transaction
 from app.services import rules as rule_engine
+from app.services import transfers
 
 # Lower than the seeded merchant rules (10-30): a rule Hernan saves while reviewing is specific.
 REVIEW_RULE_PRIORITY = 15
@@ -210,6 +211,8 @@ def resolve(
         also = apply_rule(db, rule, user, skip={t.transaction_id for t in rows})
     db.query(MerchantSuggestion).filter(MerchantSuggestion.merchant_key == key).delete()
     db.commit()
+    if category.kind == "transfer":
+        transfers.match(db, user)  # a line just called a transfer may have its other side loaded
     return Resolved(len(rows), rule.rule_id if rule else None, also)
 
 
@@ -247,6 +250,8 @@ def edit(
         if category is None:
             raise ClassifyError(f"Category {category_id} not found.", 404)
         set_category(db, row, category, "manual", "Edited", user)
+        if row.transfer_group_id is not None and category.kind != "transfer":
+            transfers.unlink(db, row.transfer_group_id, user)  # no longer a transfer
     if "notes" in fields:
         _log(db, row, "notes", row.notes, notes, "Edited", user)
         row.notes = notes
@@ -254,6 +259,8 @@ def edit(
         _log(db, row, "person", row.person, person, "Edited", user)
         row.person = person
     db.commit()
+    if row.type == "transfer" and row.transfer_group_id is None:
+        transfers.match(db, user)
 
 
 # ---------------- splits ----------------

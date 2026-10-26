@@ -81,11 +81,25 @@ const PLAN = [
   { month: "2026-07-01", income: "5600", outflows: "2700" },
 ];
 
+const CASH = [
+  { ...month("2026-01-01", "8800", "300", "900", "0", "3600", "3600"), card_payments: "4000" },
+  { ...month("2026-02-01", "9200", "250", "900", "0", "4050", "7650"), card_payments: "4000" },
+];
+let urls: string[];
+
 beforeEach(() => {
+  urls = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
-      const body = url.includes("/monthly") ? MONTHLY : url.includes("/plan") ? PLAN : CATS;
+      urls.push(url);
+      const body = url.includes("/monthly?view=cash")
+        ? CASH
+        : url.includes("/monthly")
+          ? MONTHLY
+          : url.includes("/plan")
+            ? PLAN
+            : CATS;
       return Promise.resolve(new Response(JSON.stringify(body)));
     }),
   );
@@ -111,6 +125,18 @@ describe("Overview", () => {
     expect(screen.getByText("Money in", { selector: "dt" }).nextSibling).toHaveTextContent("18,000.00");
     expect(screen.getByText("Share kept", { selector: "dt" }).nextSibling).toHaveTextContent("5%");
     expect(screen.getByRole("button", { name: "2026" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("toggles between the spending view and the cash view", async () => {
+    renderAt("/?year=2026");
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getByRole("button", { name: "Spending view" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText(/card payments/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cash view" }));
+    expect(await screen.findByText(/\+ card payments/)).toHaveTextContent("8,000.00");
+    expect(screen.getByRole("button", { name: "Cash view" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "2026" })).toHaveAttribute("aria-pressed", "true");
+    expect(urls).toContain("/api/cashflow/monthly?view=cash");
   });
 
   it("switches year and says when more went out than came in", async () => {
