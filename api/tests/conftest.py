@@ -16,7 +16,7 @@ from app.ingestion.storage import LocalStore, get_store
 from app.main import create_app
 from app.models import Account, Base, Category, MerchantRule
 from app.routers.health import database_check
-from app.seeds import load_v1, load_v2, load_v3
+from app.seeds import load_v1, load_v2, load_v3, load_v4
 
 SCHEMAS = {s: None for s in ("raw", "stg", "rej", "core", "mart", "audit")}
 VIEW_DIR = Path(__file__).resolve().parents[1] / "migrations" / "views"
@@ -42,6 +42,7 @@ def engine() -> Iterator[Engine]:
         load_v1(conn, Account.__table__, Category.__table__, MerchantRule.__table__)
         load_v2(conn, Category.__table__)
         load_v3(conn, Account.__table__, Category.__table__, MerchantRule.__table__)
+        load_v4(conn, Category.__table__, MerchantRule.__table__)
         for path in sorted(VIEW_DIR.glob("*.sql")):
             conn.execute(text(_sqlite_view(path.read_text(encoding="utf-8"))))
     yield eng  # type: ignore[misc]

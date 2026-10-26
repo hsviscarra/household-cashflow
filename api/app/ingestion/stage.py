@@ -50,11 +50,6 @@ SECTION_TYPES = {
     "fee": "fee_interest",
     "interest_earned": "income",
 }
-# One description, two bills: Produbanco prints every IESS payment as "PAGO IESS BANCA EN LINEA".
-# Hernan's decision (F7): split by amount until rules can carry amount ranges (F9).
-AMOUNT_SPLITS = {
-    "PAGO IESS": (Decimal(300), "Household Staff/Empleada IESS", "Housing/Mortgage BIESS"),
-}
 
 
 class StageError(Exception):
@@ -99,16 +94,11 @@ def _classify(
         cat = by_path.get(SECTION_PATHS[line.section])
         type_ = SECTION_TYPES[line.section]
         return _Classified(type_, cat.category_id if cat else None, None, None)
-    upper = rule_engine.normalize(line.description)
-    for prefix, (limit, below, above) in AMOUNT_SPLITS.items():
-        if upper.startswith(prefix) and line.amount < 0:
-            cat = by_path.get(below if -line.amount < limit else above)
-            return _Classified("expense", cat.category_id if cat else None, None, None)
 
     # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
     money_in = "refund" if account.kind == "credit_card" else "income"
     default = money_in if line.amount > 0 else "expense"
-    hit = rule_engine.first_match(rules, line.description)
+    hit = rule_engine.first_match(rules, line.description, line.amount)
     if hit is None:
         return _Classified(default, None, None, None)
     kind = by_id[hit.category_id].kind
@@ -262,10 +252,7 @@ def parse_statement(
     db.flush()
 
     rows = list(db.scalars(select(MerchantRule)))
-    rules = [
-        rule_engine.Rule(r.rule_id, r.pattern, r.match_type, r.category_id, r.priority, r.is_active)
-        for r in rows
-    ]
+    rules = [rule_engine.Rule.of(r) for r in rows]
     patterns = {r.rule_id: r.pattern for r in rows}
     by_path, by_id = _paths(db)
 
@@ -373,6 +360,10 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
                     merchant=s.merchant,
                     type=s.type,
                     category_id=s.category_id,
+                    rule_id=s.rule_id,
+                    category_source=(
+                        "rule" if s.rule_id else ("section" if s.category_id else None)
+                    ),
                     person=s.person,
                     country=s.country,
                     pay_reference=s.pay_reference,

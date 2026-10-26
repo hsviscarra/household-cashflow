@@ -36,10 +36,21 @@ if [ -z "$SQL_PASSWORD" ]; then
   NEW_PASSWORD=1
 fi
 
+# Claude API key for category suggestions (optional). A re-run keeps the one the app already has,
+# because the template replaces the app's secrets with the ones it lists.
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  EXISTING_APP=$(az containerapp list -g "$RG" --query "[0].name" -o tsv 2>/dev/null || true)
+  if [ -n "$EXISTING_APP" ]; then
+    ANTHROPIC_API_KEY=$(az containerapp secret show -g "$RG" -n "$EXISTING_APP" \
+      --secret-name anthropic-api-key --query value -o tsv 2>/dev/null || true)
+  fi
+fi
+
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
     -p prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
-       ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" "$@" \
+       ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" \
+       anthropicApiKey="${ANTHROPIC_API_KEY:-}" "$@" \
     --query properties.outputs -o json
 }
 

@@ -6,6 +6,7 @@ import { PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
 import ImportPage from "./pages/Import";
 import Overview from "./pages/Overview";
+import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
 import TransactionsPage from "./pages/Transactions";
 
@@ -47,6 +48,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/import": <ImportPage />,
   "/settings": <Settings />,
   "/transactions": <TransactionsPage />,
+  "/review": <ReviewPage />,
 };
 
 export default function App() {

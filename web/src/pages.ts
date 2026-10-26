@@ -21,6 +21,12 @@ export const PAGES: PageDef[] = [
     summary: "Every loaded line, searchable and editable.",
   },
   {
+    path: "/review",
+    label: "Review",
+    feature: "F9",
+    summary: "Merchants no rule knows: choose a category once, with Claude's suggestion.",
+  },
+  {
     path: "/recurring",
     label: "Recurring",
     feature: "F11",

@@ -40,7 +40,7 @@ def test_migrations_upgrade_and_downgrade() -> None:
 
 
 def test_reference_tables_seeded() -> None:
-    from app.seeds import v1, v2, v3
+    from app.seeds import v1, v2, v3, v4
 
     _alembic("upgrade", "head")
     with get_engine().connect() as conn:
@@ -55,7 +55,7 @@ def test_reference_tables_seeded() -> None:
     assert counts == {
         "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS),
         "category": groups + children,
-        "merchant_rule": len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES),
+        "merchant_rule": len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES) + len(v4.MERCHANT_RULES),
     }
 
 
@@ -195,4 +195,59 @@ def test_pacificard_source_and_guarded_downgrade(tmp_path: object) -> None:
         )
         conn.execute(text("DELETE FROM [raw].[statement_file] WHERE [source] = 'pacificard'"))
     _alembic("downgrade", "0008")
+    _alembic("upgrade", "head")
+
+
+def test_classification_on_sql_server(tmp_path: object) -> None:
+    """F9 on SQL Server: resolve with a rule, split (views count the parts), guarded downgrade."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("upgrade", "head")
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM [core].[transaction] WHERE [source] = 'statement'"))
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("co9.pdf", s.capitalone_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    client.post(f"/api/batches/{b['batch_id']}/approve")
+
+    review = client.get("/api/review", params={"month": "2026-10-01"}).json()
+    group = next(g for g in review["groups"] if g["merchant_key"].startswith("NEW MERCHANT"))
+    cats = client.get("/api/categories").json()
+    travel = next(c["category_id"] for c in cats if c["name"] == "Travel")
+    done = client.post(
+        "/api/review/resolve",
+        json={"merchant_key": group["merchant_key"], "category_id": travel, "save_rule": True},
+    ).json()
+    assert done["categorized"] == 1 and done["rule_id"]
+
+    txns = client.get("/api/transactions", params={"month": "2026-09-01"}).json()
+    uber = next(t for t in txns if t["amount"] == "-12.5000")
+    groceries = next(c for c in cats if c["name"] == "Groceries")["children"][0]["category_id"]
+    url = f"/api/transactions/{uber['transaction_id']}/split"
+    before = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    parts = [
+        {"amount": "-10.00", "category_id": groceries},
+        {"amount": "-2.50", "category_id": travel},
+    ]
+    assert len(client.put(url, json={"parts": parts}).json()) == 2
+    after = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    # Same total, one more line counted (two parts replace one line).
+    assert after["2026-09-01"]["expenses"] == before["2026-09-01"]["expenses"]
+    assert after["2026-09-01"]["transactions"] == before["2026-09-01"]["transactions"] + 1
+    assert Decimal(after["2026-09-01"]["expenses"]) > 0
+
+    with pytest.raises(subprocess.CalledProcessError):
+        _alembic("downgrade", "0009")
+    assert client.delete(url).status_code == 204
+    _alembic("downgrade", "0009")
     _alembic("upgrade", "head")

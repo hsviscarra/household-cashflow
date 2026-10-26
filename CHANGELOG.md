@@ -5,6 +5,24 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.10.0] — F9 Classification
+
+### F9 — Unknown merchants of a month resolved in one screen
+- Review page: uncategorized lines grouped by merchant (reference numbers and confirmation codes
+  ignored), biggest amounts first; choose a category once, optionally save a rule (pattern, match,
+  amount range) that is applied right away to every other uncategorized line it matches.
+- Claude suggestions with confidence (ADR-006): `claude-haiku-5-5`, JSON-schema answers limited to
+  Hernan's categories, only description/amount/date/bank sent, nothing applied until accepted.
+  `ANTHROPIC_API_KEY` passed by Compose, Bicep and the bootstrap.
+- Transactions page: edit a line's category and note (with Undo), split a line across categories
+  (the parts must add up; the views count the parts instead of the line), each line's history.
+- Merchant rules can carry an amount range; the Produbanco IESS split (empleada IESS vs BIESS)
+  is now two editable rules instead of code (seed v4). The rule tester takes an amount.
+- `audit.change_log` records every edit with old and new values and who made it; lines record
+  where their category came from (rule, statement section, chosen, suggestion, workbook, split).
+- Migration 0010 (rule ranges, splits, category source, change log, suggestions; views skip a
+  split line; downgrade refuses while splits exist). Deleting a rule keeps the categories it gave.
+
 ## [0.9.2] — OCR fallback for every bank
 
 - A statement PDF without text (a scan) is recognized and read with OCR for any bank, then goes to

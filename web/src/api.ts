@@ -90,8 +90,11 @@ export type Rule = {
   category_path: string;
   priority: number;
   is_active: boolean;
+  amount_min: Money | null; // on the absolute amount; null = no limit
+  amount_max: Money | null;
 };
-export type RuleInput = Pick<Rule, "pattern" | "match_type" | "category_id" | "priority">;
+export type RuleInput = Pick<Rule, "pattern" | "match_type" | "category_id" | "priority"> &
+  Partial<Pick<Rule, "amount_min" | "amount_max">>;
 
 export const fetchAccounts = () => send<Account[]>("GET", "/api/accounts");
 export const createAccount = (a: AccountInput) => send<Account>("POST", "/api/accounts", a);
@@ -115,10 +118,11 @@ export const createRule = (r: RuleInput) => send<Rule>("POST", "/api/merchant-ru
 export const updateRule = (id: number, r: Partial<RuleInput & { is_active: boolean }>) =>
   send<Rule>("PATCH", `/api/merchant-rules/${id}`, r);
 export const deleteRule = (id: number) => send<void>("DELETE", `/api/merchant-rules/${id}`);
-export const testRule = (description: string) =>
+export const testRule = (a: { description: string; amount?: string }) =>
   send<{ description: string; rule: Rule | null }>(
     "GET",
-    `/api/merchant-rules/test?description=${encodeURIComponent(description)}`,
+    `/api/merchant-rules/test?description=${encodeURIComponent(a.description)}` +
+      (a.amount ? `&amount=${encodeURIComponent(a.amount)}` : ""),
   );
 
 // ---------- history and cash flow (F2) ----------
@@ -325,6 +329,10 @@ export type Txn = {
   country: string | null;
   source: string;
   statement_file_id: number | null;
+  notes: string | null;
+  category_source: "rule" | "section" | "manual" | "suggestion" | "excel" | "split" | null;
+  parent_transaction_id: number | null;
+  parts: number; // > 0: split into this many parts, which count instead of this line
 };
 
 export const readStatement = (id: number) => send<Batch>("POST", `/api/statements/${id}/read`);
@@ -336,3 +344,71 @@ export const approveBatch = (id: number) =>
   );
 export const rejectBatch = (id: number) => send<Batch>("POST", `/api/batches/${id}/reject`);
 export const fetchTransactions = (month: string) => send<Txn[]>("GET", `/api/transactions?month=${month}`);
+
+// ---------- classification (F9) ----------
+export type Suggestion = {
+  category_id: number;
+  category_path: string;
+  confidence: string; // 0 to 1
+  reason: string;
+  model: string;
+};
+export type ReviewLine = {
+  transaction_id: number;
+  txn_date: string;
+  amount: Money;
+  description: string;
+  account_name: string | null;
+  person: string | null;
+};
+export type ReviewGroup = {
+  merchant_key: string;
+  lines: ReviewLine[];
+  total: Money;
+  suggestion: Suggestion | null;
+};
+export type Review = {
+  month: string | null;
+  groups: ReviewGroup[];
+  uncategorized_lines: number;
+  suggestions_available: boolean;
+};
+export type ResolveInput = {
+  merchant_key: string;
+  category_id: number;
+  transaction_ids?: number[] | null;
+  save_rule: boolean;
+  pattern?: string | null;
+  match_type?: MatchType;
+  amount_min?: Money | null;
+  amount_max?: Money | null;
+  from_suggestion?: boolean;
+};
+export type Resolved = { categorized: number; rule_id: number | null; also_by_rule: number };
+export type Change = {
+  change_id: number;
+  column_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  reason: string;
+  changed_by: string;
+  changed_at: string;
+};
+export type PartInput = { amount: Money; category_id: number; notes?: string | null };
+
+const monthQuery = (month?: string | null) => (month ? `?month=${month}` : "");
+export const fetchReview = (month?: string | null) => send<Review>("GET", `/api/review${monthQuery(month)}`);
+export const resolveMerchant = (body: ResolveInput) => send<Resolved>("POST", "/api/review/resolve", body);
+export const suggestCategories = (month?: string | null) =>
+  send<{ asked: number; suggested: number; model: string }>(
+    "POST",
+    `/api/review/suggest${monthQuery(month)}`,
+  );
+export const updateTransaction = (
+  id: number,
+  body: { category_id?: number; notes?: string | null; person?: Owner | null },
+) => send<Txn>("PATCH", `/api/transactions/${id}`, body);
+export const splitTransaction = (id: number, parts: PartInput[]) =>
+  send<Txn[]>("PUT", `/api/transactions/${id}/split`, { parts });
+export const removeSplit = (id: number) => send<void>("DELETE", `/api/transactions/${id}/split`);
+export const fetchHistory = (id: number) => send<Change[]>("GET", `/api/transactions/${id}/history`);

@@ -1,3 +1,5 @@
+import type { CategoryGroup } from "./api";
+
 // Category colors from the Mercado design system (docs/design-system.md).
 // Charts and category chips read these CSS variables so dark mode follows automatically.
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -17,4 +19,12 @@ export const FALLBACK_CATEGORY_COLOR = "var(--color-muted)";
 
 export function categoryColor(name: string): string {
   return CATEGORY_COLORS[name] ?? FALLBACK_CATEGORY_COLOR;
+}
+
+/** Every group and subcategory as a picker option, labelled "Group / Sub" like the API paths. */
+export function categoryOptions(groups: CategoryGroup[]): { id: number; label: string }[] {
+  return groups.flatMap((g) => [
+    { id: g.category_id, label: g.name },
+    ...g.children.map((c) => ({ id: c.category_id, label: `${g.name} / ${c.name}` })),
+  ]);
 }
