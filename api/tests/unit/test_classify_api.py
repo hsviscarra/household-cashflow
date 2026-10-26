@@ -331,7 +331,7 @@ def test_suggestions_are_stored_shown_and_accepted(
         return [a for a in ANSWERS if a.merchant_key in keys]
 
     ANSWERS = [
-        suggest.Answer("DEBITO VISA", "Groceries / Supermarket", Decimal("0.62"), "card debit"),
+        suggest.Answer("DEBITO VISA", "groceries/Supermarket", Decimal("0.62"), "card debit"),
         suggest.Answer(
             "TRANSFERENCIA CTAS TERCEROS BCA ENL", "Office Rent", Decimal("1.7"), "rent"
         ),
@@ -469,3 +469,35 @@ def test_call_claude_reads_the_structured_answer(
     monkeypatch.setattr(anthropic, "Anthropic", FailingClient)
     with pytest.raises(suggest.SuggestError, match="could not be reached"):
         suggest.call_claude([suggest.Asked("A", [])], ["Pets"])
+
+
+ITEM = '{"merchant_key": "A", "category_path": "Pets", "confidence": 0.8, "reason": "vet"}'
+LOOSE = '{"merchant": "A", "category": "Pets", "confidence": "0.8", "reason": "vet"}'
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"suggestions": [' + ITEM + "]}",
+        '```json\n{"suggestions": [' + ITEM + "]}\n```",
+        "Here you go: [" + LOOSE + "]",
+        '{"results": [' + ITEM + ", 7]}",
+    ],
+)
+def test_parse_answer_tolerates_wrapping(text: str) -> None:
+    assert suggest.parse_answer(text) == [suggest.Answer("A", "Pets", Decimal("0.8"), "vet")]
+
+
+def test_parse_answer_skips_bad_items_and_reports_nothing_usable() -> None:
+    mixed = (
+        '[{"merchant_key": "A", "category_path": "Pets", "confidence": "x"}, {"merchant_key": "B"}]'
+    )
+    assert suggest.parse_answer(mixed) == [suggest.Answer("A", "Pets", Decimal(0), "")]
+    assert suggest.parse_answer('{"suggestions": []}') == []
+    for bad, why in [
+        ("no json here", "no JSON"),
+        ('{"suggestions": 3}', "no list"),
+        ('[{"merchant_key": "B"}]', "no usable item"),
+    ]:
+        with pytest.raises(ValueError, match=why):
+            suggest.parse_answer(bad)
