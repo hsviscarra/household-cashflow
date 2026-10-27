@@ -429,3 +429,43 @@ def test_spending_on_sql_server(tmp_path: object) -> None:
 
     _alembic("downgrade", "0012")
     _alembic("upgrade", "head")
+
+
+def test_subscriptions_and_debt_on_sql_server(tmp_path: object) -> None:
+    """F14 on SQL Server: Capital One interest year to date from mart.v_debt_cost, its balance,
+    the subscriptions endpoint; 0014 down and up."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    # Statement lines from earlier tests survive the downgrade (core.transaction is older than
+    # 0005); clear them so this test's interest is its own.
+    with get_engine().begin() as conn:
+        conn.execute(
+            text("DELETE FROM [core].[transaction] WHERE [parent_transaction_id] IS NOT NULL")
+        )
+        conn.execute(text("DELETE FROM [core].[transaction] WHERE [source] <> 'excel_history'"))
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("co14.pdf", s.capitalone_full(interest="12.34"), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b.get("tieout_ok") is True, b
+    client.post(f"/api/batches/{b['batch_id']}/approve")
+    debt = client.get("/api/debt", params={"year": 2026, "today": "2026-10-27"}).json()
+    co = next(a for a in debt["accounts"] if a["name"] == "Capital One Venture")
+    assert Decimal(co["interest"]) == Decimal("12.34")
+    assert co["balance_date"] == "2026-10-03"
+    subs = client.get("/api/subscriptions", params={"today": "2026-10-27"})
+    assert subs.status_code == 200, subs.text
+
+    _alembic("downgrade", "0013")
+    _alembic("upgrade", "head")

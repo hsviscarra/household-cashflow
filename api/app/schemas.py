@@ -744,5 +744,58 @@ class SpendLineOut(BaseModel):
     source: str
 
 
+# ---------------- F14: subscriptions and cost of debt ----------------
+class ChargeOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    amount: Decimal
+    description: str
+    account_name: str | None
+
+
+class SubscriptionOut(BaseModel):
+    merchant: str
+    cadence: Literal["weekly", "monthly", "quarterly", "yearly", "possible"]
+    typical: Decimal
+    monthly_cost: Decimal
+    yearly_cost: Decimal
+    category_path: str | None
+    accounts: list[str]
+    charges: list[ChargeOut]
+    last: date
+    next_expected: date | None
+    active: bool
+
+
+class SubscriptionsOut(BaseModel):
+    monthly_cost: Decimal  # active subscriptions with a known cadence
+    weekly_monthly_cost: Decimal  # the weekly ones (app billing)
+    subscriptions: list[SubscriptionOut]
+
+
+class DebtAccountOut(BaseModel):
+    account_id: int | None
+    name: str
+    kind: str | None
+    interest: Decimal
+    fees: Decimal
+    total: Decimal
+    last_12: Decimal
+    by_category: dict[str, Decimal]
+    by_month: dict[date, Decimal]
+    balance: Decimal | None
+    balance_date: date | None
+
+
+class DebtOut(BaseModel):
+    year: int
+    years: list[int]
+    through: date
+    months: list[date]
+    interest: Decimal
+    fees: Decimal
+    accounts: list[DebtAccountOut]
+
+
 TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()

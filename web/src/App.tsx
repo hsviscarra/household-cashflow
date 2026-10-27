@@ -4,12 +4,14 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { fetchHealth, fetchMe } from "./api";
 import { PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
+import DebtPage from "./pages/Debt";
 import ImportPage from "./pages/Import";
 import Overview from "./pages/Overview";
 import RecurringPage from "./pages/Recurring";
 import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
 import SpendingPage from "./pages/Spending";
+import SubscriptionsPage from "./pages/Subscriptions";
 import StatusPage from "./pages/Status";
 import TransactionsPage from "./pages/Transactions";
 
@@ -55,6 +57,8 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/recurring": <RecurringPage />,
   "/status": <StatusPage />,
   "/spending": <SpendingPage />,
+  "/subscriptions": <SubscriptionsPage />,
+  "/debt": <DebtPage />,
 };
 
 export default function App() {

@@ -113,7 +113,7 @@ class _Stmt:
     closing: Decimal | None
 
 
-def _approved_statements(db: Session) -> list[_Stmt]:
+def approved_statements(db: Session) -> list[_Stmt]:
     approved = set(
         db.scalars(select(ImportBatch.statement_file_id).where(ImportBatch.status == "approved"))
     )
@@ -182,7 +182,7 @@ def month_status(db: Session, today: date | None = None) -> Status:
     excel = sorted(recurring.excel_months(db))
     excel_through = excel[-1] if excel else None
     accounts = list(db.scalars(select(Account).where(Account.is_active).order_by(Account.name)))
-    stmts = _approved_statements(db)
+    stmts = approved_statements(db)
     by_account: dict[int, list[_Stmt]] = defaultdict(list)
     for s in stmts:
         by_account[s.account_id].append(s)

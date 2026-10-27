@@ -605,3 +605,17 @@ v_spending_line = Table(
     Column("account_name", Unicode(100)),
     schema="mart",
 )
+
+v_debt_cost = Table(
+    "v_debt_cost",
+    mart,
+    Column("cash_month", Date, primary_key=True),
+    Column("account_id", Integer, primary_key=True),
+    Column("account_name", Unicode(100)),
+    Column("account_kind", Unicode(20)),
+    Column("kind", Unicode(8), primary_key=True),
+    Column("category_name", Unicode(100), primary_key=True),
+    Column("amount", Money),
+    Column("transactions", Integer),
+    schema="mart",
+)
