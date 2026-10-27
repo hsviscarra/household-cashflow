@@ -19,7 +19,7 @@ from app.schemas import (
     MonthlyCashflowOut,
     PlanMonthOut,
 )
-from app.services import history_load, recurring
+from app.services import history_load, networth, recurring
 from app.services.excel_history import ParsedWorkbook, parse_workbook
 
 router = APIRouter(prefix="/api", tags=["history"])
@@ -56,6 +56,8 @@ async def load_history(file: UploadFile, request: Request, db: DB) -> HistoryLoa
         raise HTTPException(exc.status, str(exc)) from exc
     # A reload replaces the history lines: link them to recurring entries again (F11).
     recurring.match_all(db, user)
+    # The reload replaces the workbook's balances: point them at their holdings again (F14).
+    networth.link_snapshots(db)
     return out
 
 

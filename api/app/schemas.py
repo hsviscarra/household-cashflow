@@ -5,7 +5,7 @@ Money is Decimal and serializes as a JSON string, so no precision is lost on the
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -795,6 +795,115 @@ class DebtOut(BaseModel):
     interest: Decimal
     fees: Decimal
     accounts: list[DebtAccountOut]
+
+
+# ---------------- F14: balance sheet ----------------
+HoldingClass = Literal[
+    "property",
+    "vehicle",
+    "investment",
+    "cash",
+    "purchase",
+    "loan",
+    "personal_loan",
+    "card",
+    "other",
+]
+Positive = Annotated[Decimal, Field(ge=0, max_digits=15, decimal_places=4)]
+
+
+class HoldingIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    holding_class: HoldingClass
+    side: Literal["asset", "liability"] | None = None
+    value: Positive | None = None
+    as_of: date | None = None
+    target_amount: Positive | None = None
+    installment: Positive | None = None
+    full_price: Positive | None = None
+    category_id: int | None = None
+    recurring_template_id: int | None = None
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class HoldingPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    holding_class: HoldingClass | None = None
+    side: Literal["asset", "liability"] | None = None
+    target_amount: Positive | None = None
+    installment: Positive | None = None
+    full_price: Positive | None = None
+    category_id: int | None = None
+    recurring_template_id: int | None = None
+    is_active: bool | None = None
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class ValueIn(BaseModel):
+    as_of: date
+    amount: Positive
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class ValueOut(BaseModel):
+    snapshot_id: int | None
+    as_of: date
+    amount: Decimal
+    source: str
+    notes: str | None
+
+
+class PurchaseOut(BaseModel):
+    target: Decimal
+    paid: Decimal
+    remaining: Decimal
+    installment: Decimal | None
+    installments_left: int | None
+    full_price: Decimal | None
+    at_delivery: Decimal | None
+    lines: Decimal
+
+
+class LoanOut(BaseModel):
+    monthly_payment: Decimal | None
+    paid_this_year: Decimal
+    payments_this_year: int
+
+
+class SheetItemOut(BaseModel):
+    key: str
+    name: str
+    side: Literal["asset", "liability"]
+    holding_class: HoldingClass
+    value: Decimal | None
+    as_of: date | None
+    source: str | None
+    holding_id: int | None
+    account_id: int | None
+    is_active: bool
+    notes: str | None
+    history: list[ValueOut]
+    purchase: PurchaseOut | None
+    loan: LoanOut | None
+    category_id: int | None
+    recurring_template_id: int | None
+
+
+class SheetPointOut(BaseModel):
+    month: date
+    assets: Decimal
+    liabilities: Decimal
+    net: Decimal
+
+
+class BalanceSheetOut(BaseModel):
+    as_of: date
+    assets: Decimal
+    liabilities: Decimal
+    net_worth: Decimal
+    commitments: Decimal
+    items: list[SheetItemOut]
+    series: list[SheetPointOut]
 
 
 TemplateOut.model_rebuild()

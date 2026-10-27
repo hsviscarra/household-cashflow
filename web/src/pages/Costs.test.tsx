@@ -101,6 +101,15 @@ const DEBT: Debt = {
   ],
 };
 
+const EMPTY_SHEET = {
+  as_of: "2026-10-27",
+  assets: "0",
+  liabilities: "0",
+  net_worth: "0",
+  commitments: "0",
+  items: [],
+  series: [{ month: "2026-10-01", assets: "0", liabilities: "0", net: "0" }],
+};
 let urls: string[];
 function renderWith(page: ReactElement, body: unknown, path = "/", status = 200) {
   urls = [];
@@ -108,6 +117,7 @@ function renderWith(page: ReactElement, body: unknown, path = "/", status = 200)
     "fetch",
     vi.fn((url: string) => {
       urls.push(url);
+      if (url === "/api/networth") return Promise.resolve(new Response(JSON.stringify(EMPTY_SHEET)));
       return Promise.resolve(new Response(JSON.stringify(body), { status }));
     }),
   );
@@ -154,14 +164,14 @@ describe("Subscriptions page", () => {
 
 describe("Debt page", () => {
   it("states the year's interest and fees and breaks them down per account", async () => {
-    expect(monthTotals(DEBT).at(-1)).toBe(42.50);
+    expect(monthTotals(DEBT).at(-1)).toBe(42.5);
     expect(debtHeadline({ ...DEBT, interest: "0", fees: "0", through: "2019-12-01", year: 2019 })).toBe(
       "2019: no interest or fees",
     );
     renderWith(<DebtPage />, DEBT, "/debt");
     expect(
       await screen.findByRole("heading", {
-        level: 1,
+        level: 2,
         name: /2026( so far)?: 52.50 in interest and 4.00 in fees/,
       }),
     ).toBeInTheDocument();

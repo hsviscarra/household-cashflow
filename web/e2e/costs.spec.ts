@@ -26,9 +26,9 @@ test("debt and subscriptions: Capital One's interest this year, the subscription
   }
 
   await page.goto("/debt?year=2026");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    /^2026( so far)?: [\d,]+\.\d{2} in interest/,
-  );
+  await expect(
+    page.getByRole("heading", { level: 2, name: /^2026( so far)?: [\d,]+\.\d{2} in interest/ }),
+  ).toBeVisible();
   const table = page.getByRole("table", { name: "Interest and fees by account, 2026" });
   const co = table.getByRole("row", { name: /Capital One Venture/ });
   await expect(co).toContainText("10.00");
