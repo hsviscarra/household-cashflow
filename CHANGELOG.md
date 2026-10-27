@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.15.0] — F14 Subscriptions and cost of debt
+
+### F14 — Capital One YTD interest shown; Pichincha app subscriptions listed
+- Subscriptions page (ADR-011): charges that repeat weekly, monthly, quarterly or yearly with a
+  similar amount, found in the statements (weekly app billing included). Each shows its card,
+  typical amount, monthly and yearly cost, last and next charge, and Active or Stopped?; one-off
+  charges in a subscription category are listed as possible.
+- Debt & Net Worth page: interest and fees per account for the year and the last 12 months, by
+  kind and by month, each card's latest statement balance, and a chart with its table.
+- `mart.v_debt_cost` (migration 0014). `GET /api/subscriptions`, `GET /api/debt`.
+
 ## [0.14.0] — F13 Spending analytics
 
 ### F13 — One month's spending analysis fully in the app

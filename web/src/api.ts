@@ -637,3 +637,55 @@ export const fetchSpendLines = (month: string, f: SpendFilter) => {
   Object.entries(f).forEach(([k, v]) => v !== undefined && q.set(k, String(v)));
   return send<SpendLine[]>("GET", `/api/spending/lines?${q.toString()}`);
 };
+
+// ---------------- F14: subscriptions and cost of debt ----------------
+export type SubscriptionCharge = {
+  transaction_id: number;
+  txn_date: string;
+  amount: string;
+  description: string;
+  account_name: string | null;
+};
+export type Subscription = {
+  merchant: string;
+  cadence: "weekly" | "monthly" | "quarterly" | "yearly" | "possible";
+  typical: string;
+  monthly_cost: string;
+  yearly_cost: string;
+  category_path: string | null;
+  accounts: string[];
+  charges: SubscriptionCharge[];
+  last: string;
+  next_expected: string | null;
+  active: boolean;
+};
+export type Subscriptions = {
+  monthly_cost: string;
+  weekly_monthly_cost: string;
+  subscriptions: Subscription[];
+};
+export type DebtAccount = {
+  account_id: number | null;
+  name: string;
+  kind: string | null;
+  interest: string;
+  fees: string;
+  total: string;
+  last_12: string;
+  by_category: Record<string, string>;
+  by_month: Record<string, string>;
+  balance: string | null;
+  balance_date: string | null;
+};
+export type Debt = {
+  year: number;
+  years: number[];
+  through: string;
+  months: string[];
+  interest: string;
+  fees: string;
+  accounts: DebtAccount[];
+};
+export const fetchSubscriptions = () => send<Subscriptions>("GET", "/api/subscriptions");
+export const fetchDebt = (year?: number | null) =>
+  send<Debt>("GET", `/api/debt${year ? `?year=${year}` : ""}`);
