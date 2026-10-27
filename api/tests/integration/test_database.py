@@ -469,3 +469,58 @@ def test_subscriptions_and_debt_on_sql_server(tmp_path: object) -> None:
 
     _alembic("downgrade", "0013")
     _alembic("upgrade", "head")
+
+
+def test_balance_sheet_on_sql_server(tmp_path: object) -> None:
+    """F14 balance sheet on SQL Server: values entered on the page, the balance sheet; 0015 down
+    (page values go) and up again, when its data step turns the workbook's balances into
+    holdings."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures.workbook import build
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    client.post(
+        "/api/history/excel/load",
+        files={"file": ("Cash Flow.xlsx", build(lauren_jan_2026=3015), xlsx)},
+    )
+    created = client.post(
+        "/api/holdings",
+        json={
+            "name": "Office",
+            "holding_class": "property",
+            "value": "60000",
+            "as_of": "2026-01-01",
+        },
+    )
+    assert created.status_code == 201, created.text
+    sheet = client.get("/api/networth", params={"as_of": "2026-10-27"}).json()
+    names = {i["name"]: i for i in sheet["items"]}
+    assert Decimal(names["Office"]["value"]) == Decimal("60000")
+    assert names["BIESS"]["holding_class"] == "loan"
+    assert Decimal(sheet["net_worth"]) == Decimal(sheet["assets"]) - Decimal(sheet["liabilities"])
+
+    _alembic("downgrade", "0014")
+    _alembic("upgrade", "head")
+    with get_engine().connect() as conn:
+        rows = dict(
+            conn.execute(
+                text(
+                    "SELECT [h].[name], [h].[holding_class] FROM [core].[holding] AS [h] "
+                    "WHERE EXISTS (SELECT 1 FROM [core].[balance_snapshot] AS [s] "
+                    "WHERE [s].[holding_id] = [h].[holding_id])"
+                )
+            ).all()
+        )
+    assert rows["BIESS"] == "loan" and rows["Stock Market"] == "investment"
+    assert "Office" not in rows

@@ -38,6 +38,18 @@ TXN_STATUSES = ("pending", "confirmed", "matched")
 # (F10).
 CATEGORY_SOURCES = ("rule", "section", "manual", "suggestion", "excel", "split", "match")
 SNAPSHOT_KINDS = ("asset", "liability")
+# F14 balance sheet: what each holding is (ADR-012).
+HOLDING_CLASSES = (
+    "property",
+    "vehicle",
+    "investment",
+    "cash",
+    "purchase",
+    "loan",
+    "personal_loan",
+    "card",
+    "other",
+)
 # F11: where a recurring template came from, and an entry's state (matched is derived from links).
 RECURRING_SOURCES = ("manual", "excel")
 ENTRY_STATUSES = ("planned", "skipped")
@@ -336,6 +348,41 @@ class BalanceSnapshot(Timestamps, Base):
     amount: Mapped[Decimal] = mapped_column(Money)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("core.account.account_id"))
     source: Mapped[str] = mapped_column(Unicode(20))
+    notes: Mapped[str | None] = mapped_column(Unicode(400))
+    # F14: the holding this balance is a value of (ADR-012).
+    holding_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.holding.holding_id", ondelete="CASCADE"), index=True
+    )
+
+
+class Holding(Timestamps, Base):
+    """Something the household owns or owes, valued by its balance snapshots (F14, ADR-012).
+    Bank accounts and cards are valued from their statements and need no holding."""
+
+    __tablename__ = "holding"
+    __table_args__ = (
+        CheckConstraint(_in("side", SNAPSHOT_KINDS), name="side"),
+        CheckConstraint(_in("holding_class", HOLDING_CLASSES), name="holding_class"),
+        UniqueConstraint("name"),
+        {"schema": "core"},
+    )
+
+    holding_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Unicode(100))
+    side: Mapped[str] = mapped_column(Unicode(10))
+    holding_class: Mapped[str] = mapped_column(Unicode(15))
+    # A purchase in progress: the amount to pay (the down payment), each installment, the full
+    # price, and the category whose lines count as payments.
+    target_amount: Mapped[Decimal | None] = mapped_column(Money)
+    installment: Mapped[Decimal | None] = mapped_column(Money)
+    full_price: Mapped[Decimal | None] = mapped_column(Money)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    # A loan's monthly payment (F11 recurring template).
+    recurring_template_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.recurring_template.template_id", ondelete="SET NULL")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     notes: Mapped[str | None] = mapped_column(Unicode(400))
 
 

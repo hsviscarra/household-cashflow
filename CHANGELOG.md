@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.16.0] — F14 Balance sheet
+
+### F14 — What the household owns and owes (Debt & Net Worth)
+- Balance sheet (ADR-012) at the top of Debt & Net Worth: net worth, what you own, what you
+  owe and what is still to pay on purchases, then cards grouped by kind (property, vehicles,
+  investments, cash, purchases in progress; loans, credit cards, owed to people), and net worth
+  over the last 24 months with its table.
+- Bank and card balances from each latest statement. Holdings (`core.holding`, migration 0015)
+  valued by dated snapshots: the workbook's debts and savings become holdings, and anything else
+  is added on the page with its value and the date it was bought. Update value, history, edit,
+  pause, remove.
+- A purchase in progress (the new house's down payment) shows paid so far, installments left
+  and the amount financed at delivery. A loan shows its monthly payment from Recurring.
+- `GET /api/networth`, `POST/PATCH/DELETE /api/holdings`, values per holding.
+
 ## [0.15.0] — F14 Subscriptions and cost of debt
 
 ### F14 — Capital One YTD interest shown; Pichincha app subscriptions listed

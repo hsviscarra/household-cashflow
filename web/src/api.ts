@@ -689,3 +689,72 @@ export type Debt = {
 export const fetchSubscriptions = () => send<Subscriptions>("GET", "/api/subscriptions");
 export const fetchDebt = (year?: number | null) =>
   send<Debt>("GET", `/api/debt${year ? `?year=${year}` : ""}`);
+
+// ---------------- F14: balance sheet ----------------
+export type HoldingClass =
+  "property" | "vehicle" | "investment" | "cash" | "purchase" | "loan" | "personal_loan" | "card" | "other";
+export type SheetValue = {
+  snapshot_id: number | null;
+  as_of: string;
+  amount: string;
+  source: string;
+  notes: string | null;
+};
+export type SheetItem = {
+  key: string;
+  name: string;
+  side: "asset" | "liability";
+  holding_class: HoldingClass;
+  value: string | null;
+  as_of: string | null;
+  source: string | null;
+  holding_id: number | null;
+  account_id: number | null;
+  is_active: boolean;
+  notes: string | null;
+  history: SheetValue[];
+  purchase: {
+    target: string;
+    paid: string;
+    remaining: string;
+    installment: string | null;
+    installments_left: number | null;
+    full_price: string | null;
+    at_delivery: string | null;
+    lines: string;
+  } | null;
+  loan: { monthly_payment: string | null; paid_this_year: string; payments_this_year: number } | null;
+  category_id: number | null;
+  recurring_template_id: number | null;
+};
+export type BalanceSheet = {
+  as_of: string;
+  assets: string;
+  liabilities: string;
+  net_worth: string;
+  commitments: string;
+  items: SheetItem[];
+  series: { month: string; assets: string; liabilities: string; net: string }[];
+};
+export type HoldingInput = {
+  name: string;
+  holding_class: HoldingClass;
+  side?: "asset" | "liability" | null;
+  value?: string | null;
+  as_of?: string | null;
+  target_amount?: string | null;
+  installment?: string | null;
+  full_price?: string | null;
+  category_id?: number | null;
+  recurring_template_id?: number | null;
+  notes?: string | null;
+};
+export const fetchBalanceSheet = () => send<BalanceSheet>("GET", "/api/networth");
+export const createHolding = (h: HoldingInput) => send<{ holding_id: number }>("POST", "/api/holdings", h);
+export const updateHolding = (id: number, h: Partial<HoldingInput> & { is_active?: boolean }) =>
+  send<{ holding_id: number }>("PATCH", `/api/holdings/${id}`, h);
+export const deleteHolding = (id: number) => send<void>("DELETE", `/api/holdings/${id}`);
+export const setHoldingValue = (id: number, v: { as_of: string; amount: string; notes?: string | null }) =>
+  send<SheetValue>("POST", `/api/holdings/${id}/values`, v);
+export const deleteHoldingValue = (snapshotId: number) =>
+  send<void>("DELETE", `/api/holdings/values/${snapshotId}`);
