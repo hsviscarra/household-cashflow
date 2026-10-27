@@ -290,3 +290,68 @@ def test_transfers_and_cash_view_on_sql_server(tmp_path: object) -> None:
 
     _alembic("downgrade", "0010")
     _alembic("upgrade", "head")
+
+
+def test_recurring_on_sql_server(tmp_path: object) -> None:
+    """F11 on SQL Server: templates from the workbook, the grid, statement matching, 0012 down
+    and up with linked lines."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+    from tests.fixtures.workbook import build
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    loaded = client.post(
+        "/api/history/excel/load",
+        files={"file": ("Cash Flow.xlsx", build(lauren_jan_2026=3111), xlsx)},
+    )
+    assert loaded.status_code == 200, loaded.text
+    names = ["Lauren", "Hernan (Salaries)", "Interactive Brokers"]
+    made = client.post("/api/recurring/from-excel", json={"year": 2026, "names": names}).json()
+    assert made == {"templates": 3, "entries": 6, "linked": 3}
+    grid = {r["name"]: r for r in client.get("/api/recurring/grid?year=2026").json()["rows"]}
+    assert Decimal(grid["Lauren"]["cells"][0]["actual"]) == Decimal("3111")
+    assert grid["Lauren"]["cells"][6]["status"] == "planned"
+
+    cats = {c["name"]: c for c in client.get("/api/categories").json()}
+    accounts = {a["name"]: a for a in client.get("/api/accounts").json()}
+    own = next(
+        ch
+        for c in cats.values()
+        for ch in c.get("children", [])
+        if ch["name"] == "Between Own Accounts"
+    )
+    created = client.post(
+        "/api/recurring/templates",
+        json={
+            "name": "To savings",
+            "category_id": own["category_id"],
+            "type": "transfer",
+            "amount": "25",
+            "start_month": "2026-08-01",
+            "account_id": accounts["BofA Regular Savings"]["account_id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    client.post("/api/recurring/generate", json={"month": "2026-08-01"})
+    files = [("files", ("bofa11.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    if b.get("batch_id"):
+        client.post(f"/api/batches/{b['batch_id']}/approve")
+    client.post("/api/recurring/match")
+    grid = {r["name"]: r for r in client.get("/api/recurring/grid?year=2026").json()["rows"]}
+    assert grid["To savings"]["cells"][7]["status"] == "matched"
+
+    _alembic("downgrade", "0011")
+    _alembic("upgrade", "head")

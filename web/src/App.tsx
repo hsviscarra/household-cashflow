@@ -6,6 +6,7 @@ import { PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
 import ImportPage from "./pages/Import";
 import Overview from "./pages/Overview";
+import RecurringPage from "./pages/Recurring";
 import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
 import TransactionsPage from "./pages/Transactions";
@@ -49,6 +50,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/settings": <Settings />,
   "/transactions": <TransactionsPage />,
   "/review": <ReviewPage />,
+  "/recurring": <RecurringPage />,
 };
 
 export default function App() {

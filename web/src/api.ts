@@ -338,6 +338,7 @@ export type Txn = {
   parts: number; // > 0: split into this many parts, which count instead of this line
   transfer_group_id?: number | null;
   transfer_with?: TransferLeg | null; // the other side of a matched transfer (F10)
+  recurring_entry_id?: number | null; // the recurring entry this line pays (F11)
 };
 export type TransferLeg = {
   transaction_id: number;
@@ -432,3 +433,128 @@ export const fetchUnmatchedTransfers = (month?: string | null) =>
   send<Txn[]>("GET", `/api/transfers/unmatched${month ? `?month=${month}` : ""}`);
 export const matchTransfers = () => send<{ pairs: number }>("POST", "/api/transfers/match");
 export const unlinkTransfer = (group: number) => send<void>("DELETE", `/api/transfers/${group}`);
+
+// ---------------- F11: recurring entries ----------------
+export type TemplateType = "income" | "expense" | "savings" | "transfer" | "debt_payment" | "fee_interest";
+export type RecurringTemplate = {
+  template_id: number;
+  name: string;
+  category_id: number;
+  category_path: string | null;
+  type: TemplateType;
+  amount: string | null;
+  amounts: { from_month: string; amount: string }[];
+  start_month: string;
+  end_month: string | null;
+  account_id: number | null;
+  account_name: string | null;
+  person: string | null;
+  match_pattern: string | null;
+  tolerance_pct: string;
+  is_active: boolean;
+  sort_order: number;
+  source: "manual" | "excel";
+  group: string;
+  notes: string | null;
+};
+export type TemplateInput = {
+  name: string;
+  category_id: number;
+  type: TemplateType;
+  amount: string;
+  start_month: string;
+  end_month?: string | null;
+  account_id?: number | null;
+  person?: string | null;
+  match_pattern?: string | null;
+  tolerance_pct?: string;
+  notes?: string | null;
+};
+export type TemplatePatch = Partial<Omit<TemplateInput, "amount" | "start_month">> & {
+  is_active?: boolean;
+  sort_order?: number;
+};
+export type CellStatus = "matched" | "planned" | "skipped" | "not_generated" | "none";
+export type GridCell = {
+  month: string;
+  entry_id: number | null;
+  expected: string | null;
+  actual: string | null;
+  lines: number;
+  status: CellStatus;
+  is_override: boolean;
+  notes: string | null;
+};
+export type GridRow = {
+  template_id: number;
+  name: string;
+  type: TemplateType;
+  group: string;
+  category_path: string | null;
+  is_active: boolean;
+  cells: GridCell[];
+};
+export type RecurringGrid = { year: number; months: string[]; excel_months: string[]; rows: GridRow[] };
+export type RecurringEntry = {
+  entry_id: number;
+  template_id: number;
+  template_name: string;
+  month: string;
+  amount: string;
+  template_amount: string | null;
+  is_override: boolean;
+  status: "planned" | "skipped";
+  notes: string | null;
+  tolerance: string;
+  lines: Txn[];
+  candidates: Txn[];
+};
+export type ExcelRow = {
+  name: string;
+  group: string | null;
+  label: string;
+  block: string;
+  category_id: number | null;
+  category_path: string | null;
+  type: string | null;
+  months: number;
+  latest: string;
+  suggested: boolean;
+  exists: boolean;
+};
+
+export const fetchRecurringGrid = (year: number) =>
+  send<RecurringGrid>("GET", `/api/recurring/grid?year=${year}`);
+export const fetchTemplates = () => send<RecurringTemplate[]>("GET", "/api/recurring/templates");
+export const createTemplate = (t: TemplateInput) =>
+  send<RecurringTemplate>("POST", "/api/recurring/templates", t);
+export const updateTemplate = (id: number, t: TemplatePatch) =>
+  send<RecurringTemplate>("PATCH", `/api/recurring/templates/${id}`, t);
+export const deleteTemplate = (id: number) => send<void>("DELETE", `/api/recurring/templates/${id}`);
+export const changeTemplateAmount = (id: number, from_month: string, amount: string) =>
+  send<{ count: number }>("POST", `/api/recurring/templates/${id}/amount`, { from_month, amount });
+export const generateMonth = (month: string) =>
+  send<{ count: number }>("POST", "/api/recurring/generate", { month });
+export const copyMonth = (b: {
+  from_month: string;
+  to_start: string;
+  to_end: string;
+  template_ids?: number[];
+}) => send<{ count: number }>("POST", "/api/recurring/copy", b);
+export const matchRecurring = () => send<{ count: number }>("POST", "/api/recurring/match");
+export const fetchEntry = (id: number) => send<RecurringEntry>("GET", `/api/recurring/entries/${id}`);
+export const editEntry = (
+  id: number,
+  b: { amount?: string; reset?: boolean; status?: "planned" | "skipped"; notes?: string },
+) => send<RecurringEntry>("PATCH", `/api/recurring/entries/${id}`, b);
+export const linkLine = (entryId: number, transaction_id: number) =>
+  send<RecurringEntry>("POST", `/api/recurring/entries/${entryId}/lines`, { transaction_id });
+export const unlinkLine = (transactionId: number) =>
+  send<void>("DELETE", `/api/recurring/lines/${transactionId}`);
+export const fetchExcelRows = (year: number) =>
+  send<ExcelRow[]>("GET", `/api/recurring/excel-rows?year=${year}`);
+export const createFromExcel = (year: number, names: string[]) =>
+  send<{ templates: number; entries: number; linked: number }>("POST", "/api/recurring/from-excel", {
+    year,
+    names,
+  });

@@ -19,7 +19,7 @@ from app.schemas import (
     MonthlyCashflowOut,
     PlanMonthOut,
 )
-from app.services import history_load
+from app.services import history_load, recurring
 from app.services.excel_history import ParsedWorkbook, parse_workbook
 
 router = APIRouter(prefix="/api", tags=["history"])
@@ -51,9 +51,12 @@ async def load_history(file: UploadFile, request: Request, db: DB) -> HistoryLoa
     data, parsed = await _read(file)
     user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
     try:
-        return history_load.load(db, parsed, file.filename or "", history_load.sha256(data), user)
+        out = history_load.load(db, parsed, file.filename or "", history_load.sha256(data), user)
     except history_load.HistoryError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
+    # A reload replaces the history lines: link them to recurring entries again (F11).
+    recurring.match_all(db, user)
+    return out
 
 
 @router.get("/cashflow/monthly", response_model=list[MonthlyCashflowOut])
@@ -90,6 +93,9 @@ def category_months(
 
 @router.get("/cashflow/plan", response_model=list[PlanMonthOut])
 def plan(db: DB) -> list[PlanMonthOut]:
+    """Per month: the recurring entries' expected amounts when the month has any (F11),
+    otherwise the workbook's plan."""
+    entries = recurring.plan_by_month(db)
     rows = db.execute(
         select(Budget.month, Budget.type, func.sum(Budget.amount).label("amount"))
         .group_by(Budget.month, Budget.type)
@@ -105,4 +111,6 @@ def plan(db: DB) -> list[PlanMonthOut]:
             item.income += amt
         else:
             item.outflows -= amt
-    return list(out.values())
+    for month, (income, outflows) in entries.items():
+        out[month] = PlanMonthOut(month=month, income=income, outflows=outflows)
+    return sorted(out.values(), key=lambda p: p.month)

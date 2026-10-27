@@ -35,8 +35,8 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
+from app.services import recurring, transfers
 from app.services import rules as rule_engine
-from app.services import transfers
 
 EC_PLACES = ("QUITO", "GUAYAQUIL", "ECUADOR", "RUMINAHUI", "CUMBAYA", "MEJIA", "PICHIN")
 SECTION_PATHS = {
@@ -399,6 +399,9 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
         raise
     # The other side of a card payment or own-account transfer may already be loaded (F10).
     transfers.match(db, user)
+    # New lines may pay a month's recurring entries (F11).
+    for month in sorted({s.txn_date.replace(day=1) for s in new}):
+        recurring.match(db, month, user)
     return len(new), len(staged) - len(new)
 
 

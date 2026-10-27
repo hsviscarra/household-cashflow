@@ -5,6 +5,25 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.12.0] — F11 Recurring entries
+
+### F11 — The 2026 workbook rows reproduced in the month grid
+- Recurring page (ADR-008): rows grouped as Income and Expenses like the sheet, January to
+  December, paid amounts (linked lines) or expected ones, with Money in, Money out and Left.
+  Select a cell to set this month only, change from this month on, skip it, or link and unlink
+  lines; select an item to edit, pause or remove its template.
+- Templates with an amount history; Generate a month; Copy a month forward or to a range.
+- "From the 2026 sheet" turns the workbook's rows into templates and fills the year: past months
+  linked to the history lines, the rest from the sheet's plan.
+- Matching to statement lines by category, account (or the transfer's other side) and description
+  pattern within a tolerance; two lines can pay one item. Runs after approve and reload.
+- The Overview's plan uses the recurring entries for months that have them.
+- Migration 0012 (`recurring_template`, `recurring_amount`, `recurring_entry`,
+  `transaction.recurring_entry_id`) with a working downgrade.
+
+### Tests
+- The e2e spec for the Review page waits for its queue before checking it (0.11.0 follow-up).
+
 ## [0.11.0] — F10 Transfers and two views
 
 ### F10 — Card payments left out of spending and shown in the cash view

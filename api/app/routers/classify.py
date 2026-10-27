@@ -75,6 +75,7 @@ def transaction_out(
         parts=parts,
         transfer_group_id=t.transfer_group_id,
         transfer_with=TransferLegOut(**vars(other)) if other else None,
+        recurring_entry_id=t.recurring_entry_id,
     )
 
 
