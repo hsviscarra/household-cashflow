@@ -16,6 +16,7 @@ from app.routers import (
     history,
     recurring,
     reference,
+    spending,
     statements,
     status,
     transfers,
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(transfers.router)
     app.include_router(recurring.router)
     app.include_router(status.router)
+    app.include_router(spending.router)
 
     # The built React app is served from the same origin, so one Container App hosts both.
     dist = Path(get_settings().web_dist_dir)
