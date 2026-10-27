@@ -38,6 +38,9 @@ TXN_STATUSES = ("pending", "confirmed", "matched")
 # (F10).
 CATEGORY_SOURCES = ("rule", "section", "manual", "suggestion", "excel", "split", "match")
 SNAPSHOT_KINDS = ("asset", "liability")
+# F11: where a recurring template came from, and an entry's state (matched is derived from links).
+RECURRING_SOURCES = ("manual", "excel")
+ENTRY_STATUSES = ("planned", "skipped")
 STATEMENT_SOURCES = (
     "bofa",
     "capitalone",
@@ -221,6 +224,81 @@ class Transaction(Timestamps, Base):
     category_source: Mapped[str | None] = mapped_column(Unicode(12))
     # F10: both legs of a transfer between own accounts share this id (the smaller transaction id).
     transfer_group_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    # F11: the recurring entry (template x month) this line pays or receives.
+    recurring_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.recurring_entry.entry_id", ondelete="SET NULL"), index=True
+    )
+
+
+# ---------------- F11: recurring templates, their amounts and month entries ----------------
+class RecurringTemplate(Timestamps, Base):
+    """A row that repeats every month (salary, rent, condo fee...). Statement lines are matched to
+    it by category, plus the account and description pattern when set, within a tolerance."""
+
+    __tablename__ = "recurring_template"
+    __table_args__ = (
+        CheckConstraint(_in("type", TXN_TYPES), name="type"),
+        CheckConstraint(_in("source", RECURRING_SOURCES), name="source"),
+        UniqueConstraint("name"),
+        {"schema": "core"},
+    )
+
+    template_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Unicode(100))
+    category_id: Mapped[int] = mapped_column(ForeignKey("core.category.category_id"))
+    type: Mapped[str] = mapped_column(Unicode(12))
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("core.account.account_id"))
+    person: Mapped[str | None] = mapped_column(Unicode(10))
+    match_pattern: Mapped[str | None] = mapped_column(Unicode(200))
+    tolerance_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2, asdecimal=True), default=Decimal(10), server_default="10"
+    )
+    start_month: Mapped[date] = mapped_column(Date)
+    end_month: Mapped[date | None] = mapped_column(Date)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    source: Mapped[str] = mapped_column(Unicode(10), default="manual")
+    # The workbook row it came from, so Excel history months link to their exact cell.
+    excel_block: Mapped[str | None] = mapped_column(Unicode(30))
+    excel_group: Mapped[str | None] = mapped_column(Unicode(100))
+    excel_label: Mapped[str | None] = mapped_column(Unicode(100))
+    notes: Mapped[str | None] = mapped_column(Unicode(400))
+
+
+class RecurringAmount(Base):
+    """The template's amount from a month on (signed); "change from month X" adds a row."""
+
+    __tablename__ = "recurring_amount"
+    __table_args__ = (UniqueConstraint("template_id", "from_month"), {"schema": "core"})
+
+    amount_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("core.recurring_template.template_id", ondelete="CASCADE")
+    )
+    from_month: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Money)
+
+
+class RecurringEntry(Timestamps, Base):
+    """One template in one month: the expected amount. Matched lines point to it."""
+
+    __tablename__ = "recurring_entry"
+    __table_args__ = (
+        CheckConstraint(_in("status", ENTRY_STATUSES), name="status"),
+        UniqueConstraint("template_id", "month"),
+        {"schema": "core"},
+    )
+
+    entry_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey("core.recurring_template.template_id", ondelete="CASCADE")
+    )
+    month: Mapped[date] = mapped_column(Date, index=True)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    # True when this month's amount was set by hand (or copied): template changes leave it alone.
+    is_override: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    status: Mapped[str] = mapped_column(Unicode(8), default="planned", server_default="planned")
+    notes: Mapped[str | None] = mapped_column(Unicode(400))
 
 
 class Budget(Timestamps, Base):

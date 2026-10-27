@@ -369,6 +369,7 @@ class TransactionOut(BaseModel):
     parts: int = 0  # > 0: split into this many parts, which count instead of this line
     transfer_group_id: int | None = None
     transfer_with: "TransferLegOut | None" = None  # the other side of a matched transfer
+    recurring_entry_id: int | None = None  # F11: the recurring entry this line pays
 
 
 # ---------------- F9: classification ----------------
@@ -468,4 +469,162 @@ class MatchOut(BaseModel):
     pairs: int
 
 
+# ---------------- F11: recurring entries ----------------
+class TemplateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    category_id: int
+    type: Literal["income", "expense", "savings", "transfer", "debt_payment", "fee_interest"]
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=4)
+    start_month: date
+    end_month: date | None = None
+    account_id: int | None = None
+    person: Literal["Hernan", "Lauren", "Joint"] | None = None
+    match_pattern: str | None = Field(default=None, max_length=200)
+    tolerance_pct: Decimal = Field(default=Decimal(10), ge=0, le=100)
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class TemplatePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    category_id: int | None = None
+    type: (
+        Literal["income", "expense", "savings", "transfer", "debt_payment", "fee_interest"] | None
+    ) = None
+    account_id: int | None = None
+    person: Literal["Hernan", "Lauren", "Joint"] | None = None
+    match_pattern: str | None = Field(default=None, max_length=200)
+    tolerance_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    end_month: date | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class TemplateOut(BaseModel):
+    template_id: int
+    name: str
+    category_id: int
+    category_path: str | None
+    type: str
+    amount: Decimal | None  # in force in the current month (or the first month)
+    amounts: list["AmountOut"]
+    start_month: date
+    end_month: date | None
+    account_id: int | None
+    account_name: str | None
+    person: str | None
+    match_pattern: str | None
+    tolerance_pct: Decimal
+    is_active: bool
+    sort_order: int
+    source: str
+    group: str
+    notes: str | None
+
+
+class AmountOut(BaseModel):
+    from_month: date
+    amount: Decimal
+
+
+class ChangeAmountIn(BaseModel):
+    from_month: date
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=4)
+
+
+class MonthIn(BaseModel):
+    month: date
+
+
+class CopyIn(BaseModel):
+    from_month: date
+    to_start: date
+    to_end: date
+    template_ids: list[int] | None = None
+
+
+class EntryPatch(BaseModel):
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=15, decimal_places=4)
+    reset: bool = False
+    status: Literal["planned", "skipped"] | None = None
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class LinkIn(BaseModel):
+    transaction_id: int
+
+
+class CountOut(BaseModel):
+    count: int
+
+
+class FromExcelIn(BaseModel):
+    year: int = Field(ge=2019, le=2100)
+    names: list[str] = Field(min_length=1, max_length=200)
+
+
+class FromExcelOut(BaseModel):
+    templates: int
+    entries: int
+    linked: int
+
+
+class ExcelRowOut(BaseModel):
+    name: str
+    group: str | None
+    label: str
+    block: str
+    category_id: int | None
+    category_path: str | None
+    type: str | None
+    months: int
+    latest: Decimal
+    suggested: bool
+    exists: bool
+
+
+class CellOut(BaseModel):
+    month: date
+    entry_id: int | None
+    expected: Decimal | None
+    actual: Decimal | None
+    lines: int
+    status: Literal["matched", "planned", "skipped", "not_generated", "none"]
+    is_override: bool
+    notes: str | None
+
+
+class GridRowOut(BaseModel):
+    template_id: int
+    name: str
+    type: str
+    group: str
+    category_path: str | None
+    is_active: bool
+    cells: list[CellOut]
+
+
+class GridOut(BaseModel):
+    year: int
+    months: list[date]
+    excel_months: list[date]
+    rows: list[GridRowOut]
+
+
+class EntryOut(BaseModel):
+    entry_id: int
+    template_id: int
+    template_name: str
+    month: date
+    amount: Decimal
+    template_amount: Decimal | None
+    is_override: bool
+    status: str
+    notes: str | None
+    tolerance: Decimal
+    lines: list[TransactionOut]
+    candidates: list[TransactionOut]
+
+
+TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()
