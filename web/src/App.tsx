@@ -9,6 +9,7 @@ import Overview from "./pages/Overview";
 import RecurringPage from "./pages/Recurring";
 import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
+import StatusPage from "./pages/Status";
 import TransactionsPage from "./pages/Transactions";
 
 function StatusPill() {
@@ -51,6 +52,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/transactions": <TransactionsPage />,
   "/review": <ReviewPage />,
   "/recurring": <RecurringPage />,
+  "/status": <StatusPage />,
 };
 
 export default function App() {

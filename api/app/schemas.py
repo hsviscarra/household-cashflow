@@ -626,5 +626,51 @@ class EntryOut(BaseModel):
     candidates: list[TransactionOut]
 
 
+# ---------------- F12: month status ----------------
+class StatusItemOut(BaseModel):
+    kind: Literal["statement", "import", "uncategorized", "transfer", "recurring", "balance"]
+    text: str
+    link: str
+    count: int
+
+
+class CoverageOut(BaseModel):
+    account_id: int
+    state: Literal["full", "partial", "none"]
+    covered_days: int
+    days: int
+
+
+class MonthStatusOut(BaseModel):
+    month: date
+    source: Literal["excel", "statements"]
+    complete: bool
+    items: list[StatusItemOut]
+    coverage: list[CoverageOut]
+
+
+class StatusAccountOut(BaseModel):
+    account_id: int
+    name: str
+    kind: str
+    owner: str
+
+
+class LoadOut(BaseModel):
+    loaded_at: datetime
+    source: str
+    file_name: str | None
+    rows: int
+    loaded_by: str
+
+
+class StatusOut(BaseModel):
+    today: date
+    excel_through: date | None
+    accounts: list[StatusAccountOut]
+    months: list[MonthStatusOut]
+    loads: list[LoadOut]
+
+
 TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()

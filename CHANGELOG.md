@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.13.0] — F12 Month status
+
+### F12 — Each month shows complete or what is missing
+- Data Status page (ADR-009): every month from the end of the Cash Flow sheet to today is
+  Complete or lists what is missing, each item with a link to fix it.
+  - Statements: the days no approved statement covers, per active account (card statements
+    counted by day).
+  - Imports waiting for approval or failing their tie-out.
+  - Lines without a category, transfers without their other side.
+  - Recurring items not paid yet.
+  - Balance breaks between consecutive statements.
+- Coverage table (accounts × months: full, part with days, none) and the load log.
+- `GET /api/status`. No schema change.
+
 ## [0.12.0] — F11 Recurring entries
 
 ### F11 — The 2026 workbook rows reproduced in the month grid

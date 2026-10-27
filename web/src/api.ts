@@ -558,3 +558,32 @@ export const createFromExcel = (year: number, names: string[]) =>
     year,
     names,
   });
+
+// ---------------- F12: month status ----------------
+export type StatusItem = {
+  kind: "statement" | "import" | "uncategorized" | "transfer" | "recurring" | "balance";
+  text: string;
+  link: string;
+  count: number;
+};
+export type MonthCoverage = {
+  account_id: number;
+  state: "full" | "partial" | "none";
+  covered_days: number;
+  days: number;
+};
+export type MonthStatus = {
+  month: string;
+  source: "excel" | "statements";
+  complete: boolean;
+  items: StatusItem[];
+  coverage: MonthCoverage[];
+};
+export type DataStatus = {
+  today: string;
+  excel_through: string | null;
+  accounts: { account_id: number; name: string; kind: string; owner: string }[];
+  months: MonthStatus[];
+  loads: { loaded_at: string; source: string; file_name: string | null; rows: number; loaded_by: string }[];
+};
+export const fetchStatus = () => send<DataStatus>("GET", "/api/status");

@@ -355,3 +355,33 @@ def test_recurring_on_sql_server(tmp_path: object) -> None:
 
     _alembic("downgrade", "0011")
     _alembic("upgrade", "head")
+
+
+def test_month_status_on_sql_server(tmp_path: object) -> None:
+    """F12 on SQL Server: coverage by day, the load log and pending imports."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa12.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    if b.get("batch_id") and b.get("tieout_ok"):
+        client.post(f"/api/batches/{b['batch_id']}/approve")
+    status = client.get("/api/status", params={"today": "2026-08-31"}).json()
+    names = {a["account_id"]: a["name"] for a in status["accounts"]}
+    aug = next(m for m in status["months"] if m["month"] == "2026-08-01")
+    cover = {names[c["account_id"]]: c["state"] for c in aug["coverage"]}
+    assert cover["BofA Adv Plus Banking"] in ("full", "partial")
+    assert cover["Capital One Venture"] == "none"
+    assert any(i["text"].startswith("Capital One Venture: no statement") for i in aug["items"])
+    assert any(load["source"] == "statement" for load in status["loads"])
