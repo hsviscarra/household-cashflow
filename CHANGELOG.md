@@ -19,6 +19,10 @@ the Excel workbook.
 - Coverage table (accounts × months: full, part with days, none) and the load log.
 - `GET /api/status`. No schema change.
 
+### Fixes
+- Recurring "Change from month X" failed on SQL Server (`is_override IS 0` is not valid T-SQL);
+  it now filters with `= 0`. A unit test guards against boolean `IS` comparisons.
+
 ## [0.12.0] — F11 Recurring entries
 
 ### F11 — The 2026 workbook rows reproduced in the month grid

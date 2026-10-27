@@ -352,6 +352,12 @@ def test_recurring_on_sql_server(tmp_path: object) -> None:
     client.post("/api/recurring/match")
     grid = {r["name"]: r for r in client.get("/api/recurring/grid?year=2026").json()["rows"]}
     assert grid["To savings"]["cells"][7]["status"] == "matched"
+    # Change from month X filters on is_override (a BIT): "= 0", not "IS 0", on SQL Server.
+    tid = grid["To savings"]["template_id"]
+    changed = client.post(
+        f"/api/recurring/templates/{tid}/amount", json={"from_month": "2026-08-01", "amount": "30"}
+    )
+    assert changed.status_code == 200, changed.text
 
     _alembic("downgrade", "0011")
     _alembic("upgrade", "head")

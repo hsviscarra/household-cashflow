@@ -181,9 +181,7 @@ def month_status(db: Session, today: date | None = None) -> Status:
     current = recurring.first(today)
     excel = sorted(recurring.excel_months(db))
     excel_through = excel[-1] if excel else None
-    accounts = list(
-        db.scalars(select(Account).where(Account.is_active.is_(True)).order_by(Account.name))
-    )
+    accounts = list(db.scalars(select(Account).where(Account.is_active).order_by(Account.name)))
     stmts = _approved_statements(db)
     by_account: dict[int, list[_Stmt]] = defaultdict(list)
     for s in stmts:
