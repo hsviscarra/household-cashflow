@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.14.0] — F13 Spending analytics
+
+### F13 — One month's spending analysis fully in the app
+- Spending page (ADR-010): a headline with the month's spending against last month and the same
+  month last year, then:
+  - categories grouped with their colors, each with MoM and YoY, expanding to subcategories and
+    the lines behind them;
+  - by person, by country, and fixed vs variable, each clickable to its lines;
+  - the top 10 merchants of statement months;
+  - the last 12 months as a chart with a table of the same numbers.
+- `mart.v_spending_line` (migration 0013): one row per spending line. The page's total equals
+  the Overview's spending view for every month.
+- `GET /api/spending`, `GET /api/spending/lines`.
+
 ## [0.13.0] — F12 Month status
 
 ### F12 — Each month shows complete or what is missing

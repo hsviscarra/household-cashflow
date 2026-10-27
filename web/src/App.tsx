@@ -9,6 +9,7 @@ import Overview from "./pages/Overview";
 import RecurringPage from "./pages/Recurring";
 import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
+import SpendingPage from "./pages/Spending";
 import StatusPage from "./pages/Status";
 import TransactionsPage from "./pages/Transactions";
 
@@ -53,6 +54,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/review": <ReviewPage />,
   "/recurring": <RecurringPage />,
   "/status": <StatusPage />,
+  "/spending": <SpendingPage />,
 };
 
 export default function App() {

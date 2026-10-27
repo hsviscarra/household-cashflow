@@ -581,3 +581,27 @@ v_category_month = Table(
     Column("transactions", Integer),
     schema="mart",
 )
+
+v_spending_line = Table(
+    "v_spending_line",
+    mart,
+    Column("transaction_id", Integer, primary_key=True),
+    Column("cash_month", Date),
+    Column("txn_date", Date),
+    Column("source", Unicode(15)),
+    Column("type", Unicode(12)),
+    Column("amount", Money),
+    Column("group_id", Integer),
+    Column("group_name", Unicode(100)),
+    Column("group_color", Unicode(7)),
+    Column("category_id", Integer),
+    Column("category_name", Unicode(100)),
+    Column("person", Unicode(10)),
+    Column("country", Unicode(2)),
+    Column("is_fixed", Boolean),
+    Column("merchant", Unicode(400)),
+    Column("description", Unicode(400)),
+    Column("account_id", Integer),
+    Column("account_name", Unicode(100)),
+    schema="mart",
+)

@@ -391,3 +391,41 @@ def test_month_status_on_sql_server(tmp_path: object) -> None:
     assert cover["Capital One Venture"] == "none"
     assert any(i["text"].startswith("Capital One Venture: no statement") for i in aug["items"])
     assert any(load["source"] == "statement" for load in status["loads"])
+
+
+def test_spending_on_sql_server(tmp_path: object) -> None:
+    """F13 on SQL Server: mart.v_spending_line totals equal the spending view; drill-down; 0013
+    down and up."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa13.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    if b.get("batch_id") and b.get("tieout_ok"):
+        client.post(f"/api/batches/{b['batch_id']}/approve")
+    out = client.get("/api/spending", params={"month": "2026-08-01"}).json()
+    overview = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    assert Decimal(out["total"]["amount"]) == Decimal(overview["2026-08-01"]["expenses"])
+    assert out["groups"] and len(out["trend"]) == 12
+    group = out["groups"][0]
+    lines = client.get(
+        "/api/spending/lines", params={"month": "2026-08-01", "group_id": group["group_id"]}
+    ).json()
+    assert sum(Decimal(ln["amount"]) for ln in lines) == Decimal(group["amount"])
+    fixed = client.get("/api/spending/lines", params={"month": "2026-08-01", "fixed": "false"})
+    assert fixed.status_code == 200
+
+    _alembic("downgrade", "0012")
+    _alembic("upgrade", "head")

@@ -587,3 +587,53 @@ export type DataStatus = {
   loads: { loaded_at: string; source: string; file_name: string | null; rows: number; loaded_by: string }[];
 };
 export const fetchStatus = () => send<DataStatus>("GET", "/api/status");
+
+// ---------------- F13: spending analytics ----------------
+export type SpendCompare = { amount: string; prev: string; last_year: string; transactions: number };
+export type SpendCategory = SpendCompare & { category_id: number; name: string };
+export type SpendGroup = SpendCompare & {
+  group_id: number;
+  name: string;
+  color: string | null;
+  categories: SpendCategory[];
+};
+export type SpendSlice = { key: string; amount: string; transactions: number };
+export type Spending = {
+  month: string;
+  months: string[];
+  source: "excel" | "statements" | "none";
+  total: SpendCompare;
+  groups: SpendGroup[];
+  by_person: SpendSlice[];
+  by_country: SpendSlice[];
+  fixed: SpendSlice[];
+  merchants: { merchant: string; group_name: string; amount: string; transactions: number }[];
+  trend: { month: string; amount: string }[];
+};
+export type SpendLine = {
+  transaction_id: number;
+  txn_date: string;
+  merchant: string;
+  description: string;
+  amount: string;
+  category_name: string;
+  group_name: string;
+  person: string;
+  account_name: string | null;
+  source: string;
+};
+export type SpendFilter = {
+  group_id?: number;
+  category_id?: number;
+  merchant?: string;
+  person?: string;
+  country?: string;
+  fixed?: boolean;
+};
+export const fetchSpending = (month?: string | null) =>
+  send<Spending>("GET", `/api/spending${month ? `?month=${month}` : ""}`);
+export const fetchSpendLines = (month: string, f: SpendFilter) => {
+  const q = new URLSearchParams({ month });
+  Object.entries(f).forEach(([k, v]) => v !== undefined && q.set(k, String(v)));
+  return send<SpendLine[]>("GET", `/api/spending/lines?${q.toString()}`);
+};

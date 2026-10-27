@@ -672,5 +672,77 @@ class StatusOut(BaseModel):
     loads: list[LoadOut]
 
 
+# ---------------- F13: spending analytics ----------------
+class SpendCategoryOut(BaseModel):
+    category_id: int
+    name: str
+    amount: Decimal
+    prev: Decimal
+    last_year: Decimal
+    transactions: int
+
+
+class SpendGroupOut(BaseModel):
+    group_id: int
+    name: str
+    color: str | None
+    amount: Decimal
+    prev: Decimal
+    last_year: Decimal
+    transactions: int
+    categories: list[SpendCategoryOut]
+
+
+class SpendTotalOut(BaseModel):
+    amount: Decimal
+    prev: Decimal
+    last_year: Decimal
+    transactions: int
+
+
+class SpendSliceOut(BaseModel):
+    key: str
+    amount: Decimal
+    transactions: int
+
+
+class SpendMerchantOut(BaseModel):
+    merchant: str
+    group_name: str
+    amount: Decimal
+    transactions: int
+
+
+class SpendMonthOut(BaseModel):
+    month: date
+    amount: Decimal
+
+
+class SpendingOut(BaseModel):
+    month: date
+    months: list[date]
+    source: Literal["excel", "statements", "none"]
+    total: SpendTotalOut
+    groups: list[SpendGroupOut]
+    by_person: list[SpendSliceOut]
+    by_country: list[SpendSliceOut]
+    fixed: list[SpendSliceOut]
+    merchants: list[SpendMerchantOut]
+    trend: list[SpendMonthOut]
+
+
+class SpendLineOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    merchant: str
+    description: str
+    amount: Decimal
+    category_name: str
+    group_name: str
+    person: str
+    account_name: str | None
+    source: str
+
+
 TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()
