@@ -284,7 +284,7 @@ def change_amount(
         select(RecurringEntry).where(
             RecurringEntry.template_id == template_id,
             RecurringEntry.month >= from_month,
-            RecurringEntry.is_override.is_(False),
+            ~RecurringEntry.is_override,  # "= 0" on SQL Server (IS 0 is not valid T-SQL)
         )
     ):
         if e.amount != value:

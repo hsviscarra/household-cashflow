@@ -68,7 +68,10 @@ jobs:
         if: failure()
         run: |
           [ -f /tmp/integration.log ] || exit 0
-          echo "::error title=Integration tests::$(tail -80 /tmp/integration.log | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
+          # The failed tests and their assertion lines first: -rA also prints the output of tests
+          # that passed (including expected migration errors), which would hide the failure.
+          { grep -E '^(FAILED|ERROR) ' /tmp/integration.log; grep -E '^(E |>)' /tmp/integration.log | head -60; } > /tmp/integration.summary || true
+          echo "::error title=Integration tests::$(sed -e 's/%/%25/g' /tmp/integration.summary | sed ':a;N;$!ba;s/\n/%0A/g')"
 
   web:
     name: Web (lint, types, tests, build)
