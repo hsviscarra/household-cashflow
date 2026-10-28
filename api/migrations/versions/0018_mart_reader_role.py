@@ -29,7 +29,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Members (cashflow_reader) leave the role first; the user itself stays, without access.
-    # One quiet batch: rowcount messages would leave results pending on the connection.
+    # One quiet batch (rowcount messages would leave results pending on the connection), and
+    # NOCOUNT back off after: alembic checks the row count of its own version update.
     op.execute(
         """
 SET NOCOUNT ON;
@@ -41,5 +42,6 @@ JOIN [sys].[database_principals] AS [m] ON [m].[principal_id] = [rm].[member_pri
 WHERE [r].[name] = N'mart_reader';
 IF @sql <> N'' EXEC (@sql);
 IF DATABASE_PRINCIPAL_ID(N'mart_reader') IS NOT NULL DROP ROLE [mart_reader];
+SET NOCOUNT OFF;
 """
     )
