@@ -44,6 +44,14 @@ param authClientSecret string = ''
 @description('Claude API key for category suggestions (F9). Empty = suggestions off.')
 param anthropicApiKey string = ''
 
+@secure()
+@description('Bearer token for Claude\'s read-only MCP endpoint at /mcp (F18). Empty = off.')
+param mcpToken string = ''
+
+@secure()
+@description('Password of the read-only database login the MCP endpoint uses (F18).')
+param readerPassword string = ''
+
 @description('Email for the monthly budget alert.')
 param alertEmail string
 
@@ -159,7 +167,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'database-url', value: databaseUrl }
         { name: 'ghcr-token', value: ghcrToken }
       ], enableAuth ? [ { name: 'microsoft-provider-secret', value: authClientSecret } ] : [],
-        empty(anthropicApiKey) ? [] : [ { name: 'anthropic-api-key', value: anthropicApiKey } ])
+        empty(anthropicApiKey) ? [] : [ { name: 'anthropic-api-key', value: anthropicApiKey } ],
+        empty(mcpToken) ? [] : [
+          { name: 'mcp-token', value: mcpToken }
+          { name: 'reader-password', value: readerPassword }
+        ])
     }
     template: {
       containers: [
@@ -172,7 +184,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'DATABASE_URL', secretRef: 'database-url' }
             { name: 'ALLOWED_EMAILS', value: allowedEmails }
             { name: 'STORAGE_ACCOUNT_URL', value: storage.properties.primaryEndpoints.blob }
-          ], empty(anthropicApiKey) ? [] : [ { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' } ])
+          ], empty(anthropicApiKey) ? [] : [ { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' } ],
+            empty(mcpToken) ? [] : [
+              { name: 'MCP_TOKEN', secretRef: 'mcp-token' }
+              { name: 'READER_PASSWORD', secretRef: 'reader-password' }
+            ])
         }
       ]
       scale: { minReplicas: 0, maxReplicas: 1 }
@@ -188,7 +204,8 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableA
     globalValidation: {
       unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
-      excludedPaths: [ '/api/health' ]
+      // /mcp is Claude's endpoint (F18): it checks its own bearer token instead of a sign-in.
+      excludedPaths: [ '/api/health', '/mcp' ]
     }
     identityProviders: {
       azureActiveDirectory: {

@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,6 +11,7 @@ from starlette.types import Scope
 from app import __version__
 from app.auth import allow_list
 from app.config import get_settings
+from app.mcp_server import http_endpoint
 from app.routers import (
     batches,
     classify,
@@ -49,7 +52,15 @@ class SPAStaticFiles(StaticFiles):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Household Cash Flow", version=__version__)
+    # Claude's read-only MCP endpoint (F18): its session manager runs with the app.
+    mcp_route, mcp_manager = http_endpoint()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        async with mcp_manager.run():
+            yield
+
+    app = FastAPI(title="Household Cash Flow", version=__version__, lifespan=lifespan)
     app.middleware("http")(allow_list)
     app.include_router(health.router)
     app.include_router(reference.router)
@@ -65,6 +76,8 @@ def create_app() -> FastAPI:
     app.include_router(networth.router)
     app.include_router(projections.router)
     app.include_router(report.router)
+
+    app.router.routes.append(mcp_route)
 
     # The built React app is served from the same origin, so one Container App hosts both.
     dist = Path(get_settings().web_dist_dir)

@@ -46,11 +46,22 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   fi
 fi
 
+# Claude's MCP endpoint (F18, setup-mcp.sh): keep its token and the read-only password too.
+EXISTING_APP=$(az containerapp list -g "$RG" --query "[0].name" -o tsv 2>/dev/null || true)
+secret() {
+  [ -n "$EXISTING_APP" ] || return 0
+  az containerapp secret show -g "$RG" -n "$EXISTING_APP" --secret-name "$1" \
+    --query value -o tsv 2>/dev/null || true
+}
+MCP_TOKEN="${MCP_TOKEN:-$(secret mcp-token)}"
+READER_PASSWORD="${READER_PASSWORD:-$(secret reader-password)}"
+
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
     -p prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
        ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" \
-       anthropicApiKey="${ANTHROPIC_API_KEY:-}" "$@" \
+       anthropicApiKey="${ANTHROPIC_API_KEY:-}" mcpToken="${MCP_TOKEN:-}" \
+       readerPassword="${READER_PASSWORD:-}" "$@" \
     --query properties.outputs -o json
 }
 

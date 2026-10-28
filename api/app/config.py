@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     storage_account_url: str = ""
     statements_container: str = "statements"
     statements_dir: str = "data/statements"
+    # Claude's read-only MCP endpoint (F18): /mcp answers only with this bearer token; empty = off.
+    mcp_token: str = ""
+    # Password of the read-only database login the MCP endpoint queries with (SELECT on mart
+    # views only). Created or updated at start-up; empty = the endpoint uses the app's login
+    # (local development and tests only).
+    reader_password: str = ""
     # Backups (F17): the jobs write to this container (Azure) or folder (local runs).
     backups_container: str = "backups"
     backups_dir: str = "data/backups"

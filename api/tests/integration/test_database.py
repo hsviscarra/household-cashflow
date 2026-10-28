@@ -23,7 +23,11 @@ def _schemas() -> set[str]:
 
 
 def _alembic(*args: str) -> None:
-    subprocess.run(["alembic", *args], check=True)
+    done = subprocess.run(["alembic", *args], capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        # The error's last lines go in the failure, so CI's annotation shows the cause.
+        tail = " | ".join((done.stdout + done.stderr).strip().splitlines()[-6:])
+        raise AssertionError(f"alembic {' '.join(args)} failed: {tail}")
 
 
 def test_database_check_succeeds() -> None:
@@ -186,7 +190,7 @@ def test_pacificard_source_and_guarded_downgrade(tmp_path: object) -> None:
     assert st["source"] == "pacificard"
     assert st["accounts"][0]["name"] == "Pacificard Mastercard Black"
 
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(AssertionError, match="alembic downgrade 0008 failed"):
         _alembic("downgrade", "0008")
     with get_engine().begin() as conn:
         ids = "SELECT [statement_file_id] FROM [raw].[statement_file] WHERE [source] = 'pacificard'"
@@ -705,3 +709,70 @@ def test_backup_and_restore_drill_on_sql_server(tmp_path: object) -> None:
     # The scratch copy is a real database with the same rows.
     assert backup.facts(scratch)["tables"] == m["tables"]
     backup.drop_database(scratch)
+
+
+def test_mcp_reader_is_read_only_on_sql_server(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F18: the cashflow_reader login reads the mart views (the MCP tools work through it) and
+    nothing else: no core table, no writes. 0018 down takes its access away; up gives it back."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import DBAPIError
+
+    from app import mcp_server
+    from app.config import get_settings
+    from app.db import reader
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures.workbook import build
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    TestClient(app).post(
+        "/api/history/excel/load", files={"file": ("Cash Flow.xlsx", build(), xlsx)}
+    )
+
+    monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
+    get_settings.cache_clear()
+    reader.get_reader_engine.cache_clear()
+    try:
+        assert reader.ensure_reader().endswith("ready")
+        assert reader.ensure_reader().endswith("ready")  # again: sets the password, no error
+        ro = create_engine(reader.reader_url())
+        with ro.connect() as conn:
+            assert conn.execute(text("SELECT COUNT(*) FROM [mart].[v_monthly_cashflow]")).scalar()
+            for sql in (
+                "SELECT TOP 1 * FROM [core].[transaction]",
+                "DELETE FROM [core].[category] WHERE 1 = 0",
+                "UPDATE [core].[account] SET [name] = [name] WHERE 1 = 0",
+            ):
+                with pytest.raises(DBAPIError, match="permission"):
+                    conn.execute(text(sql))
+                conn.rollback()
+        # The tools run through the read-only login.
+        monkeypatch.setattr(mcp_server, "get_reader_engine", lambda: ro)
+        found = mcp_server.months()
+        assert found["count"] > 0
+        last = found["last"]
+        assert mcp_server.compare_months(last, last)["cash_flow"][last] is not None
+        assert isinstance(mcp_server.spending_by_category(last), list)
+        assert isinstance(mcp_server.interest_and_fees(int(last[:4])), dict)
+        ro.dispose()
+
+        _alembic("downgrade", "0017")
+        ro = create_engine(reader.reader_url())
+        with ro.connect() as conn, pytest.raises(DBAPIError, match="permission"):
+            conn.execute(text("SELECT COUNT(*) FROM [mart].[v_monthly_cashflow]"))
+        ro.dispose()
+        _alembic("upgrade", "head")
+        assert reader.ensure_reader().endswith("ready")
+    finally:
+        monkeypatch.delenv("READER_PASSWORD")
+        get_settings.cache_clear()
+        reader.get_reader_engine.cache_clear()
