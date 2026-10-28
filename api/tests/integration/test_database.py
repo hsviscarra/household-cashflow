@@ -253,7 +253,7 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     assert after["2026-09-01"]["transactions"] == before["2026-09-01"]["transactions"] + 1
     assert Decimal(after["2026-09-01"]["expenses"]) > 0
 
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(AssertionError, match="Split transactions exist"):
         _alembic("downgrade", "0009")
     assert client.delete(url).status_code == 204
     _alembic("downgrade", "0009")
