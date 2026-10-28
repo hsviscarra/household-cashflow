@@ -4,4 +4,4 @@ useDefault = true
 
 [allowlist]
 description = "Local-only and CI-only container passwords"
-regexes = ['''Ci-Only-Passw0rd!''', '''ChangeMe-Local-2026!''']
+regexes = ['''Ci-Only-Passw0rd!''', '''ChangeMe-Local-2026!''', '''ci-only-mcp-token''']

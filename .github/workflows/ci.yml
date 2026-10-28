@@ -141,6 +141,7 @@ jobs:
         run: |
           docker run -d --name app --network host \
             -e APP_ENV=local \
+            -e MCP_TOKEN=ci-only-mcp-token -e 'READER_PASSWORD=Ci-Only-Passw0rd!' \
             -e "DATABASE_URL=mssql+pyodbc://sa:Ci-Only-Passw0rd!@localhost:1433/cashflow?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes" \
             cashflow:ci
           for i in $(seq 1 30); do
@@ -149,6 +150,17 @@ jobs:
           done
           docker logs app
           exit 1
+      - name: Claude's MCP endpoint (F18) answers with the token, through the read-only login
+        env:
+          MCP_TOKEN: ci-only-mcp-token
+        run: |
+          curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/mcp | grep -q 401
+          curl -fsS -X POST http://localhost:8000/mcp \
+            -H "Authorization: Bearer $MCP_TOKEN" -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"months","arguments":{}}}' \
+            | tee /tmp/mcp.json
+          grep -q '"count"' /tmp/mcp.json && ! grep -q '"isError":true' /tmp/mcp.json
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: web/package.json

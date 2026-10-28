@@ -31,6 +31,9 @@ services:
       DATABASE_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD}@sqlserver:1433/cashflow?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
       # Claude suggestions for unknown merchants (optional; empty = off).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Claude's read-only MCP endpoint at /mcp (F18; optional, empty = off).
+      MCP_TOKEN: ${MCP_TOKEN:-}
+      READER_PASSWORD: ${READER_PASSWORD:-}
     ports:
       - "8000:8000"
     volumes:

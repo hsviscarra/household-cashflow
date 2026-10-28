@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.21.0] — F18 Claude MCP server
+
+### F18 — Claude reads the live numbers
+- Read-only MCP endpoint at `/mcp` in the app (ADR-017), behind a bearer token (`MCP_TOKEN`).
+  Tools: months, cash flow (spending or cash view), compare two months, spending by category,
+  spending lines, top merchants, interest and fees.
+- Every tool queries through `cashflow_reader`, a login that may only `SELECT` from the mart
+  views (migration 0018 adds the `mart_reader` role; the app creates the login at start-up from
+  `READER_PASSWORD`).
+- `infra/azure/setup-mcp.sh` turns it on in Azure and prints the Claude desktop app's
+  configuration; runbook `docs/runbooks/claude-mcp.md`.
+
 ## [0.20.1] — F17 fix: restore drill
 
 ### Fixes

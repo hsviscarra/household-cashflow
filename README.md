@@ -73,6 +73,9 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
 - **Backups:** nightly, kept 30 days, restore-drilled monthly; one-time
   [`infra/azure/setup-backups.sh`](infra/azure/setup-backups.sh). How to restore:
   [docs/runbooks/backups.md](docs/runbooks/backups.md).
+- **Claude (MCP):** read-only access to the numbers for the Claude desktop app; one-time
+  [`infra/azure/setup-mcp.sh`](infra/azure/setup-mcp.sh), see
+  [docs/runbooks/claude-mcp.md](docs/runbooks/claude-mcp.md).
 
 ## Data safety
 
