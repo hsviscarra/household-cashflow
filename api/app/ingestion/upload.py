@@ -44,6 +44,10 @@ def resolve_accounts(db: Session, found: Detection) -> Resolution:
             .order_by(Account.account_id)
         )
     )
+    if found.kind == "card":  # a bank with cards and accounts (Pichincha): only that kind
+        at_bank = [a for a in at_bank if a.kind == "credit_card"]
+    elif found.kind == "bank":
+        at_bank = [a for a in at_bank if a.kind != "credit_card"]
     by_last4 = [a for a in at_bank if a.last4 and a.last4 in found.last4]
     if by_last4:
         return Resolution(by_last4, "last4")

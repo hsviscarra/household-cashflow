@@ -14,6 +14,7 @@ import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from app.ingestion.parsers import pichincha_account
 from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError, Reject
 
 NAME = "pichincha"
@@ -67,6 +68,8 @@ def _section(desc: str, op: str | None) -> str:
 
 def parse(pages: list[str]) -> ParsedStatement:
     text = "\n".join(pages)
+    if pichincha_account.is_account_statement(text):  # the bank account, not the card (F19)
+        return pichincha_account.parse(pages)
     m = PERIOD.search(text)
     if not m:
         raise ParseError("Period (PERÍODO DESDE … HASTA) not found.")

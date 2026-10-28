@@ -14,6 +14,9 @@ the Excel workbook.
   `mart.v_excel_month`; the five mart views follow it).
 - Workbook vs statements: for each month both cover, income and spending from each source and
   spending per group with its gap, biggest first (`GET/PUT /api/sources`).
+- Banco Pichincha bank account statements are read (same source as the card): period from the
+  last cut, the running balance, and credits and debits checked against the summary's totals and
+  counts. An account statement only matches a bank account, never the card.
 - Import page: "Read all" reads every unread statement oldest first; statements waiting for
   approval are grouped by month with "Approve N" for those that tie out; drops of more than 50
   PDFs upload in chunks.

@@ -7,9 +7,10 @@ names, addresses, cédula and full account numbers stay in the file.
 """
 
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO
 
 import pdfplumber
@@ -52,6 +53,9 @@ class Detection:
     period_start: date | None = None
     period_end: date | None = None
     owner: str | None = None  # the main cardholder, when the statement names one (Diners)
+    # "card" or "bank" when one bank's card and account statements look alike (Pichincha, F19):
+    # only accounts of that kind can be matched.
+    kind: str | None = None
 
     @property
     def label(self) -> str:
@@ -118,8 +122,33 @@ def _period(
     return (a, b) if a <= b else (b, a)
 
 
+def fold_accents(text: str) -> str:
+    """'DÉBITOS' → 'DEBITOS' (same as parsers.base; parsers import this module)."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
+def _pichincha_kind(text: str) -> str:
+    return "bank" if "CHEQUES / DEBITOS" in fold_accents(text).upper() else "card"
+
+
 def _pichincha_period(text: str) -> tuple[date | None, date | None]:
-    # "PERÍODO DESDE / PERÍODO HASTA" print as two dd/mm/yyyy dates on the summary page.
+    # The bank account: "FECHA ÚLTIMO CORTE … 07-08-2026" and "FECHA ESTE CORTE 04-09-2026";
+    # the period runs from the day after the last cut to this one.
+    folded = fold_accents(text).upper()
+    this = re.search(r"FECHA ESTE CORTE(?: \(FACTURA\))? (\d{2})-(\d{2})-(\d{4})", folded)
+    if this:
+        try:
+            end = date(int(this.group(3)), int(this.group(2)), int(this.group(1)))
+            last = re.search(r"FECHA ULTIMO CORTE(?: \(FACTURA\))? (\d{2})-(\d{2})-(\d{4})", folded)
+            start = (
+                date(int(last.group(3)), int(last.group(2)), int(last.group(1))) + timedelta(days=1)
+                if last
+                else end.replace(day=1)
+            )
+        except ValueError:
+            return None, None
+        return start, end
+    # The card: "PERÍODO DESDE / PERÍODO HASTA" print as two dd/mm/yyyy dates on the summary page.
     found: list[date] = []
     for raw in re.findall(r"\b(\d{2}/\d{2}/\d{4})\b", text):
         try:
@@ -142,6 +171,7 @@ class Fingerprint:
     last4: str  # regex with one group: the last four digits
     period: Callable[[str], tuple[date | None, date | None]]
     owner: str | None = None  # regex with one group: the main cardholder's name
+    kind: Callable[[str], str] | None = None  # card or bank, when the bank has both
 
 
 FINGERPRINTS = (
@@ -160,8 +190,10 @@ FINGERPRINTS = (
     Fingerprint(
         "pichincha",
         ("banco pichincha c.a.", "pichincha.com"),
-        r"\d{4,6}X{4,8}(\d{4})",
+        # The card prints 5466XXXXXXXX1234; the account "CUENTA 9999990001" (keep the last four).
+        r"(?:\d{4,6}X{4,8}|CUENTA:? ?\d{4,8})(\d{4})\b",
         _pichincha_period,
+        kind=_pichincha_kind,
     ),
     Fingerprint(
         "produbanco",
@@ -203,5 +235,6 @@ def detect(text: str) -> Detection:
         if any(mark in low for mark in fp.marks):
             last4 = list(dict.fromkeys(re.findall(fp.last4, text, re.IGNORECASE)))
             start, end = fp.period(text)
-            return Detection(fp.source, last4, start, end, _owner(fp, text))
+            kind = fp.kind(text) if fp.kind else None
+            return Detection(fp.source, last4, start, end, _owner(fp, text), kind)
     return Detection("unknown")
