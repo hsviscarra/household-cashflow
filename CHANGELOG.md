@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.23.0] — Small improvements
+
+### Improvements
+- The status pill says "Database waking up…" (amber) while the free database resumes after an
+  hour idle, checks again every 10 seconds, and only says "unavailable" after two minutes.
+- Claude's MCP connection can also read the balance sheet (every asset and liability, net worth,
+  commitments, net worth by month), the loans with their next installments, and the saved
+  monthly reports. Migration 0020 gives the read-only login SELECT on the tables those are
+  computed from (ADR-017 amended).
+
 ## [0.22.0] — F19 Bulk historical load (tooling)
 
 ### F19 — Statements from a chosen month, and the backlog

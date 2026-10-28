@@ -16,6 +16,7 @@ from mcp.server.fastmcp.server import StreamableHTTPASGIApp
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 from starlette.routing import Route
 
 from app.db.reader import get_reader_engine
@@ -26,6 +27,9 @@ from app.models import (
     v_monthly_cashflow,
     v_spending_line,
 )
+from app.services import loans as loan_service
+from app.services import networth
+from app.services import report as report_service
 from app.services.classify import merchant_key
 
 CENT = Decimal("0.01")
@@ -45,6 +49,9 @@ dollarized). Months are YYYY-MM. Amounts are USD with two decimals.
   later months come from bank and card statements and may be incomplete until every statement is
   loaded, so a drop against an earlier month can be a statement not loaded yet.
 - interest_and_fees: card interest and bank fees by account and month.
+- balance_sheet, loans: what the household owns and owes (bank and card balances from
+  statements; property, vehicles, investments and purchases entered on the app; loans from their
+  amortization tables) and net worth by month. monthly_report: a month's saved findings.
 Quote the numbers you use; don't invent causes the data doesn't show.
 """
 
@@ -268,6 +275,118 @@ def interest_and_fees(year: int) -> dict[str, Any]:
             }
             for r in rows
         ],
+    }
+
+
+def _session() -> Session:
+    return Session(get_reader_engine())
+
+
+def _item(i: networth.Item) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "name": i.name,
+        "side": i.side,
+        "kind": i.holding_class,
+        "value": None if i.value is None else _s(i.value),
+        "as_of": i.as_of.isoformat() if i.as_of else None,
+        "source": i.source,
+    }
+    if i.purchase:
+        p = i.purchase
+        out["purchase"] = {
+            "target": _s(p.target),
+            "paid": _s(p.paid),
+            "remaining": _s(p.remaining),
+            "installment": None if p.installment is None else _s(p.installment),
+            "installments_left": p.installments_left,
+            "full_price": None if p.full_price is None else _s(p.full_price),
+            "to_finance_at_delivery": None if p.at_delivery is None else _s(p.at_delivery),
+        }
+    if i.loan and i.loan.monthly_payment is not None:
+        out["monthly_payment"] = _s(i.loan.monthly_payment)
+    return out
+
+
+@mcp.tool()
+def balance_sheet(as_of: str | None = None) -> dict[str, Any]:
+    """What the household owns and owes on a day (YYYY-MM-DD, default today): every asset and
+    liability with its latest value and where it came from (a statement, a value entered on the
+    page, the workbook, a loan's amortization table), totals, net worth, commitments still to
+    pay on purchases in progress, and net worth at each of the last 12 month ends."""
+    day = date.fromisoformat(as_of) if as_of else date.today()
+    with _session() as db:
+        sheet = networth.sheet(db, day, months=12)
+    items = [i for i in sheet.items if i.is_active]
+    assets, debts = sheet.total("asset"), sheet.total("liability")
+    return {
+        "as_of": sheet.as_of.isoformat(),
+        "assets": _s(assets),
+        "liabilities": _s(debts),
+        "net_worth": _s(assets - debts),
+        "commitments": _s(sheet.commitments),
+        "items": [_item(i) for i in items],
+        "net_worth_by_month": [
+            {"month": _month(p.month), "net_worth": _s(p.net)} for p in sheet.series
+        ],
+    }
+
+
+@mcp.tool()
+def loans() -> list[dict[str, Any]]:
+    """Each loan with an amortization table: balance, installments paid and left, the next
+    installments (principal, interest, other charges), payoff month, and interest paid this year
+    and still to pay."""
+    today = date.today()
+    out = []
+    with _session() as db:
+        for i in networth.holdings(db, today):
+            sched = i.loan.schedule if i.loan else None
+            if i.holding_class != "loan" or sched is None or i.holding_id is None:
+                continue
+            due = [r for r in loan_service.installments(db, i.holding_id) if r.status == "due"]
+            out.append(
+                {
+                    "name": i.name,
+                    "balance": None if i.value is None else _s(i.value),
+                    "paid": sched.paid,
+                    "left": sched.left,
+                    "payoff": _month(sched.payoff) if sched.payoff else None,
+                    "interest_this_year": _s(sched.interest_this_year),
+                    "interest_left": _s(sched.interest_left),
+                    "other_charges_left": _s(sched.other_left),
+                    "next_installments": [
+                        {
+                            "month": _month(r.period),
+                            "total": _s(r.total),
+                            "principal": _s(r.principal),
+                            "interest": _s(r.interest),
+                            "other": _s(r.other),
+                            "balance_after": _s(r.balance_after),
+                        }
+                        for r in due[:6]
+                    ],
+                }
+            )
+    return out
+
+
+@mcp.tool()
+def monthly_report(month: str) -> dict[str, Any]:
+    """The saved monthly report for a month (YYYY-MM): its 3 to 5 findings, who wrote them and
+    when, and the facts they were written from. Reports are written on the app's Report page;
+    this only reads them."""
+    m = _m(month)
+    with _session() as db:
+        r = report_service.get(db, m)
+    if r is None:
+        return {"month": month, "report": None, "note": "Not written yet: use the Report page."}
+    return {
+        "month": month,
+        "written_by": r.written_by,
+        "model": r.model,
+        "generated_at": r.generated_at.isoformat() if r.generated_at else None,
+        "findings": [{"title": f.title, "text": f.text, "tone": f.tone} for f in r.findings],
+        "facts": r.facts,
     }
 
 

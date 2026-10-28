@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRef } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 
 import { fetchHealth, fetchMe } from "./api";
@@ -17,17 +18,36 @@ import SubscriptionsPage from "./pages/Subscriptions";
 import StatusPage from "./pages/Status";
 import TransactionsPage from "./pages/Transactions";
 
+/** The free Azure SQL database pauses after an hour without use and takes up to a minute or two
+ * to resume: until then it's "waking up", not down. */
+export const WAKE_MS = 2 * 60 * 1000;
+
+export function databasePill(database: "ok" | "unavailable", downForMs: number) {
+  if (database === "ok") return { label: "Database connected", className: "pill-good" };
+  if (downForMs < WAKE_MS) return { label: "Database waking up…", className: "pill-wait" };
+  return { label: "Database unavailable", className: "pill-bad" };
+}
+
 function StatusPill() {
-  const { data, isError, isLoading } = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
+  const since = useRef<number | null>(null);
+  const { data, isError, isLoading } = useQuery({
+    queryKey: ["health"],
+    queryFn: fetchHealth,
+    // While the database is resuming, check again every 10 seconds.
+    refetchInterval: (q) => (q.state.data && q.state.data.database !== "ok" ? 10_000 : false),
+  });
   if (isLoading) return <span className="pill pill-muted">Checking…</span>;
   if (isError || !data) return <span className="pill pill-bad">API unreachable</span>;
-  const ok = data.database === "ok";
+  if (data.database === "ok") since.current = null;
+  else since.current ??= Date.now();
+  const pill = databasePill(data.database, since.current ? Date.now() - since.current : 0);
   return (
     <span
-      className={`pill ${ok ? "pill-good" : "pill-bad"}`}
+      className={`pill ${pill.className}`}
       title={`Version ${data.version} (${data.git_sha})`}
+      role="status"
     >
-      Database {ok ? "connected" : "unavailable"}
+      {pill.label}
     </span>
   );
 }

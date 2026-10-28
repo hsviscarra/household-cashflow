@@ -133,6 +133,9 @@ def test_the_protocol_over_http(
             "spending_lines",
             "top_merchants",
             "interest_and_fees",
+            "balance_sheet",
+            "loans",
+            "monthly_report",
         }
         called = _rpc(
             client,
@@ -224,3 +227,48 @@ def test_reader_engine_and_skip(monkeypatch: pytest.MonkeyPatch) -> None:
     assert reader._quoted("r'eader") == "r''eader"
     reader.get_reader_engine.cache_clear()
     get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------- balance sheet, loans, reports
+def test_balance_sheet_loans_and_report(household: Engine, client: TestClient) -> None:
+    from tests.fixtures import statements as s
+
+    car = client.post(
+        "/api/holdings",
+        json={"name": "Car", "holding_class": "vehicle", "value": "15000", "as_of": "2026-01-01"},
+    )
+    assert car.status_code == 201
+    loan = client.post(
+        "/api/holdings",
+        json={"name": "Mortgage", "holding_class": "loan", "value": "12000", "as_of": "2025-12-31"},
+    ).json()["holding_id"]
+    up = client.post(
+        f"/api/holdings/{loan}/schedule",
+        files={"file": ("t.pdf", s.loan_table(), "application/pdf")},
+    )
+    assert up.status_code == 200, up.text
+
+    sheet = mcp_server.balance_sheet("2026-10-27")
+    items = {i["name"]: i for i in sheet["items"]}
+    assert items["Car"]["value"] == "15000.00" and items["Car"]["side"] == "asset"
+    assert items["Mortgage"]["value"] == "2000.00" and items["Mortgage"]["source"] == "amortization"
+    assert items["Mortgage"]["monthly_payment"] == "1022.50"
+    assert sheet["net_worth"] == "13000.00" and len(sheet["net_worth_by_month"]) == 12
+
+    [mortgage] = mcp_server.loans()
+    assert (mortgage["paid"], mortgage["left"], mortgage["payoff"]) == (10, 2, "2026-12")
+    assert mortgage["next_installments"][0] == {
+        "month": "2026-11",
+        "total": "1022.50",
+        "principal": "1000.00",
+        "interest": "20.00",
+        "other": "2.50",
+        "balance_after": "1000.00",
+    }
+
+    assert mcp_server.monthly_report("2026-10")["report"] is None
+    made = client.post("/api/reports/2026-10/generate", params={"today": "2026-10-28"})
+    assert made.status_code == 200, made.text
+    saved = mcp_server.monthly_report("2026-10")
+    assert saved["written_by"] == "rules" and 3 <= len(saved["findings"]) <= 5
+    assert saved["facts"]["month"] == "2026-10"

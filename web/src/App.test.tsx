@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import App from "./App";
+import App, { WAKE_MS, databasePill } from "./App";
 import { PAGES } from "./pages";
 
 function mockApi(health: object, me: object) {
@@ -60,12 +60,17 @@ describe("App shell", () => {
     expect(await screen.findByText("hernan@example.com")).toBeInTheDocument();
   });
 
-  it("flags an unavailable database", async () => {
+  it("shows a paused database as waking up, and unavailable after two minutes", async () => {
     mockApi(
       { ...okHealth, status: "degraded", database: "unavailable" },
       { name: null, authenticated: false },
     );
     renderAt("/no-such-page");
-    expect(await screen.findByText("Database unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("Database waking up…")).toBeInTheDocument();
+    expect(databasePill("unavailable", WAKE_MS + 1)).toEqual({
+      label: "Database unavailable",
+      className: "pill-bad",
+    });
+    expect(databasePill("ok", WAKE_MS + 1).label).toBe("Database connected");
   });
 });
