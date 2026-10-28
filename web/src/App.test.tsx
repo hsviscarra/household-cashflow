@@ -65,8 +65,7 @@ describe("App shell", () => {
       { ...okHealth, status: "degraded", database: "unavailable" },
       { name: null, authenticated: false },
     );
-    renderAt("/projections");
+    renderAt("/no-such-page");
     expect(await screen.findByText("Database unavailable")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Projections" })).toBeInTheDocument();
   });
 });

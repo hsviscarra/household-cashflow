@@ -39,3 +39,10 @@ export const monthName = (m: number) => LONG[m - 1];
 
 /** Money out without a sign, money back with + (docs/design-system.md). */
 export const showAmount = (v: string | number) => (num(v) > 0 ? signed(v) : money(Math.abs(num(v))));
+
+/** Today as YYYY-MM-DD in the viewer's own time zone (toISOString would give the UTC date, which
+ * is already tomorrow in Quito after 7 pm). */
+export function localToday(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}

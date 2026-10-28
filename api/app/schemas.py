@@ -906,5 +906,51 @@ class BalanceSheetOut(BaseModel):
     series: list[SheetPointOut]
 
 
+# ---------------- F15: projections ----------------
+class ProjectionEventOut(BaseModel):
+    day: date
+    name: str
+    amount: Decimal
+    kind: Literal["income", "fixed", "purchase", "variable"]
+
+
+class ProjectionMonthOut(BaseModel):
+    month: date
+    income: Decimal
+    fixed: Decimal
+    variable: Decimal
+    purchases: Decimal
+    net: Decimal
+    end_cash: Decimal
+    items: list[ProjectionEventOut]
+
+
+class ProjectionDayOut(BaseModel):
+    day: date
+    balance: Decimal
+
+
+class ProjectionAlertOut(BaseModel):
+    month: date
+    group_id: int
+    group_name: str
+    amount: Decimal
+    average: Decimal
+    change: Decimal | None
+
+
+class ProjectionOut(BaseModel):
+    today: date
+    start_cash: Decimal
+    cash_as_of: date | None
+    variable_per_month: Decimal
+    average_months: list[date]
+    months: list[ProjectionMonthOut]
+    daily: list[ProjectionDayOut]
+    lowest: ProjectionDayOut | None
+    next_payday: ProjectionEventOut | None
+    alerts: list[ProjectionAlertOut]
+
+
 TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()

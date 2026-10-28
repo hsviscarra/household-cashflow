@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { niceTicks } from "./components/charts";
-import { money, monthLong, monthShort, pct, showAmount, signed, short } from "./money";
+import { money, monthLong, monthShort, pct, showAmount, signed, short, localToday } from "./money";
 
 describe("money formatting", () => {
   it("formats decimal strings with two decimals and separators", () => {
@@ -33,5 +33,12 @@ describe("niceTicks", () => {
     expect(neg[0]).toBeLessThanOrEqual(-16825);
     expect(neg).toContain(0);
     expect(niceTicks(5, 5).length).toBeGreaterThan(1);
+  });
+});
+
+describe("localToday", () => {
+  it("uses the local date, not UTC", () => {
+    expect(localToday(new Date(2026, 9, 27, 23, 30))).toBe("2026-10-27");
+    expect(localToday(new Date(2027, 0, 5))).toBe("2027-01-05");
   });
 });

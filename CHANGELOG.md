@@ -5,6 +5,26 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.17.0] — F15 Projections
+
+### F15 — The next 3 months on screen
+- Projections page (ADR-013): the next three months in cash terms, built from:
+  - income and fixed outflows from the recurring items;
+  - variable spending (the average of the last three months' bank spending no recurring item
+    paid);
+  - purchase installments.
+- For each month, net and cash at month end, starting from the bank balances on the latest
+  statements, and each month's items by day.
+- Cash day by day up to the end of the third month: the lowest balance and the payday after it,
+  with a warning when cash goes below zero, and a chart with its table.
+- Alerts for spending groups more than 30% above their previous three-month average, with a
+  link to Spending.
+- `GET /api/projections`. No schema change.
+
+### Fixes
+- Dates entered on the balance sheet (and the Recurring page's default month) used the UTC date,
+  which is already tomorrow in Quito after 7 pm; they now use the local date.
+
 ## [0.16.0] — F14 Balance sheet
 
 ### F14 — What the household owns and owes (Debt & Net Worth)

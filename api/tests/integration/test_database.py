@@ -524,3 +524,33 @@ def test_balance_sheet_on_sql_server(tmp_path: object) -> None:
         )
     assert rows["BIESS"] == "loan" and rows["Stock Market"] == "investment"
     assert "Office" not in rows
+
+
+def test_projections_on_sql_server(tmp_path: object) -> None:
+    """F15 on SQL Server: the projection's queries (the spending view joined to transactions and
+    accounts, recurring entries, holdings) run, with cash from a statement."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa15.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    if b.get("batch_id") and b.get("tieout_ok"):
+        client.post(f"/api/batches/{b['batch_id']}/approve")
+    resp = client.get("/api/projections", params={"today": "2026-10-20"})
+    assert resp.status_code == 200, resp.text
+    p = resp.json()
+    assert Decimal(p["start_cash"]) > 0
+    assert [m["month"] for m in p["months"]] == ["2026-11-01", "2026-12-01", "2027-01-01"]
+    assert p["daily"][-1]["day"] == "2027-01-31"
