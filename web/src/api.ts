@@ -700,6 +700,36 @@ export type SheetValue = {
   source: string;
   notes: string | null;
 };
+export type LoanSchedule = {
+  installments: number;
+  paid: number;
+  left: number;
+  next_period: string | null;
+  next_total: string | null;
+  payoff: string | null;
+  balance: string | null;
+  interest_this_year: string;
+  interest_left: string;
+  other_left: string;
+};
+export type LoanImport = {
+  installments: number;
+  paid: number;
+  due: number;
+  balance: string | null;
+  as_of: string | null;
+};
+export type LoanPayment = {
+  number: number;
+  period: string;
+  total: string;
+  status: "paid" | "due";
+  line_id: number | null;
+  line_date: string | null;
+  line_amount: string | null;
+  line_description: string | null;
+  account_name: string | null;
+};
 export type SheetItem = {
   key: string;
   name: string;
@@ -723,7 +753,12 @@ export type SheetItem = {
     at_delivery: string | null;
     lines: string;
   } | null;
-  loan: { monthly_payment: string | null; paid_this_year: string; payments_this_year: number } | null;
+  loan: {
+    monthly_payment: string | null;
+    paid_this_year: string;
+    payments_this_year: number;
+    schedule?: LoanSchedule | null;
+  } | null;
   category_id: number | null;
   recurring_template_id: number | null;
 };
@@ -756,6 +791,9 @@ export const updateHolding = (id: number, h: Partial<HoldingInput> & { is_active
 export const deleteHolding = (id: number) => send<void>("DELETE", `/api/holdings/${id}`);
 export const setHoldingValue = (id: number, v: { as_of: string; amount: string; notes?: string | null }) =>
   send<SheetValue>("POST", `/api/holdings/${id}/values`, v);
+export const uploadLoanTable = (id: number, file: File) =>
+  upload<LoanImport>(`/api/holdings/${id}/schedule`, file);
+export const fetchLoanPayments = (id: number) => send<LoanPayment[]>("GET", `/api/holdings/${id}/payments`);
 export const deleteHoldingValue = (snapshotId: number) =>
   send<void>("DELETE", `/api/holdings/values/${snapshotId}`);
 

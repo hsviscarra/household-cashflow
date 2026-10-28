@@ -1,6 +1,6 @@
 [project]
 name = "cashflow-api"
-version = "0.17.0"
+version = "0.18.0"
 description = "Household cash flow API: statement ingestion, categorization and analysis"
 requires-python = ">=3.12"
 dependencies = [

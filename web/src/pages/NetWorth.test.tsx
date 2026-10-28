@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BalanceSheet, SheetItem } from "../api";
+import type { BalanceSheet, LoanSchedule, SheetItem } from "../api";
 import BalanceSheetSection, { sheetHeadline } from "./NetWorth";
 
 const item = (over: Partial<SheetItem>): SheetItem => ({
@@ -275,5 +275,165 @@ describe("balance sheet", () => {
     );
     renderIt();
     expect(await screen.findByText("Could not load the balance sheet: boom")).toBeInTheDocument();
+  });
+});
+
+describe("loan amortization table", () => {
+  const schedule: LoanSchedule = {
+    installments: 12,
+    paid: 10,
+    left: 2,
+    next_period: "2026-11-01",
+    next_total: "1022.5",
+    payoff: "2026-12-01",
+    balance: "2000",
+    interest_this_year: "750",
+    interest_left: "30",
+    other_left: "5",
+  };
+  const withTable = (s: LoanSchedule | null): BalanceSheet => ({
+    ...SHEET,
+    items: SHEET.items.map((i) => (i.name === "Mortgage" ? { ...i, loan: { ...i.loan!, schedule: s } } : i)),
+  });
+  const payments = [
+    {
+      number: 9,
+      period: "2026-09-01",
+      total: "1042.5",
+      status: "paid",
+      line_id: 1,
+      line_date: "2026-09-05",
+      line_amount: "-1042",
+      line_description: "PAGO IESS",
+      account_name: "Pichincha Ahorros",
+    },
+    {
+      number: 10,
+      period: "2026-10-01",
+      total: "1032.5",
+      status: "paid",
+      line_id: null,
+      line_date: null,
+      line_amount: null,
+      line_description: null,
+      account_name: null,
+    },
+    {
+      number: 11,
+      period: "2026-11-01",
+      total: "1022.5",
+      status: "due",
+      line_id: null,
+      line_date: null,
+      line_amount: null,
+      line_description: null,
+      account_name: null,
+    },
+  ];
+  function stub(sheet: BalanceSheet, upload: () => Response) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const json = (v: unknown, status = 200) =>
+          Promise.resolve(new Response(JSON.stringify(v), { status }));
+        if (url === "/api/networth") return json(sheet);
+        if (url === "/api/holdings/3/payments") return json(payments);
+        if (url === "/api/holdings/3/schedule" && init?.method === "POST") {
+          expect(init.body).toBeInstanceOf(FormData);
+          return Promise.resolve(upload());
+        }
+        return json([]);
+      }),
+    );
+  }
+
+  it("uploads a table and reports what it read", async () => {
+    stub(
+      withTable(null),
+      () =>
+        new Response(
+          JSON.stringify({ installments: 12, paid: 10, due: 2, balance: "2000", as_of: "2026-10-01" }),
+        ),
+    );
+    renderIt();
+    const card = await screen.findByRole("listitem", { name: "Mortgage" });
+    expect(within(card).getByText(/Paying/)).toHaveTextContent("Paying 505.19 a month");
+    expect(within(card).getByText("Upload amortization table (PDF)")).toBeInTheDocument();
+    const file = new File(["%PDF"], "tabla.pdf", { type: "application/pdf" });
+    fireEvent.change(within(card).getByLabelText("Amortization table for Mortgage"), {
+      target: { files: [file] },
+    });
+    expect(
+      await screen.findByText("Read 12 installments: 10 paid, 2 to go; balance 2,000.00."),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a table that doesn't check out", async () => {
+    stub(
+      withTable(null),
+      () =>
+        new Response(JSON.stringify({ detail: "The table doesn't check out: Installment 3 is missing." }), {
+          status: 422,
+        }),
+    );
+    renderIt();
+    const card = await screen.findByRole("listitem", { name: "Mortgage" });
+    fireEvent.change(within(card).getByLabelText("Amortization table for Mortgage"), {
+      target: { files: [new File(["x"], "t.pdf")] },
+    });
+    expect(
+      await screen.findByText(
+        "Could not read the table: The table doesn't check out: Installment 3 is missing.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("summarizes the schedule and checks payments against the bank", async () => {
+    stub(withTable(schedule), () => new Response("{}"));
+    renderIt();
+    const card = await screen.findByRole("listitem", { name: "Mortgage" });
+    expect(within(card).getByText(/installments paid/)).toHaveTextContent(
+      "10 of 12 installments paid · next 1,022.50 in November 2026 · paid off December 2026",
+    );
+    expect(within(card).getByText(/Interest this year/)).toHaveTextContent(
+      "Interest this year 750.00 · still to pay 30.00 interest and 5.00 insurance and charges over 2 months",
+    );
+    expect(within(card).queryByText(/Paying/)).toBeNull();
+    expect(within(card).getByText("Upload a newer amortization table")).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("button", { name: "Payments" }));
+    const list = await within(card).findByRole("list", { name: "Payments for Mortgage" });
+    expect(within(card).getByText(/of 2 paid installments found/)).toHaveTextContent("1 of 2");
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent(
+      "#9 · September 2026 · 1,042.50Paid Sep 5, 2026 from Pichincha Ahorros (1,042.00)",
+    );
+    expect(rows[1]).toHaveTextContent("Lender says paid; no bank line found");
+    expect(rows[2]).toHaveTextContent("Due");
+  });
+
+  it("a paid-off loan and a failed payments load", async () => {
+    stub(
+      withTable({ ...schedule, paid: 12, left: 0, next_period: null, next_total: null }),
+      () => new Response("{}"),
+    );
+    vi.mocked(fetch).mockImplementation((url) =>
+      Promise.resolve(
+        String(url).endsWith("/payments")
+          ? new Response(JSON.stringify({ detail: "boom" }), { status: 500 })
+          : new Response(
+              JSON.stringify(
+                withTable({ ...schedule, paid: 12, left: 0, next_period: null, next_total: null }),
+              ),
+            ),
+      ),
+    );
+    renderIt();
+    const card = await screen.findByRole("listitem", { name: "Mortgage" });
+    expect(within(card).getByText(/installments paid/)).toHaveTextContent(
+      "12 of 12 installments paid · paid off",
+    );
+    expect(within(card).getByText(/Interest this year/)).toHaveTextContent("over 0 months");
+    fireEvent.click(within(card).getByRole("button", { name: "Payments" }));
+    expect(await within(card).findByText("Could not load the payments: boom")).toBeInTheDocument();
   });
 });

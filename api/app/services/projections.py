@@ -7,6 +7,8 @@ For each of the next three months:
 - variable spending is the average of the last three complete months of spending lines that
   no recurring item paid (mart.v_spending_line), in cash terms: card purchases are left out
   because the card payments, recurring items themselves, carry them;
+- a recurring item that pays a loan with an amortization table (ADR-014) uses the table's
+  installment for the month, and nothing once the loan is paid off;
 - purchase installments are each purchase in progress's installment (F14) while installments are
   left, unless a recurring item already pays its category.
 Cash starts from the bank accounts' latest statement balances. Day by day, each recurring item
@@ -24,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, RecurringEntry, RecurringTemplate, Transaction
 from app.models import v_spending_line as v
-from app.services import networth, recurring
+from app.services import loans, networth, recurring
 
 MONTHS_AHEAD = 3
 AVERAGE_OVER = 3
@@ -133,7 +135,13 @@ def variable_average(db: Session, today: date) -> tuple[Decimal, list[date]]:
     return (Decimal(str(total or 0)) / len(have)).quantize(CENT), sorted(have)
 
 
-def _recurring_events(db: Session, month: date, days: dict[int, int]) -> list[Event]:
+def _recurring_events(
+    db: Session,
+    month: date,
+    days: dict[int, int],
+    due: dict[int, dict[date, Decimal]] | None = None,
+) -> list[Event]:
+    due = due or {}
     entries = {
         e.template_id: e
         for e in db.scalars(select(RecurringEntry).where(RecurringEntry.month == month))
@@ -160,6 +168,10 @@ def _recurring_events(db: Session, month: date, days: dict[int, int]) -> list[Ev
             amount = found
         else:
             continue
+        if t.template_id in due:  # a loan with a table: its installment, none after payoff
+            if month not in due[t.template_id]:
+                continue
+            amount = -due[t.template_id][month]
         kind = "income" if t.type in INCOME else "fixed"
         out.append(Event(_on(month, days.get(t.template_id, 1)), t.name, amount, kind))
     return out
@@ -243,9 +255,10 @@ def project(db: Session, today: date | None = None) -> Projection:
 
     # Events from today to the end of the third month: what is left of this month, then the
     # three months.
-    events = [e for e in _recurring_events(db, current, days) if e.day >= today]
+    due = loans.due_by_month(db)
+    events = [e for e in _recurring_events(db, current, days, due) if e.day >= today]
     for m in months:
-        events += _recurring_events(db, m, days)
+        events += _recurring_events(db, m, days, due)
     events += _purchase_events(db, today, [current, *months], paid_categories)
 
     plans = {m: MonthPlan(m) for m in months}

@@ -666,3 +666,43 @@ if __name__ == "__main__":
     out.mkdir(parents=True, exist_ok=True)
     for name, make in SAMPLES.items():
         (out / f"sample-{name}").write_bytes(make())
+
+
+def loan_table(
+    *,
+    approved: str = "12000.00",
+    heading: str | None = None,
+    paid: int = 10,
+    skip: int | None = None,
+    bad_total: int | None = None,
+) -> bytes:
+    """A synthetic lender amortization table: 12 monthly installments from January 2026 of
+    1,000.00 principal plus 1% interest on the balance, a 2.50 insurance charge (and a 4.00 late
+    charge on installment 3); the first `paid` are CANCELADO."""
+    from decimal import Decimal
+
+    balance = Decimal(approved)
+    rows = []
+    for n in range(1, 13):
+        principal = Decimal("1000.00") if n < 12 else balance
+        interest = (balance * Decimal("0.01")).quantize(Decimal("0.01"))
+        middle = [Decimal("2.50")] + ([Decimal("4.00")] if n == 3 else [])
+        total = principal + interest + sum(middle, Decimal(0))
+        if n == bad_total:
+            total += Decimal("1.00")
+        balance -= principal
+        state = "CANCELADO" if n <= paid else "POR VENCER"
+        amounts = " ".join(f"{x:.2f}" for x in [principal, interest, *middle, total, balance])
+        if n != skip:
+            rows.append(f"{n} 2026-{n:02d} {amounts} {state}")
+    return pdf(
+        [
+            "BANCO DE PRUEBA HIPOTECARIO",
+            "TABLA DE AMORTIZACION",
+            "IDENTIFICACION: 0000000000 NOMBRE: PRUEBA TITULAR",
+            f"NUMERO DE OPERACION: 000000 MONTO APROBADO: {heading or approved} PLAZO: 12 Meses",
+            "No. PERIODO CAPITAL INTERES SEGURO MORA TOTAL SALDO ESTADO",
+            *rows[:7],
+        ],
+        rows[7:],
+    )
