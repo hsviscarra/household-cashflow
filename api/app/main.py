@@ -27,15 +27,24 @@ from app.routers import (
 
 
 class SPAStaticFiles(StaticFiles):
-    """Serves the React build; unknown paths fall back to index.html for client-side routes."""
+    """Serves the React build; unknown paths fall back to index.html for client-side routes.
+
+    The page itself (index.html) is never reused without asking the server, so a new release
+    shows up on the next visit; the hashed files under assets/ never change and are kept a year.
+    """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            resp = await super().get_response(path, scope)
         except HTTPException as exc:
             if exc.status_code != 404 or path.startswith("api/"):
                 raise
-            return await super().get_response("index.html", scope)
+            resp = await super().get_response("index.html", scope)
+        if path.startswith("assets/"):
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif resp.media_type == "text/html" or "text/html" in resp.headers.get("content-type", ""):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
 
 def create_app() -> FastAPI:
