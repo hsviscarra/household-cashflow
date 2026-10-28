@@ -10,6 +10,7 @@ import {
   type CategoryMonth,
   type MonthlyCashflow,
 } from "../api";
+import { ExportLinks } from "../components/ExportLinks";
 import { InOutColumns, Legend, TrendLine, type ColumnDatum } from "../components/charts";
 import { money, monthLong, monthShort, num, parts, pct, signed } from "../money";
 
@@ -132,6 +133,12 @@ export default function Overview() {
             {v.label}
           </button>
         ))}
+      </div>
+      <div className="mt-2">
+        <ExportLinks
+          dataset={view === "cash" ? "monthly_cash" : "monthly_cashflow"}
+          label={`every month (${view === "cash" ? "cash" : "spending"} view)`}
+        />
       </div>
       <p className="mt-2 text-sm text-muted">{VIEWS.find((v) => v.id === view)?.help}</p>
 

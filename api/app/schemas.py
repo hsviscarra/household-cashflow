@@ -5,7 +5,7 @@ Money is Decimal and serializes as a JSON string, so no precision is lost on the
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -988,3 +988,32 @@ class ProjectionOut(BaseModel):
 
 TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()
+
+
+# ---------------- F16: monthly report and export ----------------
+class FindingOut(BaseModel):
+    title: str
+    text: str
+    tone: Literal["good", "bad", "neutral"]
+
+
+class ReportOut(BaseModel):
+    month: date
+    written_by: Literal["claude", "rules"]
+    model: str | None
+    generated_at: datetime | None
+    generated_by: str
+    facts: dict[str, Any]
+    findings: list[FindingOut]
+    notice: str | None = None
+
+
+class ReportMonthsOut(BaseModel):
+    months: list[date]
+    claude: bool
+
+
+class ExportDatasetOut(BaseModel):
+    key: str
+    title: str
+    by: Literal["month", "year"]

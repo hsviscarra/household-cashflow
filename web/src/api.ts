@@ -834,3 +834,49 @@ export type Projection = {
   }[];
 };
 export const fetchProjection = () => send<Projection>("GET", "/api/projections");
+
+// ---------- F16: monthly report and export ----------
+export type Tone = "good" | "bad" | "neutral";
+export type Finding = { title: string; text: string; tone: Tone };
+type Flow = {
+  income: string;
+  expenses: string;
+  savings: string;
+  debt_payments: string;
+  net: string;
+  savings_rate: string | null;
+};
+export type ReportFacts = {
+  month: string;
+  data: { complete: boolean; source?: string; open: string[] };
+  cash_flow: { month: Flow | null; last_month: Flow | null; average_3_months: Flow | null };
+  [key: string]: unknown;
+};
+export type MonthlyReport = {
+  month: string;
+  written_by: "claude" | "rules";
+  model: string | null;
+  generated_at: string | null;
+  generated_by: string;
+  facts: ReportFacts;
+  findings: Finding[];
+  notice: string | null;
+};
+export type ExportDataset = { key: string; title: string; by: "month" | "year" };
+export const fetchReportMonths = () => send<{ months: string[]; claude: boolean }>("GET", "/api/reports");
+export const fetchReport = (month: string) => send<MonthlyReport | null>("GET", `/api/reports/${month}`);
+export const generateReport = (month: string) =>
+  send<MonthlyReport>("POST", `/api/reports/${month}/generate`);
+export const fetchExports = () => send<ExportDataset[]>("GET", "/api/exports");
+/** A download link: the month for monthly data, its year for yearly views. */
+export const exportUrl = (
+  key: string,
+  fmt: "csv" | "xlsx",
+  period: { month?: string; year?: number } = {},
+) => {
+  const q = new URLSearchParams();
+  if (period.month) q.set("month", period.month);
+  if (period.year) q.set("year", String(period.year));
+  const qs = q.toString();
+  return `/api/exports/${key}.${fmt}${qs ? `?${qs}` : ""}`;
+};

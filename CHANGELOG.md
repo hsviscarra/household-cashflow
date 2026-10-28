@@ -5,6 +5,27 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.19.0] — F16 Monthly report and export
+
+### F16 — The month in 3 to 5 findings, and every view to download
+- Report page (ADR-015), one month at a time:
+  - income, spending, net and savings rate against last month and the 3-month average;
+  - what is still open when the month is incomplete;
+  - 3 to 5 findings.
+- The findings are written by Claude (Claude Sonnet 5.5, `ANTHROPIC_REPORT_MODEL`) from facts the
+  app computes: cash flow, group changes, subscriptions started or stopped, interest and fees,
+  like-for-like net worth and loans, alerts, and the projection's lowest cash. Without an API key,
+  or if Claude fails, rules write them.
+- Only totals and group, category and merchant names reach Claude: no account numbers, people's
+  names or statement text.
+- Reports are saved per month (migration 0017, `core.monthly_report`); Regenerate replaces one.
+- CSV and Excel export of monthly cash flow (both views), categories by month, spending lines,
+  interest and fees, and transactions, for a month or a year. Excel files keep real numbers and
+  dates.
+- Links are on the Report page and on Overview, Spending and Debt.
+- `GET /api/reports`, `GET /api/reports/{month}`, `POST /api/reports/{month}/generate`,
+  `GET /api/exports`, `GET /api/exports/{dataset}.{csv|xlsx}`.
+
 ## [0.18.1] — Fix
 
 ### Fixes

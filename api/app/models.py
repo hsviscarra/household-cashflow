@@ -411,6 +411,27 @@ class LoanInstallment(Base):
     status: Mapped[str] = mapped_column(Unicode(4))
 
 
+class MonthlyReport(Base):
+    """One month's report (F16, ADR-015): the facts worked out from the data and the 3 to 5
+    findings written from them, by Claude or by rules. Regenerating replaces it."""
+
+    __tablename__ = "monthly_report"
+    __table_args__ = (
+        UniqueConstraint("month"),
+        CheckConstraint(_in("written_by", ("claude", "rules")), name="written_by"),
+        {"schema": "core"},
+    )
+
+    report_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    month: Mapped[date] = mapped_column(Date)
+    written_by: Mapped[str] = mapped_column(Unicode(6))
+    model: Mapped[str | None] = mapped_column(Unicode(60))
+    facts_json: Mapped[str] = mapped_column(UnicodeText)
+    findings_json: Mapped[str] = mapped_column(UnicodeText)
+    generated_by: Mapped[str] = mapped_column(Unicode(200))
+    generated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class LoadLog(Base):
     __tablename__ = "load_log"
     __table_args__ = ({"schema": "audit"},)
