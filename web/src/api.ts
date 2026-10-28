@@ -898,3 +898,24 @@ export type BackupStatus = {
   error: string | null;
 };
 export const fetchBackups = () => send<BackupStatus>("GET", "/api/backups");
+
+// ---------- F19: statements from a chosen month ----------
+export type GroupGap = { group: string; workbook: string; statements: string; difference: string };
+export type SourceMonth = {
+  month: string;
+  workbook_income: string;
+  statements_income: string;
+  workbook_spending: string;
+  statements_spending: string;
+  statement_lines: number;
+  groups: GroupGap[];
+};
+export type Sources = {
+  statements_from: string | null;
+  workbook_first: string | null;
+  workbook_last: string | null;
+  check: SourceMonth[];
+};
+export const fetchSources = () => send<Sources>("GET", "/api/sources");
+export const saveSources = (statements_from: string | null) =>
+  send<Sources>("PUT", "/api/sources", { statements_from });

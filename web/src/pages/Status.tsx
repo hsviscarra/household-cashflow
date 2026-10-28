@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { BackupPanel } from "../components/BackupPanel";
+import { SourcesSection } from "../components/SourcesSection";
 import { fetchStatus, type DataStatus, type MonthStatus, type StatusItem } from "../api";
 import { monthLong, monthShort } from "../money";
 
@@ -49,6 +50,7 @@ export default function StatusPage() {
           Could not load the data status: {(q.error as Error).message}
         </p>
       )}
+      <SourcesSection />
       {!data && !q.error && <p className="mt-6 text-muted">Checking every month…</p>}
       {data && (
         <>

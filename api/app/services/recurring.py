@@ -33,6 +33,7 @@ from app.models import (
     RecurringEntry,
     RecurringTemplate,
     Transaction,
+    v_excel_month,
 )
 from app.services.excel_mapping import lookup, norm
 
@@ -553,11 +554,8 @@ def _eligible(t: RecurringTemplate, ln: _Line) -> bool:
 
 
 def excel_months(db: Session) -> set[date]:
-    return set(
-        db.scalars(
-            select(Transaction.cash_month).where(Transaction.source == "excel_history").distinct()
-        )
-    )
+    """Months where the workbook counts: those it covers before "statements from" (ADR-018)."""
+    return set(db.scalars(select(v_excel_month.c.cash_month)))
 
 
 def match(db: Session, month: date, user: str = "system") -> int:

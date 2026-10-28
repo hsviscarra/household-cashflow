@@ -2,7 +2,7 @@
 -- positive amounts. Interest is the Credit Card Interest category (interest earned on a credit
 -- balance reduces it); fees are the rest of Financial Costs (bank fees, SOLCA, the tax on
 -- digital services). Same rules as the spending views: the Excel history wins its months
--- (ADR-004) and a split line counts through its parts (F9).
+-- (ADR-004, ADR-018) and a split line counts through its parts (F9).
 CREATE VIEW [mart].[v_debt_cost] AS
 SELECT
     [t].[cash_month],
@@ -27,12 +27,12 @@ WHERE (
     )
     AND NOT (
         [t].[source] = 'statement'
-        AND EXISTS (
-            SELECT 1
-            FROM [core].[transaction] AS [h]
-            WHERE [h].[source] = 'excel_history'
-                AND [h].[cash_month] = [t].[cash_month]
-        )
+        AND [t].[cash_month] IN (SELECT [e].[cash_month] FROM [mart].[v_excel_month] AS [e])
+    )
+    -- From the "statements from" month on (F19), the workbook's rows are a reference only.
+    AND NOT (
+        [t].[source] = 'excel_history'
+        AND [t].[cash_month] NOT IN (SELECT [e].[cash_month] FROM [mart].[v_excel_month] AS [e])
     )
     AND NOT EXISTS (
         SELECT 1

@@ -776,3 +776,43 @@ def test_mcp_reader_is_read_only_on_sql_server(
         monkeypatch.delenv("READER_PASSWORD")
         get_settings.cache_clear()
         reader.get_reader_engine.cache_clear()
+
+
+def test_statements_from_on_sql_server(tmp_path: object) -> None:
+    """F19 on SQL Server: the five views follow "statements from" (the setting's text compares
+    with the months' dates), the check runs; 0019 down restores the workbook-wins views and up
+    again keeps working."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures.workbook import build
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    client.post("/api/history/excel/load", files={"file": ("Cash Flow.xlsx", build(), xlsx)})
+
+    def jan_income() -> Decimal:
+        rows = client.get("/api/cashflow/monthly").json()
+        jan = next((m for m in rows if m["cash_month"] == "2026-01-01"), None)
+        return Decimal(jan["income"]) if jan else Decimal(0)
+
+    assert jan_income() == Decimal("8500.25")
+    out = client.put("/api/sources", json={"statements_from": "2026-01-01"}).json()
+    assert out["statements_from"] == "2026-01-01" and out["check"][0]["month"] == "2026-01-01"
+    assert jan_income() == 0  # no statements loaded for January: nothing counts yet
+    for path in ("/api/cashflow/monthly?view=cash", "/api/spending?month=2026-01-01"):
+        assert client.get(path).status_code == 200, path
+    assert client.get("/api/debt", params={"year": 2026}).status_code == 200
+
+    _alembic("downgrade", "0018")
+    assert jan_income() == Decimal("8500.25")  # the workbook wins again
+    _alembic("upgrade", "head")
+    assert jan_income() == Decimal("8500.25")  # the setting went with the table

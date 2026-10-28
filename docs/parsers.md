@@ -77,6 +77,28 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
 - **Checked on the real Jun 13 – Jul 12, 2026 statement:** 26 lines, ties out to 44.59; every
   line categorized by the seeded rules.
 
+## Banco Pichincha (bank account, `pichincha`) — F19
+
+Same source as the card. Detection tells them apart by the summary's "CHEQUES / DÉBITOS"
+(`Detection.kind` is "bank"), and account matching then only considers non-card accounts, so an
+account statement never lands on the Mastercard.
+
+- **Page 1:**
+  - "FECHA ÚLTIMO CORTE (FACTURA) 07-08-2026" and "FECHA ESTE CORTE 04-09-2026". The period runs
+    from the day after the last cut to this one.
+  - "CUENTA 9999990001" (only the last four digits are kept).
+  - The summary: "SALDO ANTERIOR", "DEPÓSITO / CRÉDITOS (n) total", "CHEQUES / DÉBITOS (n) total",
+    "SALDO ACTUAL".
+- **"DETALLE DE MOVIMIENTOS":** one line per movement, for example
+  "18-ago. 12 1002 TRANSFERENCIA INTERBANCARIA RECIBIDA 0.00 100.00 90.00". The columns are
+  day-month (Spanish), branch, document number, description, debit, credit and running balance,
+  in US amount format. The year comes from the period.
+- **Fees:** "**COMISION …" and "IVA COBRADO" lines.
+- **Checks:**
+  - opening balance plus lines equals closing balance;
+  - no gaps in the running balance;
+  - credits and debits each match the summary's total and count.
+
 ## Produbanco (savings, `produbanco`) — F7
 
 Hernan's account (•••• 3721) and Lauren's share one layout; the account is chosen by the last four

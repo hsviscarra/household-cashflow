@@ -3,6 +3,7 @@
 uv run python -m tests.fixtures.statements ../web/e2e/fixtures   # writes the e2e samples
 """
 
+from decimal import Decimal
 from io import BytesIO
 
 from pypdf import PdfReader, PdfWriter
@@ -705,4 +706,40 @@ def loan_table(
             *rows[:7],
         ],
         rows[7:],
+    )
+
+
+def pichincha_account_full(*, opening: str = "40.00", credit_count: int = 2) -> bytes:
+    """A synthetic Banco Pichincha bank account statement (F19): two credits, three debits (one a
+    fee with its IVA), a running balance, the summary on page 1 and the lines on page 2."""
+    return pdf(
+        [
+            "Pagina 1 de 2",
+            "ESTADO DE CUENTA",
+            "TITULAR DE PRUEBA FECHA ÚLTIMO CORTE (FACTURA) 07-08-2026",
+            "CUENTA 9999990001 FECHA ESTE CORTE 04-09-2026",
+            "BANCO PICHINCHA C.A. CONCILIACIÓN",
+            f"SALDO ANTERIOR {opening}",
+            f"DEPÓSITO / CRÉDITOS ({credit_count}) 1100.00",
+            "CHEQUES / DÉBITOS (3) 50.41",
+            f"SALDO ACTUAL {Decimal(opening) + Decimal('1049.59'):.2f}",
+        ],
+        [
+            "Pagina 2 de 2",
+            "DETALLE DE MOVIMIENTOS",
+            "FECHA OFIC. N.DOC. DESCRIPCION DEBITO CREDITO SALDO",
+            *(
+                f"{line} {Decimal(opening) + after:.2f}"
+                for line, after in (
+                    ("13-ago. 12 1001 TRANSFERENCIA INTERBANCARIA ENVIADA 50.00 0.00", -50),
+                    ("18-ago. 12 1002 TRANSFERENCIA INTERBANCARIA RECIBIDA 0.00 100.00", 50),
+                    (
+                        "19-ago. 12 1003 **COMISION TRANSFERENCIA INTERBANCARIA EN 0.36 0.00",
+                        Decimal("49.64"),
+                    ),
+                    ("19-ago. 12 1003 IVA COBRADO 0.05 0.00", Decimal("49.59")),
+                    ("03-sep. 49 1004 DEPOSITO 0.00 1000.00", Decimal("1049.59")),
+                )
+            ),
+        ],
     )

@@ -14,12 +14,16 @@ from app.db.session import get_session
 from app.models import Budget, v_category_month, v_monthly_cash, v_monthly_cashflow
 from app.schemas import (
     CategoryMonthOut,
+    GroupGapOut,
     HistoryLoadOut,
     HistoryPreviewOut,
     MonthlyCashflowOut,
     PlanMonthOut,
+    SourceMonthOut,
+    SourcesIn,
+    SourcesOut,
 )
-from app.services import history_load, networth, recurring
+from app.services import history_load, networth, recurring, sources
 from app.services.excel_history import ParsedWorkbook, parse_workbook
 
 router = APIRouter(prefix="/api", tags=["history"])
@@ -116,3 +120,49 @@ def plan(db: DB) -> list[PlanMonthOut]:
     for month, (income, outflows) in entries.items():
         out[month] = PlanMonthOut(month=month, income=income, outflows=outflows)
     return sorted(out.values(), key=lambda p: p.month)
+
+
+# ---------------- F19: which source counts, and the workbook-vs-statements check ----------------
+def _sources_out(db: Session) -> SourcesOut:
+    months = sources.workbook_months(db)
+    return SourcesOut(
+        statements_from=sources.statements_from(db),
+        workbook_first=months[0] if months else None,
+        workbook_last=months[-1] if months else None,
+        check=[
+            SourceMonthOut(
+                month=c.month,
+                workbook_income=c.workbook_income,
+                statements_income=c.statements_income,
+                workbook_spending=c.workbook_spending,
+                statements_spending=c.statements_spending,
+                statement_lines=c.statement_lines,
+                groups=[
+                    GroupGapOut(
+                        group=g.group,
+                        workbook=g.workbook,
+                        statements=g.statements,
+                        difference=g.difference,
+                    )
+                    for g in c.groups
+                ],
+            )
+            for c in sources.check(db)
+        ],
+    )
+
+
+@router.get("/sources", response_model=SourcesOut)
+def get_sources(db: DB) -> SourcesOut:
+    """From which month statements count, and how they compare with the workbook (ADR-018)."""
+    return _sources_out(db)
+
+
+@router.put("/sources", response_model=SourcesOut)
+def put_sources(body: SourcesIn, request: Request, db: DB) -> SourcesOut:
+    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    try:
+        sources.set_statements_from(db, body.statements_from, user)
+    except sources.SourceError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return _sources_out(db)

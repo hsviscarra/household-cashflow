@@ -1027,3 +1027,32 @@ class BackupStatusOut(BaseModel):
     backup_overdue: bool
     drill_overdue: bool
     error: str | None = None
+
+
+# ---------------- F19: statements from a chosen month ----------------
+class SourcesIn(BaseModel):
+    statements_from: date | None  # any day of the month; null = the workbook wins every month
+
+
+class GroupGapOut(BaseModel):
+    group: str
+    workbook: Decimal
+    statements: Decimal
+    difference: Decimal
+
+
+class SourceMonthOut(BaseModel):
+    month: date
+    workbook_income: Decimal
+    statements_income: Decimal
+    workbook_spending: Decimal
+    statements_spending: Decimal
+    statement_lines: int
+    groups: list[GroupGapOut]
+
+
+class SourcesOut(BaseModel):
+    statements_from: date | None
+    workbook_first: date | None
+    workbook_last: date | None
+    check: list[SourceMonthOut]

@@ -16,7 +16,8 @@ down_revision: str | None = "0012"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-VIEW = Path(__file__).resolve().parent.parent / "views" / "mart.v_spending_line.sql"
+# A frozen copy: the head file changed in 0019 (statements from a chosen month).
+VIEW = Path(__file__).resolve().parent.parent / "views" / "0018" / "mart.v_spending_line.sql"
 
 
 def upgrade() -> None:
