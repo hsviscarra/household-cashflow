@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.18.1] — Fix
+
+### Fixes
+- After a rebuild the browser could keep showing the previous version of the app (v0.18.0's
+  loan table upload didn't appear until a hard refresh). The page is now always rechecked with
+  the server; the build's hashed files are still kept.
+
 ## [0.18.0] — F14 Loan amortization tables
 
 ### F14 — The mortgage from the lender's table

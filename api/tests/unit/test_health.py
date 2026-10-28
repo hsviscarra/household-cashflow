@@ -53,6 +53,8 @@ def test_me_reads_easy_auth_header() -> None:
 
 def test_serves_web_build_when_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "index.html").write_text("<html>cash flow</html>")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)")
     monkeypatch.setenv("WEB_DIST_DIR", str(tmp_path))
     get_settings.cache_clear()
     try:
@@ -60,9 +62,15 @@ def test_serves_web_build_when_present(tmp_path: Path, monkeypatch: pytest.Monke
         resp = client.get("/")
         assert resp.status_code == 200
         assert "cash flow" in resp.text
+        # A new release shows on the next visit: the page is always rechecked; hashed assets
+        # are kept.
+        assert resp.headers["cache-control"] == "no-cache"
+        asset = client.get("/assets/index-abc123.js")
+        assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
         deep_link = client.get("/import")
         assert deep_link.status_code == 200
         assert "cash flow" in deep_link.text
+        assert deep_link.headers["cache-control"] == "no-cache"
         assert client.get("/api/unknown").status_code == 404
     finally:
         get_settings.cache_clear()
