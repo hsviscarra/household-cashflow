@@ -266,3 +266,18 @@ def test_backup_status(tmp_path: Path, client: Any) -> None:
     got = TestClient(app).get("/api/backups").json()
     assert got["backup"]["file"] == "db/cashflow-20261028-081700.bacpac"
     assert got["drill"]["ok"] is False and got["where"] == "local"
+
+
+def test_drill_records_unexpected_errors(fake: dict[str, Any], tmp_path: Path) -> None:
+    store = LocalBackupStore(tmp_path)
+    backup.export(SOURCE, store)
+
+    def broken(t: Target) -> None:
+        raise RuntimeError("Login failed for user 'sa'.")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(backup, "drop_database", broken)
+        r = backup.drill(SCRATCH, store, stop_server=True)
+    assert r["problems"] == ["RuntimeError: Login failed for user 'sa'."] and not r["ok"]
+    assert fake["stopped"] == 1  # the scratch server is still stopped
+    assert backup.latest_drill(store) == r

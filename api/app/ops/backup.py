@@ -361,9 +361,9 @@ def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict
     """Restore the latest backup into the scratch database and check it against its manifest.
     The result is recorded whether it passes or not."""
     started = _now()
-    manifest = latest_backup(store)
     result: dict[str, Any] = {"kind": "drill", "started_at": started.isoformat(), "ok": False}
     try:
+        manifest = latest_backup(store)
         if manifest is None:
             raise BackupError("There is no backup to restore yet.")
         result["backup"] = manifest["file"]
@@ -389,6 +389,9 @@ def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict
         result["ok"] = not result["problems"]
     except BackupError as exc:
         result["problems"] = [str(exc)]
+    except Exception as exc:  # anything else (a SQL error, storage): record why, then fail
+        # The job's console isn't kept, so the result is where the reason has to be.
+        result["problems"] = [f"{type(exc).__name__}: {str(exc)[:500]}"]
     finally:
         result["finished_at"] = _now().isoformat()
         store.put_json(f"{DRILL_PREFIX}drill-{datetime.now(UTC):%Y%m%d-%H%M%S-%f}.json", result)

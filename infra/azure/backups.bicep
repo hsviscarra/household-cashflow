@@ -195,6 +195,10 @@ resource drillJob 'Microsoft.App/jobs@2024-03-01' = {
           // The scratch database server: only for the drill, deleted with the job's replica.
           name: 'scratch-sql'
           image: 'mcr.microsoft.com/mssql/server:2022-latest'
+          // The drill stops this server when it's done; whatever its exit code, end cleanly so
+          // only the drill's own result decides whether the run failed. The time limit stops it
+          // if the drill never gets to.
+          command: [ '/bin/bash', '-c', 'timeout 2400 /opt/mssql/bin/sqlservr; exit 0' ]
           resources: { cpu: json('1.5'), memory: '3Gi' }
           env: [
             { name: 'ACCEPT_EULA', value: 'Y' }
