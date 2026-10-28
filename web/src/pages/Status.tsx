@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
+import { BackupPanel } from "../components/BackupPanel";
 import { fetchStatus, type DataStatus, type MonthStatus, type StatusItem } from "../api";
 import { monthLong, monthShort } from "../money";
 
@@ -63,6 +64,7 @@ export default function StatusPage() {
           )}
           {statementMonths.length > 0 && <CoverageTable data={data} months={statementMonths} />}
           <LoadLog loads={data.loads} />
+          <BackupPanel />
         </>
       )}
     </section>

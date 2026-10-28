@@ -658,3 +658,50 @@ def test_report_and_exports_on_sql_server(tmp_path: object) -> None:
         ).scalar_one_or_none()
     assert gone is None
     _alembic("upgrade", "head")
+
+
+def test_backup_and_restore_drill_on_sql_server(tmp_path: object) -> None:
+    """F17: a real BACPAC export of the database with its manifest, then the restore drill into a
+    scratch database on the same server, checked against the manifest (needs sqlpackage)."""
+    import shutil
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy.engine import make_url
+
+    from app.config import get_settings
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from app.ops import backup
+    from tests.fixtures.workbook import build
+
+    if shutil.which("sqlpackage") is None:
+        pytest.skip("sqlpackage is not installed")
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)) / "pdf")
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    TestClient(app).post(
+        "/api/history/excel/load", files={"file": ("Cash Flow.xlsx", build(), xlsx)}
+    )
+
+    url = make_url(get_settings().database_url)
+    server = f"{url.host},{url.port or 1433}"
+    source = backup.Target(
+        server, url.database or "", "sql", url.username, url.password, None, True
+    )
+    scratch = backup.Target(
+        server, "cashflow_restore", "sql", url.username, url.password, None, True
+    )
+    store = backup.LocalBackupStore(Path(str(tmp_path)) / "backups")
+
+    m = backup.export(source, store)
+    assert m["size"] > 0 and m["tables"]["core.transaction"] > 0
+    assert m["migration"] and m["transaction_total"] != "0.0000"
+    r = backup.drill(scratch, store)
+    assert r["ok"], r["problems"]
+    assert r["rows"] == sum(m["tables"].values())
+    # The scratch copy is a real database with the same rows.
+    assert backup.facts(scratch)["tables"] == m["tables"]
+    backup.drop_database(scratch)

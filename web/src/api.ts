@@ -880,3 +880,21 @@ export const exportUrl = (
   const qs = q.toString();
   return `/api/exports/${key}.${fmt}${qs ? `?${qs}` : ""}`;
 };
+
+// ---------- F17: backups ----------
+export type BackupStatus = {
+  where: "azure" | "local";
+  backup: {
+    file: string;
+    finished_at: string;
+    size: number;
+    migration: string | null;
+    rows: number;
+    seconds: number | null;
+  } | null;
+  drill: { ok: boolean; finished_at: string; backup?: string; problems?: string[]; rows?: number } | null;
+  backup_overdue: boolean;
+  drill_overdue: boolean;
+  error: string | null;
+};
+export const fetchBackups = () => send<BackupStatus>("GET", "/api/backups");
