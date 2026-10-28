@@ -554,3 +554,67 @@ def test_projections_on_sql_server(tmp_path: object) -> None:
     assert Decimal(p["start_cash"]) > 0
     assert [m["month"] for m in p["months"]] == ["2026-11-01", "2026-12-01", "2027-01-01"]
     assert p["daily"][-1]["day"] == "2027-01-31"
+
+
+def test_loan_schedule_on_sql_server(tmp_path: object) -> None:
+    """F14 loan table on SQL Server: upload, the balance and summary, the payment check, the
+    projected installment; 0016 down (installments and the table's balances go) and up."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    with get_engine().connect() as conn:
+        cat = conn.execute(
+            text("SELECT [category_id] FROM [core].[category] WHERE [name] = 'Mortgage BIESS'")
+        ).scalar_one()
+    template = client.post(
+        "/api/recurring/templates",
+        json={
+            "name": "Mortgage",
+            "category_id": cat,
+            "type": "expense",
+            "amount": "1100",
+            "start_month": "2026-01-01",
+        },
+    ).json()["template_id"]
+    hid = client.post(
+        "/api/holdings",
+        json={
+            "name": "Mortgage",
+            "holding_class": "loan",
+            "recurring_template_id": template,
+            "value": "12000",
+            "as_of": "2025-12-31",
+        },
+    ).json()["holding_id"]
+    up = client.post(
+        f"/api/holdings/{hid}/schedule",
+        files={"file": ("t.pdf", s.loan_table(), "application/pdf")},
+    )
+    assert up.status_code == 200, up.text
+    items = client.get("/api/networth", params={"as_of": "2026-10-27"}).json()["items"]
+    loan = next(i for i in items if i["name"] == "Mortgage")
+    assert Decimal(loan["value"]) == 2000 and loan["loan"]["schedule"]["left"] == 2
+    pays = client.get(f"/api/holdings/{hid}/payments", params={"today": "2026-10-27"})
+    assert pays.status_code == 200 and len(pays.json()) == 12
+    proj = client.get("/api/projections", params={"today": "2026-10-27"}).json()
+    nov = next(e for e in proj["months"][0]["items"] if e["name"] == "Mortgage")
+    assert Decimal(nov["amount"]) == Decimal("-1022.5")
+
+    _alembic("downgrade", "0015")
+    with get_engine().connect() as conn:
+        left = conn.execute(
+            text("SELECT COUNT(*) FROM [core].[balance_snapshot] WHERE [source] = 'amortization'")
+        ).scalar_one()
+    assert left == 0
+    _alembic("upgrade", "head")

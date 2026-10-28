@@ -28,7 +28,7 @@ from app.models import (
     RecurringTemplate,
     Transaction,
 )
-from app.services import recurring, status
+from app.services import loans, recurring, status
 
 ZERO = Decimal(0)
 ASSET_CLASSES = ("property", "vehicle", "investment", "cash", "purchase")
@@ -78,6 +78,7 @@ class Loan:
     monthly_payment: Decimal | None
     paid_this_year: Decimal
     payments_this_year: int
+    schedule: loans.Schedule | None = None  # from an uploaded amortization table
 
 
 @dataclass
@@ -174,8 +175,9 @@ def _paid_by_lines(db: Session, category_id: int, after: date | None, until: dat
 
 
 def _loan(db: Session, h: Holding, as_of: date) -> Loan:
+    table = loans.schedule(db, h.holding_id, as_of)
     if h.recurring_template_id is None:
-        return Loan(None, ZERO, 0)
+        return Loan(table.next_total if table else None, ZERO, 0, table)
     history = recurring.amounts(db, [h.recurring_template_id])[h.recurring_template_id]
     monthly = recurring.amount_for(history, recurring.first(as_of))
     rows = db.execute(
@@ -187,11 +189,10 @@ def _loan(db: Session, h: Holding, as_of: date) -> Loan:
             RecurringEntry.month <= as_of,
         )
     ).all()
-    return Loan(
-        abs(monthly) if monthly is not None else None,
-        -sum((Decimal(str(r[0])) for r in rows), ZERO),
-        len(rows),
-    )
+    payment = abs(monthly) if monthly is not None else None
+    if table is not None and table.next_total is not None:
+        payment = table.next_total  # the table knows next month's installment exactly
+    return Loan(payment, -sum((Decimal(str(r[0])) for r in rows), ZERO), len(rows), table)
 
 
 def holdings(db: Session, as_of: date) -> list[Item]:

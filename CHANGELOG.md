@@ -5,6 +5,25 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.18.0] — F14 Loan amortization tables
+
+### F14 — The mortgage from the lender's table
+- Upload the lender's amortization table (PDF) on a loan's card on Debt & Net Worth (ADR-014).
+  Every installment is read: principal, interest, other charges, total, balance after, and paid
+  or due.
+- The table is checked before saving: installments run without gaps, each row adds up to its
+  total, and each balance follows from the previous one. Only the numbers are kept; not the
+  file, ID number, name or loan number.
+- The loan's balance comes from the table, one value per paid installment.
+- The card shows installments paid, the next installment, the payoff month, interest paid this
+  year, and the interest and charges still to pay.
+- Payments: the last 12 installments and the next 3, each with the bank line that paid it, or a
+  note when no line is found.
+- Projections use the table's installment for a recurring item linked to the loan, and nothing
+  after payoff.
+- `POST /api/holdings/{id}/schedule`, `GET /api/holdings/{id}/payments`; migration 0016 adds
+  `core.loan_installment`.
+
 ## [0.17.0] — F15 Projections
 
 ### F15 — The next 3 months on screen

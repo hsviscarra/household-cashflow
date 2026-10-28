@@ -864,10 +864,44 @@ class PurchaseOut(BaseModel):
     lines: Decimal
 
 
+class LoanScheduleOut(BaseModel):
+    installments: int
+    paid: int
+    left: int
+    next_period: date | None
+    next_total: Decimal | None
+    payoff: date | None
+    balance: Decimal | None
+    interest_this_year: Decimal
+    interest_left: Decimal
+    other_left: Decimal
+
+
 class LoanOut(BaseModel):
     monthly_payment: Decimal | None
     paid_this_year: Decimal
     payments_this_year: int
+    schedule: LoanScheduleOut | None = None
+
+
+class LoanImportOut(BaseModel):
+    installments: int
+    paid: int
+    due: int
+    balance: Decimal | None
+    as_of: date | None
+
+
+class LoanPaymentOut(BaseModel):
+    number: int
+    period: date
+    total: Decimal
+    status: Literal["paid", "due"]
+    line_id: int | None
+    line_date: date | None
+    line_amount: Decimal | None
+    line_description: str | None
+    account_name: str | None
 
 
 class SheetItemOut(BaseModel):

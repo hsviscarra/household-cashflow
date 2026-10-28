@@ -386,6 +386,31 @@ class Holding(Timestamps, Base):
     notes: Mapped[str | None] = mapped_column(Unicode(400))
 
 
+class LoanInstallment(Base):
+    """One installment of a loan's amortization table (F14, ADR-014): what it pays and the
+    balance after it. Only numbers are kept; the lender's file is not stored."""
+
+    __tablename__ = "loan_installment"
+    __table_args__ = (
+        CheckConstraint(_in("status", ("paid", "due")), name="status"),
+        UniqueConstraint("holding_id", "number"),
+        {"schema": "core"},
+    )
+
+    installment_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    holding_id: Mapped[int] = mapped_column(
+        ForeignKey("core.holding.holding_id", ondelete="CASCADE"), index=True
+    )
+    number: Mapped[int] = mapped_column(Integer)
+    period: Mapped[date] = mapped_column(Date)  # first day of the month it is due
+    principal: Mapped[Decimal] = mapped_column(Money)
+    interest: Mapped[Decimal] = mapped_column(Money)
+    other: Mapped[Decimal] = mapped_column(Money)  # insurance, late interest, other charges
+    total: Mapped[Decimal] = mapped_column(Money)
+    balance_after: Mapped[Decimal] = mapped_column(Money)
+    status: Mapped[str] = mapped_column(Unicode(4))
+
+
 class LoadLog(Base):
     __tablename__ = "load_log"
     __table_args__ = ({"schema": "audit"},)
