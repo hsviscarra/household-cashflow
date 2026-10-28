@@ -57,15 +57,15 @@ FROM (
             [t].[source] = 'excel_history'
             OR ([t].[source] <> 'excel_history' AND [a].[kind] IN ('checking', 'savings'))
         )
-            -- Months covered by the Excel history keep it (ADR-004).
+            -- Months covered by the Excel history keep it (ADR-004, ADR-018).
             AND NOT (
                 [t].[source] = 'statement'
-                AND EXISTS (
-                    SELECT 1
-                    FROM [core].[transaction] AS [h]
-                    WHERE [h].[source] = 'excel_history'
-                        AND [h].[cash_month] = [t].[cash_month]
-                )
+                AND [t].[cash_month] IN (SELECT [e].[cash_month] FROM [mart].[v_excel_month] AS [e])
+            )
+            -- From the "statements from" month on (F19), the workbook's rows are a reference only.
+            AND NOT (
+                [t].[source] = 'excel_history'
+                AND [t].[cash_month] NOT IN (SELECT [e].[cash_month] FROM [mart].[v_excel_month] AS [e])
             )
             -- A line split into parts (F9) counts through its parts only.
             AND NOT EXISTS (

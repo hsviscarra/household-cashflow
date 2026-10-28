@@ -1,6 +1,6 @@
 -- One row per line that counts as spending (F13, ADR-010): expenses and fees and interest as
 -- positive amounts, refunds as negative ones; transfers, income, savings and debt payments left
--- out. Same rules as mart.v_monthly_cashflow: the Excel history wins its months (ADR-004) and a
+-- out. Same rules as mart.v_monthly_cashflow: the Excel history wins its months (ADR-004, ADR-018) and a
 -- split line counts through its parts (F9).
 CREATE VIEW [mart].[v_spending_line] AS
 SELECT
@@ -32,12 +32,12 @@ LEFT JOIN [core].[account] AS [a]
 WHERE [t].[type] IN ('expense', 'fee_interest', 'refund')
     AND NOT (
         [t].[source] = 'statement'
-        AND EXISTS (
-            SELECT 1
-            FROM [core].[transaction] AS [h]
-            WHERE [h].[source] = 'excel_history'
-                AND [h].[cash_month] = [t].[cash_month]
-        )
+        AND [t].[cash_month] IN (SELECT [e].[cash_month] FROM [mart].[v_excel_month] AS [e])
+    )
+    -- From the "statements from" month on (F19), the workbook's rows are a reference only.
+    AND NOT (
+        [t].[source] = 'excel_history'
+        AND [t].[cash_month] NOT IN (SELECT [e].[cash_month] FROM [mart].[v_excel_month] AS [e])
     )
     AND NOT EXISTS (
         SELECT 1

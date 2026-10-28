@@ -127,7 +127,7 @@ def upgrade() -> None:
         "WHEN [rule_id] IS NOT NULL THEN 'rule' "
         "WHEN [category_id] IS NOT NULL THEN 'section' END;"
     )
-    _views(ROOT)
+    _views(ROOT / "0018")  # frozen copy: the head files changed in 0019
 
     if context.is_offline_mode():
         op.execute("-- seed v4 (IESS amount-range rules) is loaded only in online mode")

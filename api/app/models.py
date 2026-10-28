@@ -411,6 +411,19 @@ class LoanInstallment(Base):
     status: Mapped[str] = mapped_column(Unicode(4))
 
 
+class AppSetting(Base):
+    """A household-wide setting (F19, ADR-018), e.g. statements_from: the first month whose
+    statements count instead of the Cash Flow workbook (YYYY-MM-01)."""
+
+    __tablename__ = "app_setting"
+    __table_args__ = ({"schema": "core"},)
+
+    setting_key: Mapped[str] = mapped_column(Unicode(50), primary_key=True)
+    setting_value: Mapped[str] = mapped_column(Unicode(200))
+    updated_by: Mapped[str] = mapped_column(Unicode(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class MonthlyReport(Base):
     """One month's report (F16, ADR-015): the facts worked out from the data and the 3 to 5
     findings written from them, by Claude or by rules. Regenerating replaces it."""
@@ -696,6 +709,13 @@ v_spending_line = Table(
     Column("description", Unicode(400)),
     Column("account_id", Integer),
     Column("account_name", Unicode(100)),
+    schema="mart",
+)
+
+v_excel_month = Table(
+    "v_excel_month",
+    mart,
+    Column("cash_month", Date, primary_key=True),
     schema="mart",
 )
 
