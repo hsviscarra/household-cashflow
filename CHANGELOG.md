@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.20.1] — F17 fix: restore drill
+
+### Fixes
+- The restore drill now records any error in its result (shown on Data Status), not only the
+  ones it expects: the jobs' console logs aren't kept, so the result is where the reason has to be.
+- The drill's throwaway SQL Server always ends cleanly after the drill stops it (40-minute limit
+  if it doesn't), so only the drill's own result decides whether a run failed.
+
 ## [0.20.0] — F17 Backups and operations
 
 ### F17 — Nightly backups, kept 30 days, and a monthly restore drill
