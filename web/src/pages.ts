@@ -57,6 +57,12 @@ export const PAGES: PageDef[] = [
     summary: "Next three months and cash timing.",
   },
   {
+    path: "/report",
+    label: "Report",
+    feature: "F16",
+    summary: "The month in 3 to 5 findings, and exports.",
+  },
+  {
     path: "/status",
     label: "Data Status",
     feature: "F12",

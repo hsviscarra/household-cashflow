@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     # Claude suggestions for merchants no rule knows (F9). Empty key = suggestions are off.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-5-5"
+    # The monthly report's findings (F16): a few careful sentences once a month.
+    anthropic_report_model: str = "claude-sonnet-5-5"
 
     @property
     def allowed_email_set(self) -> frozenset[str]:

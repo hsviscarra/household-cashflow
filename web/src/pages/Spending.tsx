@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { MonthBars } from "../components/charts";
 import { money, monthLong, monthShort, num, parts } from "../money";
+import { ExportLinks } from "../components/ExportLinks";
 
 type Drill = { title: string; filter: SpendFilter; from: "category" | "who" | "merchants" } | null;
 
@@ -76,6 +77,15 @@ export default function SpendingPage() {
         Expenses, fees and interest less refunds; transfers and card payments are left out, like the
         Overview’s spending view.
       </p>
+      {s && s.source !== "none" && (
+        <div className="mt-2">
+          <ExportLinks
+            dataset="spending_lines"
+            label={`${monthLong(s.month)} lines`}
+            month={s.month.slice(0, 7)}
+          />
+        </div>
+      )}
       {q.error && (
         <p className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
           Could not load spending: {(q.error as Error).message}

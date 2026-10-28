@@ -618,3 +618,43 @@ def test_loan_schedule_on_sql_server(tmp_path: object) -> None:
         ).scalar_one()
     assert left == 0
     _alembic("upgrade", "head")
+
+
+def test_report_and_exports_on_sql_server(tmp_path: object) -> None:
+    """F16 on SQL Server: a report generated (rules) and saved from the workbook's months, the
+    exports in both formats; 0017 down and up."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures.workbook import build
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    client.post("/api/history/excel/load", files={"file": ("Cash Flow.xlsx", build(), xlsx)})
+    month = client.get("/api/reports").json()["months"][0][:7]
+    resp = client.post(f"/api/reports/{month}/generate", params={"today": "2026-10-28"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["written_by"] == "rules" and len(resp.json()["findings"]) >= 1
+    assert client.get(f"/api/reports/{month}").json()["month"][:7] == month
+    for key in ("monthly_cashflow", "monthly_cash", "category_month", "spending_lines"):
+        for fmt in ("csv", "xlsx"):
+            got = client.get(f"/api/exports/{key}.{fmt}", params={"month": month})
+            assert got.status_code == 200, (key, fmt, got.text[:200])
+    got = client.get("/api/exports/transactions.xlsx", params={"year": int(month[:4])})
+    assert got.status_code == 200 and got.content[:2] == b"PK"
+    assert client.get("/api/exports/debt_cost.csv").status_code == 200
+
+    _alembic("downgrade", "0016")
+    with get_engine().connect() as conn:
+        gone = conn.execute(
+            text("SELECT OBJECT_ID('[core].[monthly_report]', 'U')")
+        ).scalar_one_or_none()
+    assert gone is None
+    _alembic("upgrade", "head")

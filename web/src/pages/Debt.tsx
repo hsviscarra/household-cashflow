@@ -6,6 +6,7 @@ import { fetchDebt, type Debt } from "../api";
 import { MonthBars } from "../components/charts";
 import BalanceSheetSection from "./NetWorth";
 import { money, monthLong, monthShort, num } from "../money";
+import { ExportLinks } from "../components/ExportLinks";
 
 /** "2026 so far: 68.01 in interest and 108.51 in fees." */
 export function debtHeadline(d: Debt): string {
@@ -44,6 +45,9 @@ export default function DebtPage() {
         {!d && !q.error && <p className="mt-6 text-muted">Adding up interest and fees…</p>}
         {d && (
           <>
+            <div className="mt-2">
+              <ExportLinks dataset="debt_cost" label={`interest and fees, ${d.year}`} year={d.year} />
+            </div>
             <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Year">
               {d.years.map((y) => (
                 <button
