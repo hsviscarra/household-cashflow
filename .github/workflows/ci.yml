@@ -58,6 +58,10 @@ jobs:
       - run: uv run mypy
       - name: Unit tests with coverage
         run: uv run pytest --cov --cov-report=term-missing
+      - name: sqlpackage (backup export and restore drill, F17)
+        run: |
+          dotnet tool install --global microsoft.sqlpackage
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
       - name: Create database
         run: uv run python -m app.db.ensure_database
       - name: Integration tests (migrations up, down, up)
@@ -165,6 +169,20 @@ jobs:
         run: |
           [ -f /tmp/e2e.log ] || exit 0
           echo "::error title=End-to-end tests::$(grep -v '^ *✓' /tmp/e2e.log | tail -120 | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
+      - name: Backup image (F17) - a real export and restore drill against this SQL Server
+        run: |
+          docker build -f infra/ops/Dockerfile --build-arg APP_IMAGE=cashflow:ci -t cashflow-ops:ci .
+          mkdir -p /tmp/backups && chmod 777 /tmp/backups
+          COMMON=(--network host -v /tmp/backups:/backups -e BACKUP_DIR=/backups)
+          docker run --rm "${COMMON[@]}" \
+            -e SOURCE_SERVER=localhost,1433 -e SOURCE_DATABASE=cashflow -e SOURCE_USER=sa \
+            -e 'SOURCE_PASSWORD=Ci-Only-Passw0rd!' -e SOURCE_TRUST_CERT=1 \
+            cashflow-ops:ci export
+          docker run --rm "${COMMON[@]}" \
+            -e DRILL_SERVER=localhost,1433 -e DRILL_DATABASE=cashflow_restore -e DRILL_USER=sa \
+            -e 'DRILL_PASSWORD=Ci-Only-Passw0rd!' -e DRILL_TRUST_CERT=1 \
+            cashflow-ops:ci drill
+          cat /tmp/backups/drills/*.json
       - name: App logs
         if: failure()
         run: docker logs app

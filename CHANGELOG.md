@@ -5,6 +5,22 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.20.0] — F17 Backups and operations
+
+### F17 — Nightly backups, kept 30 days, and a monthly restore drill
+- Nightly BACPAC export of the database to the private `backups` Blob container, with a manifest
+  (size, SHA-256, migration, row counts, transactions' total). A lifecycle rule deletes backups
+  after 30 days (ADR-016).
+- Monthly restore drill: the latest backup is restored into a throwaway SQL Server inside the
+  job and checked against its manifest; results are kept a year.
+- Both run as Container Apps Jobs with their own managed identity, with no stored passwords:
+  `infra/azure/backups.bicep` and the one-time `infra/azure/setup-backups.sh`. `deploy.yml`
+  builds the backup image and keeps the jobs on the deployed code.
+- Data Status shows the last backup and drill, and warns when either is overdue or the drill
+  failed (`GET /api/backups`).
+- Runbook: `docs/runbooks/backups.md` (set up, run now, restore production, restore locally).
+- CI exports and restores a real database with sqlpackage, and runs the backup image.
+
 ## [0.19.0] — F16 Monthly report and export
 
 ### F16 — The month in 3 to 5 findings, and every view to download

@@ -1,5 +1,6 @@
 """Month status (F12, ADR-009): each month complete, or what is missing."""
 
+from dataclasses import asdict
 from datetime import date
 from typing import Annotated
 
@@ -7,7 +8,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.ops.backup import BackupStore
 from app.schemas import (
+    BackupStatusOut,
     CoverageOut,
     LoadOut,
     MonthStatusOut,
@@ -15,7 +18,9 @@ from app.schemas import (
     StatusItemOut,
     StatusOut,
 )
+from app.services import backups
 from app.services import status as month_status
+from app.services.backups import get_backup_store
 
 router = APIRouter(prefix="/api", tags=["status"])
 DB = Annotated[Session, Depends(get_session)]
@@ -54,3 +59,10 @@ def get_status(
         ],
         loads=[LoadOut(**vars(x)) for x in s.loads],
     )
+
+
+@router.get("/backups", response_model=BackupStatusOut)
+def backup_status(store: Annotated[BackupStore, Depends(get_backup_store)]) -> BackupStatusOut:
+    """The latest backup and restore drill (F17), and whether either is overdue."""
+    s = backups.status(store)
+    return BackupStatusOut(**asdict(s))

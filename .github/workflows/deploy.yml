@@ -94,3 +94,23 @@ jobs:
             sleep 10
           done
           echo "Smoke test failed. Roll back: run this workflow with the previous image tag."; exit 1
+
+      # Backup jobs (F17): the app image plus sqlpackage. Built here so the jobs always run the
+      # app's code and migrations version; updated once setup-backups.sh has created them.
+      - uses: docker/build-push-action@v6
+        if: steps.tag.outputs.build == 'true'
+        with:
+          context: .
+          file: infra/ops/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}-ops:${{ steps.tag.outputs.tag }},${{ env.IMAGE }}-ops:latest
+          build-args: APP_IMAGE=${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+
+      - name: Update the backup jobs
+        if: vars.AZURE_BACKUP_JOBS != ''
+        run: |
+          for job in ${{ vars.AZURE_BACKUP_JOBS }}; do
+            az containerapp job update --name "$job" --resource-group "${{ vars.AZURE_RG }}" \
+              --container-name ops --image "${{ env.IMAGE }}-ops:${{ steps.tag.outputs.tag }}" \
+              --output none
+          done

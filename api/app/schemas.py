@@ -1017,3 +1017,13 @@ class ExportDatasetOut(BaseModel):
     key: str
     title: str
     by: Literal["month", "year"]
+
+
+# ---------------- F17: backups ----------------
+class BackupStatusOut(BaseModel):
+    where: Literal["azure", "local"]
+    backup: dict[str, Any] | None
+    drill: dict[str, Any] | None
+    backup_overdue: bool
+    drill_overdue: bool
+    error: str | None = None

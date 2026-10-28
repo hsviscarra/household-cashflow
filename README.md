@@ -70,6 +70,9 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
 - **Every merge to `main`:** CI passes → `deploy.yml` builds the image to GHCR, rolls the Container
   App and smoke-tests `/api/health` for the new git SHA.
 - **Rollback:** run the Deploy workflow manually with the previous image tag (git SHA).
+- **Backups:** nightly, kept 30 days, restore-drilled monthly; one-time
+  [`infra/azure/setup-backups.sh`](infra/azure/setup-backups.sh). How to restore:
+  [docs/runbooks/backups.md](docs/runbooks/backups.md).
 
 ## Data safety
 

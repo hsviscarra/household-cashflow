@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     storage_account_url: str = ""
     statements_container: str = "statements"
     statements_dir: str = "data/statements"
+    # Backups (F17): the jobs write to this container (Azure) or folder (local runs).
+    backups_container: str = "backups"
+    backups_dir: str = "data/backups"
     # Claude suggestions for merchants no rule knows (F9). Empty key = suggestions are off.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-5-5"
