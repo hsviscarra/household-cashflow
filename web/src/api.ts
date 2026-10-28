@@ -758,3 +758,41 @@ export const setHoldingValue = (id: number, v: { as_of: string; amount: string; 
   send<SheetValue>("POST", `/api/holdings/${id}/values`, v);
 export const deleteHoldingValue = (snapshotId: number) =>
   send<void>("DELETE", `/api/holdings/values/${snapshotId}`);
+
+// ---------------- F15: projections ----------------
+export type ProjectionEvent = {
+  day: string;
+  name: string;
+  amount: string;
+  kind: "income" | "fixed" | "purchase" | "variable";
+};
+export type ProjectionMonth = {
+  month: string;
+  income: string;
+  fixed: string;
+  variable: string;
+  purchases: string;
+  net: string;
+  end_cash: string;
+  items: ProjectionEvent[];
+};
+export type Projection = {
+  today: string;
+  start_cash: string;
+  cash_as_of: string | null;
+  variable_per_month: string;
+  average_months: string[];
+  months: ProjectionMonth[];
+  daily: { day: string; balance: string }[];
+  lowest: { day: string; balance: string } | null;
+  next_payday: ProjectionEvent | null;
+  alerts: {
+    month: string;
+    group_id: number;
+    group_name: string;
+    amount: string;
+    average: string;
+    change: string | null;
+  }[];
+};
+export const fetchProjection = () => send<Projection>("GET", "/api/projections");

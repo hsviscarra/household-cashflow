@@ -16,7 +16,7 @@ import {
 } from "../api";
 import { categoryOptions } from "../categories";
 import { TrendLine } from "../components/charts";
-import { money, monthLong, monthShort, num } from "../money";
+import { localToday, money, monthLong, monthShort, num } from "../money";
 
 type Notify = (message: string, tone?: "good" | "bad") => void;
 
@@ -47,7 +47,7 @@ const SOURCE: Record<string, string> = {
   manual: "entered here",
   lines: "payments in its category",
 };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localToday();
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",

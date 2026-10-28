@@ -130,7 +130,7 @@ class BalanceSheet:
 
 
 # ---------------------------------------------------------------- reading
-def _accounts(db: Session, as_of: date) -> list[Item]:
+def accounts(db: Session, as_of: date) -> list[Item]:
     accounts = {a.account_id: a for a in db.scalars(select(Account))}
     latest: dict[int, tuple[date, Decimal | None, str]] = {}
     history: dict[int, list[Value]] = defaultdict(list)
@@ -194,7 +194,7 @@ def _loan(db: Session, h: Holding, as_of: date) -> Loan:
     )
 
 
-def _holdings(db: Session, as_of: date) -> list[Item]:
+def holdings(db: Session, as_of: date) -> list[Item]:
     snaps: dict[int, list[BalanceSnapshot]] = defaultdict(list)
     for s in db.scalars(
         select(BalanceSnapshot)
@@ -257,13 +257,13 @@ def _holdings(db: Session, as_of: date) -> list[Item]:
 
 def sheet(db: Session, as_of: date | None = None, months: int = 24) -> BalanceSheet:
     as_of = as_of or date.today()
-    items = _accounts(db, as_of) + _holdings(db, as_of)
+    items = accounts(db, as_of) + holdings(db, as_of)
     series = []
     end = recurring.first(as_of)
     for i in range(months - 1, -1, -1):
         m = recurring.add_months(end, -i)
         day = min(recurring.add_months(m, 1) - timedelta(days=1), as_of)
-        point_items = _accounts(db, day) + _holdings(db, day)
+        point_items = accounts(db, day) + holdings(db, day)
         assets = sum(
             (x.value or ZERO for x in point_items if x.side == "asset" and x.is_active), ZERO
         )

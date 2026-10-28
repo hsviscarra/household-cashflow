@@ -27,7 +27,7 @@ import {
   type Txn,
 } from "../api";
 import { categoryOptions } from "../categories";
-import { money, monthLong, monthName, monthShort, num, showAmount } from "../money";
+import { localToday, money, monthLong, monthName, monthShort, num, showAmount } from "../money";
 
 type Notify = (message: string, tone?: "good" | "bad") => void;
 type Option = { id: number; label: string };
@@ -43,7 +43,7 @@ const TYPES: { id: TemplateType; label: string }[] = [
   { id: "fee_interest", label: "Fees and interest" },
 ];
 const isIncome = (t: string) => t === "income";
-const thisMonth = () => new Date().toISOString().slice(0, 7);
+const thisMonth = () => localToday().slice(0, 7);
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
