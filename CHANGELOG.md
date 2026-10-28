@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.22.0] — F19 Bulk historical load (tooling)
+
+### F19 — Statements from a chosen month, and the backlog
+- "Statements count from" on Data Status (ADR-018): from that month on, bank and card statements
+  count and the Cash Flow workbook stays as a reference; earlier months keep the workbook.
+  Changing it never deletes anything (migration 0019: `core.app_setting`,
+  `mart.v_excel_month`; the five mart views follow it).
+- Workbook vs statements: for each month both cover, income and spending from each source and
+  spending per group with its gap, biggest first (`GET/PUT /api/sources`).
+- Import page: "Read all" reads every unread statement oldest first; statements waiting for
+  approval are grouped by month with "Approve N" for those that tie out; drops of more than 50
+  PDFs upload in chunks.
+
 ## [0.21.0] — F18 Claude MCP server
 
 ### F18 — Claude reads the live numbers

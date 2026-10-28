@@ -74,7 +74,15 @@ const STATUS: DataStatus = {
 function renderWith(body: unknown, status = 200) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status }))),
+    vi.fn((url: string) =>
+      url === "/api/sources"
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({ statements_from: null, workbook_first: null, workbook_last: null, check: [] }),
+            ),
+          )
+        : Promise.resolve(new Response(JSON.stringify(body), { status })),
+    ),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(

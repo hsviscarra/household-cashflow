@@ -3,6 +3,7 @@ import { useState, type DragEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
+  approveBatch,
   assignStatement,
   fetchAccounts,
   fetchStatements,
@@ -25,6 +26,8 @@ const STATUS = {
   unknown_format: { label: "Unknown format", className: "bg-attention-bg text-attention-ink" },
 } as const;
 
+const UPLOAD_CHUNK = 50;
+
 const shortDate = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
@@ -38,7 +41,13 @@ export function StatementsCard() {
   const [dragging, setDragging] = useState(false);
   const list = useQuery({ queryKey: ["statements"], queryFn: fetchStatements });
   const upload = useMutation({
-    mutationFn: uploadStatements,
+    // The server takes 50 files per request: larger drops go in chunks, one after another.
+    mutationFn: async (all: File[]) => {
+      const out: UploadResult[] = [];
+      for (let i = 0; i < all.length; i += UPLOAD_CHUNK)
+        out.push(...(await uploadStatements(all.slice(i, i + UPLOAD_CHUNK))));
+      return out;
+    },
     onSuccess: () => {
       setFiles([]);
       qc.invalidateQueries({ queryKey: ["statements"] });
@@ -86,7 +95,7 @@ export function StatementsCard() {
           <span className="text-sm text-muted">
             {files.length
               ? `${files.length} file${files.length === 1 ? "" : "s"} chosen: ${files.map((f) => f.name).join(", ")}`
-              : "PDF only, up to 25 MB each, 50 files at a time"}
+              : "PDF only, up to 25 MB each; as many files as you like"}
           </span>
           <input
             type="file"
@@ -111,8 +120,136 @@ export function StatementsCard() {
         {upload.data && <UploadResults results={upload.data} />}
       </div>
 
+      {list.data && <BulkActions statements={list.data} />}
       <StatementList statements={list.data} error={list.error as Error | null} />
     </div>
+  );
+}
+
+const monthOf = (s: Statement) => (s.period_end ?? s.period_start ?? s.uploaded_at).slice(0, 7);
+const oldestFirst = (a: Statement, b: Statement) =>
+  (a.period_start ?? "9999").localeCompare(b.period_start ?? "9999") ||
+  a.uploaded_at.localeCompare(b.uploaded_at);
+const monthName = (ym: string) =>
+  new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+/** Statements ready to read, and those read and waiting for approval grouped by the month they
+ * end in, so a backlog goes through oldest first: read them all, then approve month by month. */
+export function backlog(statements: Statement[]) {
+  const unread = statements
+    .filter((s) => s.status === "detected" && !s.batch && s.can_read)
+    .sort(oldestFirst);
+  const waiting = statements.filter((s) => s.batch?.status === "preview").sort(oldestFirst);
+  const months = new Map<string, { ready: Statement[]; problems: Statement[] }>();
+  for (const s of waiting) {
+    const m = months.get(monthOf(s)) ?? { ready: [], problems: [] };
+    (s.batch!.tieout_ok ? m.ready : m.problems).push(s);
+    months.set(monthOf(s), m);
+  }
+  return { unread, months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)) };
+}
+
+function BulkActions({ statements }: { statements: Statement[] }) {
+  const qc = useQueryClient();
+  const [progress, setProgress] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const { unread, months } = backlog(statements);
+  if (!unread.length && !months.length && !progress && !errors.length) return null;
+
+  async function run(items: Statement[], verb: string, act: (s: Statement) => Promise<unknown>) {
+    setBusy(true);
+    setErrors([]);
+    const failed: string[] = [];
+    for (const [i, s] of items.entries()) {
+      setProgress(`${verb} ${i + 1} of ${items.length}: ${s.file_name}`);
+      try {
+        await act(s);
+      } catch (e) {
+        failed.push(`${s.file_name}: ${(e as Error).message}`);
+      }
+    }
+    setProgress(
+      `${verb === "Reading" ? "Read" : "Approved"} ${items.length - failed.length} of ${items.length}.`,
+    );
+    setErrors(failed);
+    setBusy(false);
+    qc.invalidateQueries();
+  }
+
+  return (
+    <section aria-label="Backlog" className="mt-6 rounded-2xl bg-ground p-4">
+      <h3 className="font-display text-xl font-bold">Load the backlog, oldest first</h3>
+      {unread.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <span>
+            {unread.length} {unread.length === 1 ? "statement" : "statements"} to read.
+          </span>
+          <button
+            className="btn btn-secondary h-9 px-4"
+            disabled={busy}
+            onClick={() => run(unread, "Reading", (s) => readStatement(s.statement_file_id))}
+          >
+            Read all ({unread.length})
+          </button>
+        </div>
+      )}
+      {months.length > 0 && (
+        <ul
+          className="mt-3 divide-y divide-line rounded-2xl border border-line"
+          aria-label="Waiting for approval"
+        >
+          {months.map(([ym, m]) => (
+            <li key={ym} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              <span>
+                <strong>{monthName(ym)}</strong>: {m.ready.length} ready
+                {m.problems.length > 0 && (
+                  <>
+                    {", "}
+                    <span className="text-attention-ink">
+                      {m.problems.length} {m.problems.length === 1 ? "doesn’t" : "don’t"} tie out
+                    </span>{" "}
+                    (
+                    {m.problems.map((s, i) => (
+                      <span key={s.statement_file_id}>
+                        {i > 0 && ", "}
+                        <Link className="text-primary underline" to={`/import/batches/${s.batch!.batch_id}`}>
+                          {s.file_name}
+                        </Link>
+                      </span>
+                    ))}
+                    )
+                  </>
+                )}
+              </span>
+              {m.ready.length > 0 && (
+                <button
+                  className="btn btn-primary h-9 px-4"
+                  disabled={busy}
+                  onClick={() => run(m.ready, "Approving", (s) => approveBatch(s.batch!.batch_id))}
+                >
+                  Approve {m.ready.length}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div aria-live="polite">
+        {progress && <p className="mt-2 text-sm text-muted">{progress}</p>}
+        {errors.length > 0 && (
+          <ul className="mt-2 list-disc pl-5 text-sm text-danger-ink" aria-label="Problems">
+            {errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        Approving in order lets each statement’s opening balance be checked against the previous one. Data
+        Status shows which accounts and months are still missing.
+      </p>
+    </section>
   );
 }
 
