@@ -200,7 +200,6 @@ dependencies = [
     { name = "azure-identity" },
     { name = "azure-storage-blob" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "mcp" },
     { name = "openpyxl" },
     { name = "pdfplumber" },
@@ -216,7 +215,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -232,7 +230,6 @@ requires-dist = [
     { name = "azure-identity", specifier = ">=1.17" },
     { name = "azure-storage-blob", specifier = ">=12.20" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.28" },
     { name = "mcp", specifier = ">=1.20,<2" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pdfplumber", specifier = ">=0.11" },
@@ -248,7 +245,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=6.0" },

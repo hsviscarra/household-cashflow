@@ -1,42 +1,38 @@
-"""Interactive Brokers portfolio (F22, ADR-019): positions, cash and net asset value from IBKR's
-read-only Flex Web Service.
+"""Interactive Brokers portfolio (F22, ADR-019): positions, cash and net asset value.
 
-Hernan creates an Activity Flex Query once in Client Portal (Net Asset Value in Base, Open
-Positions as Summary, Cash Report; XML; last business day) and a Flex Web Service token. The app
-asks IBKR to run the query (SendRequest), then downloads the report (GetStatement), retrying while
-IBKR says it is still being generated. The report is read into:
-- one balance snapshot for the report's day (source 'ibkr') on the "Interactive Brokers"
-  investment holding, its net asset value (created on the first read), so it counts on the balance
-  sheet and in net worth like any other value;
-- that day's positions (core.investment_position), replaced when the same day is read again.
+The app never signs in to IBKR. Claude reads the account through Hernan's Interactive Brokers
+connector (positions, cash, net liquidation value) and saves it with the `save_portfolio` tool on
+the app's MCP endpoint (app.mcp_server -> from_connector -> store). A Flex report (XML) downloaded
+from Client Portal can be uploaded on the page instead (parse -> store). Either way a day is read
+into:
+- one balance snapshot for that day (source 'ibkr') on the "Interactive Brokers" investment
+  holding, its net asset value (created on the first read), so it counts on the balance sheet and
+  in net worth like any other value;
+- that day's positions (core.investment_position), replaced when the same day is saved again;
+- one audit.load_log row (who saved it, how many positions, the total).
 
-Values are USD (the account's base currency; a position in another currency is converted with the
-report's own rate). The account number isn't stored. A Flex XML downloaded from Client Portal can
-be uploaded instead, e.g. if the token expired.
+Values are USD (the account's base currency; a position in another currency is converted to it).
+The account number isn't stored.
 """
 
-import time
-from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
 
-import httpx
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
-from app.models import AppSetting, BalanceSnapshot, Holding, InvestmentPosition
+from app.models import AppSetting, BalanceSnapshot, Holding, InvestmentPosition, LoadLog
 
-BASE = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService"
 SOURCE = "ibkr"
 HOLDING_NAME = "Interactive Brokers"
 HOLDING_KEY = "ibkr_holding_id"
-STALE = timedelta(hours=20)
-RETRY_CODES = {"1001", "1004", "1009", "1019"}  # "try again shortly" / still generating
-WAIT_SECONDS = 5
-ATTEMPTS = 12
+STALE = timedelta(days=7)  # the page then suggests asking Claude to update it
+# Positions plus cash must tie out to the total within this share of it (IBKR's net liquidation
+# value also holds accrued dividends and interest, a few dollars).
+TIE_OUT = Decimal("0.02")
 CENT = Decimal("0.01")
 ZERO = Decimal(0)
 
@@ -152,47 +148,58 @@ def _error(root: ElementTree.Element) -> str:
     return f"IBKR: {message}" + (f" (code {code})" if code else "")
 
 
-# ---------------------------------------------------------------- fetching
-def fetch(
-    token: str,
-    query_id: str,
-    client: httpx.Client | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-) -> bytes:
-    """Run the Flex Query and download its report, waiting while IBKR generates it."""
-    http = client or httpx.Client(timeout=60, headers={"User-Agent": "household-cashflow"})
-    try:
-        r = http.get(f"{BASE}/SendRequest", params={"t": token, "q": query_id, "v": "3"})
-        r.raise_for_status()
-        root = ElementTree.fromstring(r.content)
-        if (root.findtext("Status") or "").strip() != "Success":
-            raise IbkrError(_error(root))
-        ref = (root.findtext("ReferenceCode") or "").strip()
-        url = (root.findtext("Url") or f"{BASE}/GetStatement").strip()
-        for attempt in range(ATTEMPTS):
-            r = http.get(url, params={"t": token, "q": ref, "v": "3"})
-            r.raise_for_status()
-            body = r.content
-            if b"<FlexQueryResponse" in body[:500]:
-                return body
-            root = ElementTree.fromstring(body)
-            if (root.findtext("ErrorCode") or "").strip() not in RETRY_CODES:
-                raise IbkrError(_error(root))
-            if attempt < ATTEMPTS - 1:
-                sleep(WAIT_SECONDS)
-        raise IbkrError("IBKR is still generating the report; try again in a minute.")
-    except httpx.HTTPError as exc:
-        raise IbkrError(f"IBKR could not be reached: {exc.__class__.__name__}.") from exc
-    except ElementTree.ParseError as exc:
-        raise IbkrError("IBKR's answer could not be read.") from exc
-    finally:
-        if client is None:
-            http.close()
+# ---------------------------------------------------------------- from Claude's connector
+@dataclass
+class ConnectorPosition:
+    """One position as IBKR's connector gives it (get_account_positions)."""
+
+    symbol: str
+    quantity: Decimal
+    price: Decimal
+    value: Decimal
+    currency: str = "USD"
+    asset_class: str = "STK"
+    description: str | None = None
+    average_price: Decimal | None = None
+    unrealized: Decimal | None = None
+    fx_rate: Decimal = Decimal(1)  # to USD, for a position in another currency
 
 
-def configured() -> bool:
-    s = get_settings()
-    return bool(s.ibkr_flex_token and s.ibkr_flex_query_id)
+def from_connector(
+    as_of: date, total: Decimal, cash: Decimal, positions: Sequence[ConnectorPosition]
+) -> Report:
+    """A day read from the connector, checked: no future day, and positions plus cash tie out to
+    the total (so a position left out, or a number misread, is refused, not saved)."""
+    if as_of > date.today() + timedelta(days=1):
+        raise IbkrError(f"{as_of} is in the future.", 422)
+    if total <= ZERO:
+        raise IbkrError("The total (net liquidation value) must be above zero.", 422)
+    out = []
+    for p in positions:
+        rate = p.fx_rate or Decimal(1)
+        cost = None if p.average_price is None else p.average_price * p.quantity
+        out.append(
+            Position(
+                symbol=p.symbol.strip()[:40] or "?",
+                description=(p.description or "").strip()[:200] or None,
+                asset_class=(p.asset_class or "OTHER")[:20],
+                currency=(p.currency or "USD")[:3].upper(),
+                quantity=p.quantity,
+                price=p.price,
+                value=(p.value * rate).quantize(CENT),
+                cost_basis=_q(cost, rate),
+                unrealized=_q(p.unrealized, rate),
+            )
+        )
+    held = sum((p.value for p in out), ZERO) + cash
+    gap = abs(total - held)
+    if gap > total * TIE_OUT:
+        raise IbkrError(
+            f"Positions plus cash ({held.quantize(CENT)}) don't tie out to the total "
+            f"({total.quantize(CENT)}): {gap.quantize(CENT)} apart. Nothing was saved.",
+            422,
+        )
+    return Report(as_of, total.quantize(CENT), cash.quantize(CENT), out)
 
 
 # ---------------------------------------------------------------- storing
@@ -247,7 +254,7 @@ def store(db: Session, report: Report, user: str) -> Imported:
             amount=report.total,
             source=SOURCE,
             holding_id=h.holding_id,
-            notes=f"Cash {report.cash}; {len(report.positions)} positions; read by {user}"[:400],
+            notes=f"Cash {report.cash}; {len(report.positions)} positions; saved by {user}"[:400],
         )
     )
     db.add_all(
@@ -266,25 +273,21 @@ def store(db: Session, report: Report, user: str) -> Imported:
         )
         for p in report.positions
     )
+    db.add(
+        LoadLog(
+            source=SOURCE,
+            loaded_by=user[:320],
+            rows_loaded=len(report.positions),
+            summary=f"IBKR portfolio {report.as_of}: total {report.total}, cash {report.cash}",
+        )
+    )
     db.commit()
     return Imported(h.holding_id, report.as_of, report.total, report.cash, len(report.positions))
-
-
-def refresh(db: Session, user: str, client: httpx.Client | None = None) -> Imported:
-    if not configured():
-        raise IbkrError(
-            "IBKR isn't set up: run infra/azure/setup-ibkr.sh (or set IBKR_FLEX_TOKEN and "
-            "IBKR_FLEX_QUERY_ID).",
-            503,
-        )
-    s = get_settings()
-    return store(db, parse(fetch(s.ibkr_flex_token, s.ibkr_flex_query_id, client)), user)
 
 
 # ---------------------------------------------------------------- reading
 @dataclass
 class Portfolio:
-    configured: bool
     holding_id: int | None
     as_of: date | None
     total: Decimal | None
@@ -319,7 +322,7 @@ def portfolio(db: Session, now: datetime | None = None) -> Portfolio:
     now = now or datetime.now()
     h = holding(db)
     if h is None:
-        return Portfolio(configured(), None, None, None, None, None, None, configured())
+        return Portfolio(None, None, None, None, None, None, False)
     snaps = list(
         db.scalars(
             select(BalanceSnapshot)
@@ -331,12 +334,11 @@ def portfolio(db: Session, now: datetime | None = None) -> Portfolio:
     last = snaps[0] if snaps else None
     before = snaps[1] if len(snaps) > 1 else None
     read_at = last.updated_at if last is not None and last.updated_at else None
-    stale = configured() and (read_at is None or now - read_at > STALE)
+    stale = read_at is not None and now - read_at > STALE
     cash = None
     if last is not None and last.notes and last.notes.startswith("Cash "):
         cash = _dec(last.notes[5:].split(";")[0])
     return Portfolio(
-        configured(),
         h.holding_id,
         last.as_of if last else None,
         last.amount if last else None,

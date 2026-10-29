@@ -857,6 +857,18 @@ def test_ibkr_portfolio_on_sql_server(tmp_path: object) -> None:
     items = client.get("/api/networth", params={"as_of": "2026-10-29"}).json()["items"]
     assert any(i["name"] == "Interactive Brokers" and i["source"] == "ibkr" for i in items)
 
+    # Claude's save_portfolio with the app's login, a later day; the reader sees the positions.
+    from app import mcp_server
+    from tests.unit.test_ibkr import save
+
+    assert save()["positions"] == 3
+    p = client.get("/api/investments/ibkr").json()
+    assert (p["as_of"], Decimal(p["total"])) == ("2026-10-29", Decimal("4300.00"))
+    assert Decimal(p["previous_total"]) == Decimal("25350.40")
+    sheet = mcp_server.balance_sheet("2026-10-29")
+    ib = next(i for i in sheet["items"] if i["name"] == "Interactive Brokers")
+    assert [x["symbol"] for x in ib["positions"]] == ["VOO", "VT", "IWDA"]
+
     _alembic("downgrade", "0020")
     with get_engine().connect() as conn:
         left = conn.execute(

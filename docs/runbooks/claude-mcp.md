@@ -1,4 +1,7 @@
-# Claude's read-only connection to the data (MCP)
+# Claude's connection to the data (MCP)
+
+Claude reads the numbers through a read-only login. The one write is `save_portfolio`: it saves
+your Interactive Brokers portfolio when you ask (docs/runbooks/ibkr.md).
 
 Lets the Claude desktop app answer questions from the app's live numbers, for example "how did
 October compare to September?" (F18, ADR-017).

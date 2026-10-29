@@ -1,61 +1,38 @@
 # Interactive Brokers portfolio
 
-How the app reads the IBKR portfolio (F22, ADR-019) and how to set it up or renew it.
+Your IBKR positions, cash and account value appear on **Debt & Net Worth → Investments**. The
+total counts in net worth as the "Interactive Brokers" item (F22, ADR-019).
 
-## How it works
+## Update it (the usual way)
 
-IBKR's **Flex Web Service** is a read-only report service. The app needs no password and no
-live session. It asks IBKR to run your Flex Query, then downloads the report: positions, cash and
-net asset value as of the last business day.
+You need two connections in the Claude desktop app:
+- the **Interactive Brokers (IBKR)** connector, signed in;
+- the **household-cashflow** MCP connection (docs/runbooks/claude-mcp.md).
 
-The app reads it:
-- automatically when you open **Debt & Net Worth** and the last read is more than 20 hours old;
-- whenever you click **Refresh from IBKR**.
+Then ask Claude:
 
-Each read stores two things:
-- the day's **positions** (symbol, quantity, price, value in USD, gain);
-- the day's **total** as a value of the "Interactive Brokers" investment item. That's what the
-  balance sheet, net worth and Claude's `balance_sheet` tool use.
+> Update my IBKR portfolio in the cash flow app.
 
-Reading the same day again replaces it.
+Claude reads your positions and account value from IBKR and calls `save_portfolio`. The result
+shows the day, the total, the number of positions, and the change since the last save.
 
-## Set up (once)
+- **Same day twice:** the second save replaces the first.
+- **"Don't tie out":** positions plus cash were more than 2% away from the net liquidation value,
+  so nothing was saved. Usually a position was left out. Ask Claude to include every position and
+  try again.
+- **IBKR asks to sign in again:** reconnect the connector in Claude's settings (Connectors).
+- **Reminder:** after a week without a save, the page suggests asking Claude.
 
-1. **Create the Flex Query** in Client Portal → *Performance & Reports → Flex Queries → Activity
-   Flex Query → +*:
-   - **Name:** `cashflow-app`.
-   - **Sections:** *Net Asset Value (NAV) in Base*, *Open Positions* (option *Summary*) and *Cash
-     Report*, each with *Select All*.
-   - **Delivery:** format **XML**, period **Last Business Day**.
-   - **General:** date format **yyyy-MM-dd**.
-   - **Save**, then note the **Query ID**.
-2. **Get the token.** Client Portal → *Settings → Flex Web Service*:
-   - tick **Flex Web Service Status**;
-   - click **Generate New Token** and set **Expire after 1 year**;
-   - leave **Valid for IP address** blank, because Azure's outgoing address can change.
-3. **Store them in Azure.** From the repo root:
+## Without Claude: upload a Flex report
 
-   ```bash
-   az login
-   ./infra/azure/setup-ibkr.sh
-   ```
+In Client Portal, run an Activity Flex Query with these sections:
+- Net Asset Value in Base;
+- Open Positions, at Summary level;
+- Cash Report.
 
-   The script asks for the Query ID and the token without showing them, and stores both as
-   Container App secrets.
-4. **Check it:** open **Debt & Net Worth**. The *Investments* section reads the portfolio. Compare
-   the total with Client Portal's net liquidation value for the same day.
+Choose XML and download the file. On the Investments section, choose **Upload Flex report
+(XML)**.
 
-## Renew the token
+## Avoid counting it twice
 
-Before the token expires (IBKR shows the date), generate a new one and run
-`./infra/azure/setup-ibkr.sh` again. If it expires anyway, the page says so: "Token has expired".
-
-## Without the token
-
-Client Portal can run the same Flex Query and download its XML. Use **Upload Flex report (XML)**
-on Debt & Net Worth. It's read the same way.
-
-## The old "Stock Market" row
-
-If the workbook's "Stock Market" item is the same IBKR account, pause it on its card (**Edit →
-pause**) so it isn't counted twice.
+If the workbook's "Stock Market" item is this same account, pause that item on Debt & Net Worth.

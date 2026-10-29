@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
 
-import { fetchPortfolio, refreshPortfolio, uploadFlex, type Portfolio, type PortfolioRead } from "../api";
+import { fetchPortfolio, uploadFlex, type Portfolio } from "../api";
 import { money, num } from "../money";
 
 const day = (iso: string) =>
@@ -26,51 +25,35 @@ export function portfolioLine(p: Portfolio): string | null {
 export default function InvestmentsSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["ibkr"], queryFn: fetchPortfolio });
-  const done = (r: PortfolioRead) => {
-    qc.invalidateQueries({ queryKey: ["ibkr"] });
-    qc.invalidateQueries({ queryKey: ["networth"] });
-    return r;
-  };
-  const refresh = useMutation({ mutationFn: refreshPortfolio, onSuccess: done });
-  const upload = useMutation({ mutationFn: uploadFlex, onSuccess: done });
-  const auto = useRef(false);
+  const upload = useMutation({
+    mutationFn: uploadFlex,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ibkr"] });
+      qc.invalidateQueries({ queryKey: ["networth"] });
+    },
+  });
   const p = q.data;
-  // Once a day: when IBKR is set up and the last read is old, read it on opening the page.
-  useEffect(() => {
-    if (p?.stale && !auto.current) {
-      auto.current = true;
-      refresh.mutate();
-    }
-  }, [p?.stale, refresh]);
 
   if (q.error) return <p className="mt-6 text-sm text-danger-ink">Could not load the investments.</p>;
   if (!p) return null;
   const line = portfolioLine(p);
   const total = num(p.total);
-  const error = (refresh.error ?? upload.error) as Error | null;
+  const error = upload.error as Error | null;
   return (
     <section aria-label="Investments" className="mt-10">
       <h2 className="font-display text-3xl font-bold leading-tight">Investments · Interactive Brokers</h2>
       <p className="mt-1 text-muted">
-        {line ?? "No portfolio read yet."} Positions, cash and value from IBKR’s daily report; the total
+        {line ?? "No portfolio saved yet."} Positions, cash and value from your IBKR account; the total
         counts in net worth above.
       </p>
-      {!p.configured && !line && (
+      {(!line || p.stale) && (
         <p className="mt-3 rounded-2xl bg-info-bg px-4 py-3 text-sm">
-          To read it every day, set up IBKR’s Flex Web Service (docs/runbooks/ibkr.md). Meanwhile you can
-          upload a Flex report (XML) downloaded from Client Portal.
+          {line ? "This is more than a week old. " : ""}To update it, ask Claude:{" "}
+          <q className="font-semibold">Update my IBKR portfolio in the cash flow app.</q> Claude reads your
+          Interactive Brokers connector and saves it here.
         </p>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {p.configured && (
-          <button
-            className="btn btn-secondary h-9 px-4"
-            disabled={refresh.isPending}
-            onClick={() => refresh.mutate()}
-          >
-            {refresh.isPending ? "Reading IBKR…" : "Refresh from IBKR"}
-          </button>
-        )}
         <label className="btn btn-quiet h-9 cursor-pointer px-4">
           {upload.isPending ? "Reading…" : "Upload Flex report (XML)"}
           <input

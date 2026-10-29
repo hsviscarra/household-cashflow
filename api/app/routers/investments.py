@@ -1,4 +1,5 @@
-"""Interactive Brokers portfolio (F22, ADR-019)."""
+"""Interactive Brokers portfolio (F22, ADR-019). Claude saves it through the MCP endpoint's
+save_portfolio tool; the page reads it here, or takes a Flex report (XML) uploaded by hand."""
 
 from collections.abc import Callable
 from dataclasses import asdict
@@ -30,11 +31,10 @@ def _run(fn: Callable[[], ibkr.Imported]) -> PortfolioReadOut:
 
 @router.get("", response_model=PortfolioOut)
 def get_portfolio(db: DB) -> PortfolioOut:
-    """The latest positions, total and cash; stale when IBKR is set up and the last read is more
-    than 20 hours old (the page then refreshes it)."""
+    """The latest positions, total and cash; stale when the last save is more than a week old (the
+    page then suggests asking Claude to update it)."""
     p = ibkr.portfolio(db)
     return PortfolioOut(
-        configured=p.configured,
         holding_id=p.holding_id,
         as_of=p.as_of,
         total=p.total,
@@ -57,12 +57,6 @@ def get_portfolio(db: DB) -> PortfolioOut:
             for x in p.positions
         ],
     )
-
-
-@router.post("/refresh", response_model=PortfolioReadOut)
-def refresh(request: Request, db: DB) -> PortfolioReadOut:
-    """Download today's report from IBKR's Flex Web Service."""
-    return _run(lambda: ibkr.refresh(db, _user(request)))
 
 
 @router.post("/upload", response_model=PortfolioReadOut)

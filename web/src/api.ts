@@ -933,7 +933,6 @@ export type Position = {
   unrealized: string | null;
 };
 export type Portfolio = {
-  configured: boolean;
   holding_id: number | null;
   as_of: string | null;
   total: string | null;
@@ -951,5 +950,4 @@ export type PortfolioRead = {
   positions: number;
 };
 export const fetchPortfolio = () => send<Portfolio>("GET", "/api/investments/ibkr");
-export const refreshPortfolio = () => send<PortfolioRead>("POST", "/api/investments/ibkr/refresh");
 export const uploadFlex = (file: File) => upload<PortfolioRead>("/api/investments/ibkr/upload", file);

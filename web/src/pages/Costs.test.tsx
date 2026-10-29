@@ -122,7 +122,6 @@ function renderWith(page: ReactElement, body: unknown, path = "/", status = 200)
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              configured: false,
               holding_id: null,
               as_of: null,
               total: null,

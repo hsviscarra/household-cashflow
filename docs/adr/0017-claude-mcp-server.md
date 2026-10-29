@@ -62,3 +62,11 @@ app's own services through the read-only login.
 Still closed to Claude: statement lines' raw text, merchant rules, the change log and the
 workbook's cells. Writes stay impossible; the integration test checks deletes and updates are
 refused.
+
+## Amendment (0.24.0): one write, the IBKR portfolio
+
+`save_portfolio` (ADR-019) is the endpoint's only writing tool. It saves the Interactive Brokers
+value and positions Claude read through Hernan's IBKR connector, and nothing else. It uses the
+app's own login because `cashflow_reader` stays read-only: every other tool still reads through
+it, and the integration test that refuses its writes is unchanged. The tool refuses a day whose
+positions plus cash don't tie out to the total, and every save is in `audit.load_log`.

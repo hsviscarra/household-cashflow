@@ -1072,7 +1072,6 @@ class PositionOut(BaseModel):
 
 
 class PortfolioOut(BaseModel):
-    configured: bool
     holding_id: int | None
     as_of: date | None
     total: Decimal | None
