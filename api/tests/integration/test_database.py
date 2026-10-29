@@ -747,8 +747,12 @@ def test_mcp_reader_is_read_only_on_sql_server(
         ro = create_engine(reader.reader_url())
         with ro.connect() as conn:
             assert conn.execute(text("SELECT COUNT(*) FROM [mart].[v_monthly_cashflow]")).scalar()
+            # 0020: the balance sheet's tables are readable; anything else isn't, nor any write.
+            assert conn.execute(text("SELECT COUNT(*) FROM [core].[holding]")).scalar() is not None
             for sql in (
-                "SELECT TOP 1 * FROM [core].[transaction]",
+                "SELECT TOP 1 * FROM [core].[merchant_rule]",
+                "SELECT TOP 1 * FROM [raw].[raw_line]",
+                "DELETE FROM [core].[holding] WHERE 1 = 0",
                 "DELETE FROM [core].[category] WHERE 1 = 0",
                 "UPDATE [core].[account] SET [name] = [name] WHERE 1 = 0",
             ):
@@ -763,8 +767,16 @@ def test_mcp_reader_is_read_only_on_sql_server(
         assert mcp_server.compare_months(last, last)["cash_flow"][last] is not None
         assert isinstance(mcp_server.spending_by_category(last), list)
         assert isinstance(mcp_server.interest_and_fees(int(last[:4])), dict)
+        assert "net_worth" in mcp_server.balance_sheet()  # the app's own code, read-only login
+        assert isinstance(mcp_server.loans(), list)
+        assert mcp_server.monthly_report(last)["month"] == last
         ro.dispose()
 
+        _alembic("downgrade", "0019")
+        ro = create_engine(reader.reader_url())
+        with ro.connect() as conn, pytest.raises(DBAPIError, match="permission"):
+            conn.execute(text("SELECT COUNT(*) FROM [core].[holding]"))
+        ro.dispose()
         _alembic("downgrade", "0017")
         ro = create_engine(reader.reader_url())
         with ro.connect() as conn, pytest.raises(DBAPIError, match="permission"):

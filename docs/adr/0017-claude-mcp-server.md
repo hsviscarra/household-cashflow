@@ -50,3 +50,15 @@ can also run a local bridge (`mcp-remote`) that sends a fixed header.
   this endpoint yet.
 - The first question after a quiet period wakes the app and the database, which takes up to a
   minute.
+
+## Amendment (0.23.0): the balance sheet, loans and saved reports
+
+Claude can also read `balance_sheet`, `loans` and `monthly_report`. These are computed in Python
+from several tables (statement balances, holdings, purchases paid through their category, loan
+tables), and rebuilding that logic as views would duplicate it. So migration 0020 gives
+`mart_reader` SELECT, and only SELECT, on exactly the tables that code reads. The tools run the
+app's own services through the read-only login.
+
+Still closed to Claude: statement lines' raw text, merchant rules, the change log and the
+workbook's cells. Writes stay impossible; the integration test checks deletes and updates are
+refused.

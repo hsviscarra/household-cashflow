@@ -19,8 +19,8 @@ October compare to September?" (F18, ADR-017).
   - `spending_lines`
   - `top_merchants`
   - `interest_and_fees`
-- **Not included yet:** the balance sheet, loans and the saved monthly reports. They aren't mart
-  views.
+- `balance_sheet`, `loans` and `monthly_report` (0.23.0) read the tables those pages are
+  computed from, still with SELECT only.
 
 ## Turn it on (once)
 

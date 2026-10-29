@@ -86,6 +86,9 @@ body {
 .pill-bad {
   @apply bg-danger-bg text-danger-ink;
 }
+.pill-wait {
+  @apply bg-attention-bg text-attention-ink;
+}
 .pill-muted {
   @apply bg-surface text-muted;
 }
