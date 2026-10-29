@@ -411,6 +411,32 @@ class LoanInstallment(Base):
     status: Mapped[str] = mapped_column(Unicode(4))
 
 
+class InvestmentPosition(Base):
+    """One position of an investment account on a day (F22, ADR-019): read from the broker's
+    report (Interactive Brokers Flex), replaced when the same day is read again."""
+
+    __tablename__ = "investment_position"
+    __table_args__ = (
+        UniqueConstraint("holding_id", "as_of", "symbol", "asset_class"),
+        {"schema": "core"},
+    )
+
+    position_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    holding_id: Mapped[int] = mapped_column(
+        ForeignKey("core.holding.holding_id", ondelete="CASCADE"), index=True
+    )
+    as_of: Mapped[date] = mapped_column(Date)
+    symbol: Mapped[str] = mapped_column(Unicode(40))
+    description: Mapped[str | None] = mapped_column(Unicode(200))
+    asset_class: Mapped[str] = mapped_column(Unicode(20))
+    currency: Mapped[str] = mapped_column(Unicode(3))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(19, 6))
+    price: Mapped[Decimal] = mapped_column(Numeric(19, 6))
+    value: Mapped[Decimal] = mapped_column(Money)  # in USD
+    cost_basis: Mapped[Decimal | None] = mapped_column(Money)
+    unrealized: Mapped[Decimal | None] = mapped_column(Money)
+
+
 class AppSetting(Base):
     """A household-wide setting (F19, ADR-018), e.g. statements_from: the first month whose
     statements count instead of the Cash Flow workbook (YYYY-MM-01)."""

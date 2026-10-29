@@ -27,8 +27,8 @@ from app.models import (
     v_monthly_cashflow,
     v_spending_line,
 )
+from app.services import ibkr, networth
 from app.services import loans as loan_service
-from app.services import networth
 from app.services import report as report_service
 from app.services.classify import merchant_key
 
@@ -282,7 +282,7 @@ def _session() -> Session:
     return Session(get_reader_engine())
 
 
-def _item(i: networth.Item) -> dict[str, Any]:
+def _item(i: networth.Item, positions: list[Any] | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {
         "name": i.name,
         "side": i.side,
@@ -304,6 +304,18 @@ def _item(i: networth.Item) -> dict[str, Any]:
         }
     if i.loan and i.loan.monthly_payment is not None:
         out["monthly_payment"] = _s(i.loan.monthly_payment)
+    if positions:
+        out["positions"] = [
+            {
+                "symbol": p.symbol,
+                "description": p.description,
+                "quantity": format(p.quantity.normalize(), "f"),
+                "price": format(p.price.normalize(), "f"),
+                "value": _s(p.value),
+                "unrealized": None if p.unrealized is None else _s(p.unrealized),
+            }
+            for p in positions
+        ]
     return out
 
 
@@ -316,7 +328,12 @@ def balance_sheet(as_of: str | None = None) -> dict[str, Any]:
     day = date.fromisoformat(as_of) if as_of else date.today()
     with _session() as db:
         sheet = networth.sheet(db, day, months=12)
-    items = [i for i in sheet.items if i.is_active]
+        items = [i for i in sheet.items if i.is_active]
+        held = {
+            i.holding_id: ibkr.latest_positions(db, i.holding_id, day)
+            for i in items
+            if i.holding_class == "investment" and i.holding_id is not None
+        }
     assets, debts = sheet.total("asset"), sheet.total("liability")
     return {
         "as_of": sheet.as_of.isoformat(),
@@ -324,7 +341,7 @@ def balance_sheet(as_of: str | None = None) -> dict[str, Any]:
         "liabilities": _s(debts),
         "net_worth": _s(assets - debts),
         "commitments": _s(sheet.commitments),
-        "items": [_item(i) for i in items],
+        "items": [_item(i, held.get(i.holding_id or -1)) for i in items],
         "net_worth_by_month": [
             {"month": _month(p.month), "net_worth": _s(p.net)} for p in sheet.series
         ],

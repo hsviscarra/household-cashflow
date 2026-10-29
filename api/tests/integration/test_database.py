@@ -828,3 +828,39 @@ def test_statements_from_on_sql_server(tmp_path: object) -> None:
     assert jan_income() == Decimal("8500.25")  # the workbook wins again
     _alembic("upgrade", "head")
     assert jan_income() == Decimal("8500.25")  # the setting went with the table
+
+
+def test_ibkr_portfolio_on_sql_server(tmp_path: object) -> None:
+    """F22 on SQL Server: a Flex report becomes the day's positions and a balance-sheet value;
+    reading the same day again replaces it; 0021 down removes both."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.unit.test_ibkr import flex
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    for _ in range(2):
+        resp = client.post(
+            "/api/investments/ibkr/upload", files={"file": ("f.xml", flex(), "text/xml")}
+        )
+        assert resp.status_code == 200, resp.text
+    p = client.get("/api/investments/ibkr").json()
+    assert Decimal(p["total"]) == Decimal("25350.40") and len(p["positions"]) == 2
+    items = client.get("/api/networth", params={"as_of": "2026-10-29"}).json()["items"]
+    assert any(i["name"] == "Interactive Brokers" and i["source"] == "ibkr" for i in items)
+
+    _alembic("downgrade", "0020")
+    with get_engine().connect() as conn:
+        left = conn.execute(
+            text("SELECT COUNT(*) FROM [core].[balance_snapshot] WHERE [source] = 'ibkr'")
+        ).scalar_one()
+    assert left == 0
+    _alembic("upgrade", "head")

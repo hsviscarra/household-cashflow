@@ -18,6 +18,7 @@ from app.routers import (
     costs,
     health,
     history,
+    investments,
     networth,
     projections,
     recurring,
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(costs.router)
     app.include_router(networth.router)
     app.include_router(projections.router)
+    app.include_router(investments.router)
     app.include_router(report.router)
 
     app.router.routes.append(mcp_route)

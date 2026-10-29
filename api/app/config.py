@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # views only). Created or updated at start-up; empty = the endpoint uses the app's login
     # (local development and tests only).
     reader_password: str = ""
+    # Interactive Brokers (F22): a read-only Flex Web Service token and the Activity Flex Query to
+    # download (positions, cash, net asset value). Empty = off; a Flex XML can still be uploaded.
+    ibkr_flex_token: str = ""
+    ibkr_flex_query_id: str = ""
     # Backups (F17): the jobs write to this container (Azure) or folder (local runs).
     backups_container: str = "backups"
     backups_dir: str = "data/backups"
