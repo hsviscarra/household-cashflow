@@ -867,7 +867,7 @@ def test_ibkr_portfolio_on_sql_server(tmp_path: object) -> None:
     assert Decimal(p["previous_total"]) == Decimal("25350.40")
     sheet = mcp_server.balance_sheet("2026-10-29")
     ib = next(i for i in sheet["items"] if i["name"] == "Interactive Brokers")
-    assert [x["symbol"] for x in ib["positions"]] == ["VOO", "VT", "IWDA"]
+    assert [x["symbol"] for x in ib["positions"]] == ["VOO", "IWDA", "VT"]  # largest first
 
     _alembic("downgrade", "0020")
     with get_engine().connect() as conn:
