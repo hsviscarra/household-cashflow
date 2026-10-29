@@ -75,6 +75,9 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
   [docs/runbooks/backups.md](docs/runbooks/backups.md).
 - **Interactive Brokers:** ask Claude to update the portfolio through your IBKR connector, see
   [docs/runbooks/ibkr.md](docs/runbooks/ibkr.md).
+- **Statements by email:** a Gmail script sends the banks' statement PDFs once a day; one-time
+  [`infra/azure/setup-inbox.sh`](infra/azure/setup-inbox.sh), see
+  [docs/runbooks/gmail-statements.md](docs/runbooks/gmail-statements.md).
 - **Claude (MCP):** read access to the numbers (plus saving the IBKR portfolio) for the Claude desktop app; one-time
   [`infra/azure/setup-mcp.sh`](infra/azure/setup-mcp.sh), see
   [docs/runbooks/claude-mcp.md](docs/runbooks/claude-mcp.md).

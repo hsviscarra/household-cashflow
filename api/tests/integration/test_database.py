@@ -876,3 +876,46 @@ def test_ibkr_portfolio_on_sql_server(tmp_path: object) -> None:
         ).scalar_one()
     assert left == 0
     _alembic("upgrade", "head")
+
+
+def test_statement_by_email_on_sql_server(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F20 on SQL Server: the inbox stores a statement, reads it into a batch waiting for
+    approval, and takes the same file again as a duplicate."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.config import get_settings
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    monkeypatch.setenv("INBOX_TOKEN", "ci-inbox-token")
+    get_settings.cache_clear()
+    try:
+        app = create_app()
+        app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+        client = TestClient(app)
+        auth = {"Authorization": "Bearer ci-inbox-token"}
+        files = {"file": ("e.pdf", s.capitalone_full(), "application/octet-stream")}
+        out = client.post("/api/inbox", files=files, data={"sender": "bank@x"}, headers=auth)
+        assert out.status_code == 200, out.text
+        got = out.json()
+        assert got["status"] == "read" and got["batch_id"]
+        with get_engine().connect() as conn:
+            status, by = conn.execute(
+                text(
+                    "SELECT [status], [created_by] FROM [stg].[import_batch] WHERE [batch_id] = :b"
+                ),
+                {"b": got["batch_id"]},
+            ).one()
+        assert (status, by) == ("preview", "gmail (bank@x)")
+        again = client.post("/api/inbox", files=files, headers=auth).json()
+        assert again["status"] == "duplicate"
+    finally:
+        monkeypatch.delenv("INBOX_TOKEN")
+        get_settings.cache_clear()

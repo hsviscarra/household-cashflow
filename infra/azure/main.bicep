@@ -49,6 +49,10 @@ param anthropicApiKey string = ''
 param mcpToken string = ''
 
 @secure()
+@description('Bearer token the Gmail script posts statements to /api/inbox with (F20). Empty = off.')
+param inboxToken string = ''
+
+@secure()
 @description('Password of the read-only database login the MCP endpoint uses (F18).')
 param readerPassword string = ''
 
@@ -171,7 +175,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         empty(mcpToken) ? [] : [
           { name: 'mcp-token', value: mcpToken }
           { name: 'reader-password', value: readerPassword }
-        ])
+        ],
+        empty(inboxToken) ? [] : [ { name: 'inbox-token', value: inboxToken } ])
     }
     template: {
       containers: [
@@ -188,7 +193,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             empty(mcpToken) ? [] : [
               { name: 'MCP_TOKEN', secretRef: 'mcp-token' }
               { name: 'READER_PASSWORD', secretRef: 'reader-password' }
-            ])
+            ],
+            empty(inboxToken) ? [] : [ { name: 'INBOX_TOKEN', secretRef: 'inbox-token' } ])
         }
       ]
       scale: { minReplicas: 0, maxReplicas: 1 }
@@ -204,8 +210,9 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableA
     globalValidation: {
       unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
-      // /mcp is Claude's endpoint (F18): it checks its own bearer token instead of a sign-in.
-      excludedPaths: [ '/api/health', '/mcp' ]
+      // /mcp is Claude's endpoint (F18) and /api/inbox the Gmail script's (F20): each checks its
+      // own bearer token instead of a sign-in.
+      excludedPaths: [ '/api/health', '/mcp', '/api/inbox' ]
     }
     identityProviders: {
       azureActiveDirectory: {

@@ -2,7 +2,8 @@
 
 Container Apps auth signs people in and passes their identity in the
 X-MS-CLIENT-PRINCIPAL-NAME header; this middleware only lets the household's
-accounts through. Health stays open so deploy smoke tests and probes work.
+accounts through. Health stays open so deploy smoke tests and probes work. Two endpoints check a
+bearer token instead of a person: Claude's /mcp (F18) and the Gmail script's /api/inbox (F20).
 """
 
 import hmac
@@ -15,6 +16,7 @@ from app.config import get_settings
 
 OPEN_PATHS = frozenset({"/api/health"})
 MCP_PATH = "/mcp"  # Claude's endpoint (F18): a bearer token instead of a signed-in person
+INBOX_PATH = "/api/inbox"  # the Gmail script's statement drop (F20): its own bearer token
 PRINCIPAL_HEADER = "x-ms-client-principal-name"
 
 
@@ -22,8 +24,11 @@ async def allow_list(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
     settings = get_settings()
-    if request.url.path.rstrip("/") == MCP_PATH:
-        return await _mcp_token(request, call_next, settings.mcp_token)
+    path = request.url.path.rstrip("/")
+    if path == MCP_PATH:
+        return await _bearer(request, call_next, settings.mcp_token, "The MCP endpoint is off.")
+    if path == INBOX_PATH:
+        return await _bearer(request, call_next, settings.inbox_token, "The inbox is off.")
     allowed = settings.allowed_email_set
     if not allowed or request.url.path in OPEN_PATHS:
         return await call_next(request)
@@ -33,12 +38,15 @@ async def allow_list(
     return await call_next(request)
 
 
-async def _mcp_token(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]], token: str
+async def _bearer(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+    token: str,
+    off: str,
 ) -> Response:
-    """/mcp needs the bearer token (MCP_TOKEN); without one configured the endpoint is off."""
+    """A token endpoint needs its bearer token; without one configured the endpoint is off."""
     if not token:
-        return JSONResponse({"detail": "The MCP endpoint is off."}, status_code=404)
+        return JSONResponse({"detail": off}, status_code=404)
     given = request.headers.get("authorization", "")
     expected = f"Bearer {token}"
     if not hmac.compare_digest(given.encode(), expected.encode()):

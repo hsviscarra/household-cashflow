@@ -34,6 +34,8 @@ services:
       # Claude's read-only MCP endpoint at /mcp (F18; optional, empty = off).
       MCP_TOKEN: ${MCP_TOKEN:-}
       READER_PASSWORD: ${READER_PASSWORD:-}
+      # The Gmail script's statement inbox at /api/inbox (F20; optional, empty = off).
+      INBOX_TOKEN: ${INBOX_TOKEN:-}
     ports:
       - "8000:8000"
     volumes:

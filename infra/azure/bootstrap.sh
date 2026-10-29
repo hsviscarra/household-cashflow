@@ -55,13 +55,15 @@ secret() {
 }
 MCP_TOKEN="${MCP_TOKEN:-$(secret mcp-token)}"
 READER_PASSWORD="${READER_PASSWORD:-$(secret reader-password)}"
+# The statement inbox (F20, setup-inbox.sh): keep its token.
+INBOX_TOKEN="${INBOX_TOKEN:-$(secret inbox-token)}"
 
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
     -p prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
        ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" \
        anthropicApiKey="${ANTHROPIC_API_KEY:-}" mcpToken="${MCP_TOKEN:-}" \
-       readerPassword="${READER_PASSWORD:-}" "$@" \
+       readerPassword="${READER_PASSWORD:-}" inboxToken="${INBOX_TOKEN:-}" "$@" \
     --query properties.outputs -o json
 }
 
