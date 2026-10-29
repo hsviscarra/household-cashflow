@@ -1,8 +1,8 @@
 # Statements by email (Gmail)
 
-Bank statements emailed to Gmail reach the app by themselves every hour. They're read and wait on
-the **Import** page for your approval (F20, ADR-020). The Import page shows who sent each one as
-`gmail (<sender>)`.
+Bank statements emailed to Gmail reach the app by themselves once a day, at about 6 am. They're
+read and wait on the **Import** page for your approval (F20, ADR-020). The Import page shows who
+sent each one as `gmail (<sender>)`.
 
 | Bank | Sender | Statements |
 |---|---|---|
@@ -35,7 +35,7 @@ Bank of America and Capital One come next (issue #60).
 
 3. **Start it.** In the editor, choose the function `setup` and **Run**. Google asks you to
    allow access to your Gmail and to external requests: it's your own script, so choose
-   *Advanced → Go to household-cashflow statements* and allow. `setup` creates the hourly trigger
+   *Advanced → Go to household-cashflow statements* and allow. `setup` creates the daily trigger
    and runs once. The **Execution log** shows what it sent.
 
 4. **Load the backlog (optional).**
@@ -51,8 +51,22 @@ Bank of America and Capital One come next (issue #60).
 - **cashflow-check:** sent, but it needs you on the Import page (choose its account, or a
   statement that couldn't be read), or the app refused the file. To send one again, remove the
   label.
-- **No label yet:** not sent, or the app was asleep (it scales to zero). The next hourly run tries
-  again.
+- **No label yet:** not sent yet, or the app couldn't answer. The next day's run tries again.
+
+## When statements arrive
+
+From the 2026 emails, roughly once a month each:
+
+| Statement | Usually arrives |
+|---|---|
+| Diners Club | 4th to 6th |
+| Banco Pichincha card | 15th or 16th |
+| Banco Pichincha account | 13th to 22nd, varies |
+| PacifiCard | 24th to 26th |
+
+Some months have no email at all: Pichincha's card in July, September and October, and its
+account in January, April and July. Those months need a manual upload; the month-status page
+shows what's missing. To check sooner than the next morning, run `run` in the editor.
 
 ## Add a bank
 

@@ -1,7 +1,10 @@
 /**
  * household-cashflow: statements by email (F20, ADR-020).
  *
- * Runs in Hernan's Gmail every hour (a Google Apps Script time trigger, on Google's servers). It
+ * Runs in Hernan's Gmail once a day, early morning (a Google Apps Script time trigger, on Google's
+ * servers). Statements arrive about once a month per bank (Diners around the 5th, Pichincha's card
+ * around the 15th, its account between the 13th and 22nd, PacifiCard around the 25th), so a daily
+ * look is soon enough; on days with no new email the app isn't contacted at all. It
  * finds the banks' statement emails, posts each PDF attachment to the app's /api/inbox with the
  * inbox token, and labels the email so it isn't sent again. The app stores the file like an upload
  * and reads it into a batch that waits on the Import page for approval.
@@ -30,7 +33,7 @@ const CHECK = 'cashflow-check';
 const RECENT = 'newer_than:45d';
 const MAX_FILES_PER_RUN = 25; // keeps a run well under Apps Script's 6-minute limit
 
-/** Every hour: statements from the last 45 days that haven't been sent yet. */
+/** Every day: statements from the last 45 days that haven't been sent yet. */
 function run() {
   importStatements_(RECENT);
 }
@@ -44,12 +47,12 @@ function backfill() {
   importStatements_('after:' + from);
 }
 
-/** Once, by hand: the hourly trigger (replacing any earlier one), then a first run. */
+/** Once, by hand: the daily trigger at about 6 am (replacing any earlier one), then a first run. */
 function setup() {
   ScriptApp.getProjectTriggers()
     .filter((t) => t.getHandlerFunction() === 'run')
     .forEach((t) => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('run').timeBased().everyHours(1).create();
+  ScriptApp.newTrigger('run').timeBased().everyDays(1).atHour(6).create();
   run();
 }
 
@@ -80,7 +83,7 @@ function importStatements_(window) {
           sent += 1;
           const result = post_(url, token, file, message.getFrom());
           if (result === null) {
-            finished = false; // the app or its database is asleep: the next run tries again
+            finished = false; // the app couldn't answer: tomorrow's run tries again
             counts.later += 1;
             continue;
           }

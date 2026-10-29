@@ -24,21 +24,29 @@ Options considered:
 - **Claude reads Gmail through its connector.** The connector can't download attachments, and it
   would need the Mac on, like the IBKR task.
 - **A Google Apps Script in Hernan's Gmail pushes the PDFs to the app.** It runs on Google's
-  servers on an hourly trigger, needs no Google Cloud project, and Gmail access never leaves
+  servers on a time trigger, needs no Google Cloud project, and Gmail access never leaves
   Google. The app only receives files.
 
 ## Decision
 
 - **Apps Script** (`infra/gmail/Code.gs`), pasted once into script.google.com under Hernan's
-  account. Every hour it:
+  account. Once a day, at about 6 am, it:
   - searches each bank's sender and subject, for emails from the last 45 days that have a PDF
     and aren't labeled yet;
   - posts each PDF attachment to the app;
   - labels the email `cashflow-imported` (read, or already in the app) or `cashflow-check` (it
     needs a person on the Import page, or the app refused it).
 
-  An email the app couldn't take, because the app or the database was asleep, is left unlabeled
-  and tried again next hour. `backfill()` does the same since a chosen date, for the backlog.
+  An email the app couldn't take is left unlabeled and tried again the next day. `backfill()`
+  does the same since a chosen date, for the backlog.
+- **Daily, not hourly or weekly.** Each bank emails about once a month:
+  - Diners around the 5th;
+  - Pichincha's card around the 15th, its account between the 13th and 22nd;
+  - PacifiCard around the 25th.
+
+  Daily means a statement waits at most a day. Weekly would add up to a week. Fixed dates would
+  miss Pichincha's account statement, whose day varies. A run with no new email doesn't contact
+  the app at all, so daily costs nothing.
 - **`POST /api/inbox`** (multipart: `file`, `sender`) is protected by its own bearer token
   (`INBOX_TOKEN`). It's excluded from the Microsoft sign-in like `/mcp`, and the token opens
   nothing else. Each file goes through the upload path unchanged:
@@ -59,7 +67,7 @@ Options considered:
 
 ## Consequences
 
-- No new schema, job or Google Cloud project; the hourly run costs nothing.
+- No new schema, job or Google Cloud project; the daily run costs nothing.
 - The token can post files but not read or approve anything. Anyone holding it could fill the
   Import page with files waiting for approval; rotate it with `ROTATE=1`.
 - A bank that changes its sender or subject stops arriving silently. The month-status page's

@@ -1,6 +1,6 @@
 """Statements by email (F20, ADR-020): the Gmail script posts each statement PDF here.
 
-The script runs in Hernan's Gmail every hour, finds the banks' statement emails and posts their
+The script runs in Hernan's Gmail once a day, finds the banks' statement emails and posts their
 PDF attachments with the inbox bearer token (checked in app.auth). Each file is stored exactly
 like an upload (a file already uploaded is a duplicate, so posting it again is harmless), then,
 when its bank and account are recognized, read into a batch that waits on the Import page for
