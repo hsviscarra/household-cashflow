@@ -73,6 +73,9 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
 - **Backups:** nightly, kept 30 days, restore-drilled monthly; one-time
   [`infra/azure/setup-backups.sh`](infra/azure/setup-backups.sh). How to restore:
   [docs/runbooks/backups.md](docs/runbooks/backups.md).
+- **Interactive Brokers:** the portfolio from IBKR's Flex Web Service; one-time
+  [`infra/azure/setup-ibkr.sh`](infra/azure/setup-ibkr.sh), see
+  [docs/runbooks/ibkr.md](docs/runbooks/ibkr.md).
 - **Claude (MCP):** read-only access to the numbers for the Claude desktop app; one-time
   [`infra/azure/setup-mcp.sh`](infra/azure/setup-mcp.sh), see
   [docs/runbooks/claude-mcp.md](docs/runbooks/claude-mcp.md).

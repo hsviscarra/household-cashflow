@@ -52,6 +52,14 @@ param mcpToken string = ''
 @description('Password of the read-only database login the MCP endpoint uses (F18).')
 param readerPassword string = ''
 
+@secure()
+@description('Interactive Brokers Flex Web Service token (F22, setup-ibkr.sh). Empty = off.')
+param ibkrFlexToken string = ''
+
+@secure()
+@description('Interactive Brokers Flex Query ID (F22).')
+param ibkrFlexQueryId string = ''
+
 @description('Email for the monthly budget alert.')
 param alertEmail string
 
@@ -171,6 +179,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         empty(mcpToken) ? [] : [
           { name: 'mcp-token', value: mcpToken }
           { name: 'reader-password', value: readerPassword }
+        ],
+        empty(ibkrFlexToken) ? [] : [
+          { name: 'ibkr-flex-token', value: ibkrFlexToken }
+          { name: 'ibkr-flex-query-id', value: ibkrFlexQueryId }
         ])
     }
     template: {
@@ -188,6 +200,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             empty(mcpToken) ? [] : [
               { name: 'MCP_TOKEN', secretRef: 'mcp-token' }
               { name: 'READER_PASSWORD', secretRef: 'reader-password' }
+            ],
+            empty(ibkrFlexToken) ? [] : [
+              { name: 'IBKR_FLEX_TOKEN', secretRef: 'ibkr-flex-token' }
+              { name: 'IBKR_FLEX_QUERY_ID', secretRef: 'ibkr-flex-query-id' }
             ])
         }
       ]

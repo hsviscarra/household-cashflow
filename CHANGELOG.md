@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.24.0] — F22 Interactive Brokers portfolio
+
+### F22 — The IBKR portfolio on the balance sheet
+- Positions, cash and net asset value from IBKR's read-only Flex Web Service (ADR-019). They're
+  read when Debt & Net Worth opens and the last read is over 20 hours old, or with Refresh from
+  IBKR. A Flex XML can be uploaded instead.
+- New Investments section: total, cash, unrealized gain, and each position's quantity, price,
+  value, gain and share.
+- The day's total is a value of the "Interactive Brokers" item, so it counts in net worth.
+  Positions are kept per day (migration 0021, `core.investment_position`), and Claude's
+  balance_sheet lists them.
+- `infra/azure/setup-ibkr.sh` stores the token and Query ID as secrets; runbook
+  `docs/runbooks/ibkr.md`.
+
 ## [0.23.0] — Small improvements
 
 ### Improvements

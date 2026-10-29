@@ -118,6 +118,22 @@ function renderWith(page: ReactElement, body: unknown, path = "/", status = 200)
     vi.fn((url: string) => {
       urls.push(url);
       if (url === "/api/networth") return Promise.resolve(new Response(JSON.stringify(EMPTY_SHEET)));
+      if (url === "/api/investments/ibkr")
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              configured: false,
+              holding_id: null,
+              as_of: null,
+              total: null,
+              cash: null,
+              previous_total: null,
+              previous_as_of: null,
+              stale: false,
+              positions: [],
+            }),
+          ),
+        );
       return Promise.resolve(new Response(JSON.stringify(body), { status }));
     }),
   );

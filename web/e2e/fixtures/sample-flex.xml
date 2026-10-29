@@ -1,0 +1,24 @@
+<FlexQueryResponse queryName="cashflow-app" type="AF">
+<FlexStatements count="1">
+<FlexStatement accountId="U0000000" fromDate="2026-10-28" toDate="2026-10-28" period="LastBusinessDay">
+<EquitySummaryInBase>
+  <EquitySummaryByReportDateInBase reportDate="2026-10-27" cash="400.00" stock="24000.00" total="24400.00"/>
+  <EquitySummaryByReportDateInBase reportDate="2026-10-28" cash="350.40" stock="25000.00" total="25350.40"/>
+</EquitySummaryInBase>
+<OpenPositions>
+  <OpenPosition symbol="VT" description="VANGUARD TOT WORLD STK ETF" assetCategory="STK" currency="USD"
+    position="150" markPrice="120.50" positionValue="18075.00" costBasisMoney="15000.00"
+    fifoPnlUnrealized="3075.00" fxRateToBase="1" reportDate="2026-10-28" levelOfDetail="SUMMARY"/>
+  <OpenPosition symbol="VT" description="VANGUARD TOT WORLD STK ETF" assetCategory="STK" currency="USD"
+    position="100" markPrice="120.50" positionValue="12050.00" levelOfDetail="LOT"/>
+  <OpenPosition symbol="IWDA" description="ISHARES CORE MSCI WORLD" assetCategory="STK" currency="EUR"
+    position="80" markPrice="80.00" positionValue="6400.00" costBasisMoney="6000.00"
+    fifoPnlUnrealized="400.00" fxRateToBase="1.08" reportDate="2026-10-28"/>
+  <OpenPosition symbol="BAD" assetCategory="STK" currency="USD" position="" positionValue="--"/>
+</OpenPositions>
+<CashReport>
+  <CashReportCurrency currency="BASE_SUMMARY" endingCash="999.99"/>
+</CashReport>
+</FlexStatement>
+</FlexStatements>
+</FlexQueryResponse>

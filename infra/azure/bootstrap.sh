@@ -55,13 +55,17 @@ secret() {
 }
 MCP_TOKEN="${MCP_TOKEN:-$(secret mcp-token)}"
 READER_PASSWORD="${READER_PASSWORD:-$(secret reader-password)}"
+# Interactive Brokers (F22, setup-ibkr.sh).
+IBKR_FLEX_TOKEN="${IBKR_FLEX_TOKEN:-$(secret ibkr-flex-token)}"
+IBKR_FLEX_QUERY_ID="${IBKR_FLEX_QUERY_ID:-$(secret ibkr-flex-query-id)}"
 
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
     -p prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
        ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" \
        anthropicApiKey="${ANTHROPIC_API_KEY:-}" mcpToken="${MCP_TOKEN:-}" \
-       readerPassword="${READER_PASSWORD:-}" "$@" \
+       readerPassword="${READER_PASSWORD:-}" ibkrFlexToken="${IBKR_FLEX_TOKEN:-}" \
+       ibkrFlexQueryId="${IBKR_FLEX_QUERY_ID:-}" "$@" \
     --query properties.outputs -o json
 }
 

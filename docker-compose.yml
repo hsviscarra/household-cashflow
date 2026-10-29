@@ -34,6 +34,9 @@ services:
       # Claude's read-only MCP endpoint at /mcp (F18; optional, empty = off).
       MCP_TOKEN: ${MCP_TOKEN:-}
       READER_PASSWORD: ${READER_PASSWORD:-}
+      # Interactive Brokers' Flex Web Service (F22; optional, empty = off).
+      IBKR_FLEX_TOKEN: ${IBKR_FLEX_TOKEN:-}
+      IBKR_FLEX_QUERY_ID: ${IBKR_FLEX_QUERY_ID:-}
     ports:
       - "8000:8000"
     volumes:
