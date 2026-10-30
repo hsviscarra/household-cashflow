@@ -9,6 +9,7 @@ import DebtPage from "./pages/Debt";
 import ImportPage from "./pages/Import";
 import Overview from "./pages/Overview";
 import ProjectionsPage from "./pages/Projections";
+import PurchasesPage from "./pages/Purchases";
 import RecurringPage from "./pages/Recurring";
 import ReportPage from "./pages/Report";
 import ReviewPage from "./pages/Review";
@@ -79,6 +80,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/recurring": <RecurringPage />,
   "/status": <StatusPage />,
   "/spending": <SpendingPage />,
+  "/purchases": <PurchasesPage />,
   "/subscriptions": <SubscriptionsPage />,
   "/debt": <DebtPage />,
   "/projections": <ProjectionsPage />,

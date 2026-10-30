@@ -24,6 +24,8 @@ October compare to September?" (F18, ADR-017).
   - `interest_and_fees`
 - `balance_sheet`, `loans` and `monthly_report` (0.23.0) read the tables those pages are
   computed from, still with SELECT only.
+- `purchases` (0.26.0) reads the electronic invoices: spending by product group, top products and
+  vendors.
 
 ## Turn it on (once)
 

@@ -78,6 +78,8 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
 - **Statements by email:** a Gmail script sends the banks' statement PDFs once a day; one-time
   [`infra/azure/setup-inbox.sh`](infra/azure/setup-inbox.sh), see
   [docs/runbooks/gmail-statements.md](docs/runbooks/gmail-statements.md).
+- **Purchases:** products from electronic invoices (Gmail or XML upload), see
+  [docs/runbooks/invoices.md](docs/runbooks/invoices.md).
 - **Claude (MCP):** read access to the numbers (plus saving the IBKR portfolio) for the Claude desktop app; one-time
   [`infra/azure/setup-mcp.sh`](infra/azure/setup-mcp.sh), see
   [docs/runbooks/claude-mcp.md](docs/runbooks/claude-mcp.md).

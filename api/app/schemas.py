@@ -1088,3 +1088,82 @@ class PortfolioReadOut(BaseModel):
     total: Decimal
     cash: Decimal
     positions: int
+
+
+# ---------------- F21: electronic invoices ----------------
+class InvoiceLineOut(BaseModel):
+    line_no: int
+    description: str
+    product_key: str
+    quantity: Decimal
+    unit_price: Decimal
+    total: Decimal
+    product_group: str | None
+    group_source: str | None
+
+
+class PaidWithOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    account: str | None
+    description: str
+
+
+class InvoiceOut(BaseModel):
+    invoice_id: int
+    issuer_name: str
+    number: str
+    issue_date: date
+    subtotal: Decimal
+    tax: Decimal
+    total: Decimal
+    received_by: str
+    paid_with: PaidWithOut | None
+    lines: list[InvoiceLineOut]
+
+
+class GroupTotalOut(BaseModel):
+    group: str
+    amount: Decimal
+    lines: int
+
+
+class UngroupedOut(BaseModel):
+    product_key: str
+    description: str
+    lines: int
+    amount: Decimal
+    suggested_group: str | None
+
+
+class PurchasesOut(BaseModel):
+    month: str
+    total: Decimal
+    matched_total: Decimal
+    groups: list[GroupTotalOut]
+    to_group: list[UngroupedOut]
+    invoices: list[InvoiceOut]
+    product_groups: list[str]
+    suggestions_available: bool
+
+
+class InvoiceUploadOut(BaseModel):
+    file_name: str
+    outcome: Literal["stored", "duplicate", "skipped", "rejected"]
+    message: str
+    invoice_id: int | None = None
+
+
+class ProductGroupIn(BaseModel):
+    product_key: str = Field(min_length=1, max_length=300)
+    product_group: str
+
+
+class ProductGroupOut(BaseModel):
+    product_key: str
+    product_group: str
+    lines_updated: int
+
+
+class SuggestedOut(BaseModel):
+    products: int

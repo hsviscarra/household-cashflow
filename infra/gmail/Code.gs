@@ -1,5 +1,5 @@
 /**
- * household-cashflow: statements by email (F20, ADR-020).
+ * household-cashflow: statements and invoices by email (F20, ADR-020; F21, ADR-021).
  *
  * Runs in Hernan's Gmail once a day, early morning (a Google Apps Script time trigger, on Google's
  * servers). Statements arrive about once a month per bank (Diners around the 5th, Pichincha's card
@@ -8,6 +8,11 @@
  * finds the banks' statement emails, posts each PDF attachment to the app's /api/inbox with the
  * inbox token, and labels the email so it isn't sent again. The app stores the file like an upload
  * and reads it into a batch that waits on the Import page for approval.
+ *
+ * It also sends every electronic invoice XML (SRI "factura", from any vendor: Supermaxi, pharmacy,
+ * internet, school...). The app reads its products and matches it to the card line that paid it
+ * (Purchases page). Invoices forwarded from another Gmail by a filter count too: a filter keeps the
+ * vendor as the sender.
  *
  * Labels it adds:
  *   cashflow-imported  sent; read, or a statement already in the app
@@ -18,22 +23,36 @@
  */
 
 // One search per bank. Add a bank by adding its sender (issue #60: Bank of America, Capital One).
+// `files` picks the attachments to send: statement PDFs, or invoice XMLs.
+const PDF = /\.pdf$/i;
+const XML = /\.xml$/i;
 const SOURCES = [
   {
     bank: 'Banco Pichincha',
     // Account and credit-card statements; the same sender also emails invoices ("Factura").
     query: 'from:documentoselectronicos@pichincha.com subject:(estado OR estados) -subject:factura',
+    files: PDF,
   },
-  { bank: 'PacifiCard', query: 'from:estadodecuenta@pacificard.ec subject:"estado de cuenta"' },
-  { bank: 'Diners Club', query: 'from:info@efacturacioninterdin.com subject:"estado de cuenta"' },
+  {
+    bank: 'PacifiCard',
+    query: 'from:estadodecuenta@pacificard.ec subject:"estado de cuenta"',
+    files: PDF,
+  },
+  {
+    bank: 'Diners Club',
+    query: 'from:info@efacturacioninterdin.com subject:"estado de cuenta"',
+    files: PDF,
+  },
+  // Electronic invoices from any vendor: the XML attachment (the PDF next to it is only a copy).
+  { bank: 'Invoices', query: 'filename:xml', files: XML },
 ];
 
 const DONE = 'cashflow-imported';
 const CHECK = 'cashflow-check';
 const RECENT = 'newer_than:45d';
-const MAX_FILES_PER_RUN = 25; // keeps a run well under Apps Script's 6-minute limit
+const MAX_FILES_PER_RUN = 40; // keeps a run well under Apps Script's 6-minute limit
 
-/** Every day: statements from the last 45 days that haven't been sent yet. */
+/** Every day: statements and invoices from the last 45 days that haven't been sent yet. */
 function run() {
   importStatements_(RECENT);
 }
@@ -66,7 +85,7 @@ function importStatements_(window) {
   const done = label_(DONE);
   const check = label_(CHECK);
   let sent = 0;
-  const counts = { read: 0, duplicate: 0, needs_attention: 0, rejected: 0, later: 0 };
+  const counts = { read: 0, duplicate: 0, skipped: 0, needs_attention: 0, rejected: 0, later: 0 };
 
   for (const source of SOURCES) {
     const query = `${source.query} has:attachment ${window} -label:${DONE} -label:${CHECK}`;
@@ -75,7 +94,7 @@ function importStatements_(window) {
       let needsYou = false;
       for (const message of thread.getMessages()) {
         for (const file of message.getAttachments({ includeInlineImages: false })) {
-          if (!/\.pdf$/i.test(file.getName())) continue;
+          if (!source.files.test(file.getName())) continue;
           if (sent >= MAX_FILES_PER_RUN) {
             summary_(counts, true);
             return;
@@ -98,14 +117,16 @@ function importStatements_(window) {
   summary_(counts, false);
 }
 
-/** Posts one PDF; the app's answer, or null when it can't answer now (asleep, waking up). */
+/** Posts one file; the app's answer, or null when it can't answer now (asleep, waking up). */
 function post_(url, token, file, from) {
   try {
     const response = UrlFetchApp.fetch(`${url}/api/inbox`, {
       method: 'post',
       headers: { Authorization: `Bearer ${token}` },
       payload: {
-        file: file.copyBlob().setContentType('application/pdf'),
+        file: file
+          .copyBlob()
+          .setContentType(XML.test(file.getName()) ? 'application/xml' : 'application/pdf'),
         sender: address_(from),
       },
       muteHttpExceptions: true,
@@ -126,7 +147,7 @@ function post_(url, token, file, from) {
 
 function summary_(counts, more) {
   console.log(
-    `Read ${counts.read}, already in the app ${counts.duplicate}, ` +
+    `Read ${counts.read}, already in the app ${counts.duplicate}, not an invoice ${counts.skipped}, ` +
       `need you on the Import page ${counts.needs_attention}, refused ${counts.rejected}, ` +
       `next run ${counts.later}.${more ? ' More left: run again.' : ''}`
   );

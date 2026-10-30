@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.0] — F21 Purchases from electronic invoices
+
+### F21 — Purchases, product by product
+- New **Purchases** page: a month's electronic invoices (SRI facturas) with every product, the
+  spending by product group (Meat & Fish, Dairy & Eggs, Baby, Household & Cleaning…), and each
+  invoice matched to the card or bank line that paid it (ADR-021).
+- Invoices come from the Gmail script, which now also sends every invoice XML from any vendor, or
+  as XML uploads (SRI en línea, cfavorita.ec). Duplicates and credit notes are skipped; an invoice
+  whose lines don't add up is refused.
+- Products are grouped by a confirmed rule, a few keywords, or Claude's suggestion (only product
+  descriptions are sent); confirming a group applies it to that product from then on.
+- Migration 0022: `core.invoice`, `core.invoice_line`, `core.product_rule`; Claude's read-only
+  login reads invoices, and the new MCP tool `purchases(month)` answers what was bought.
+  Runbook `docs/runbooks/invoices.md`.
+
 ## [0.25.0] — F20 Statements by email
 
 ### F20 — Statements arrive by email

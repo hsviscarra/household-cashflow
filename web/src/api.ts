@@ -951,3 +951,78 @@ export type PortfolioRead = {
 };
 export const fetchPortfolio = () => send<Portfolio>("GET", "/api/investments/ibkr");
 export const uploadFlex = (file: File) => upload<PortfolioRead>("/api/investments/ibkr/upload", file);
+
+// ---------- F21: electronic invoices ----------
+export type InvoiceLine = {
+  line_no: number;
+  description: string;
+  product_key: string;
+  quantity: string;
+  unit_price: string;
+  total: string;
+  product_group: string | null;
+  group_source: "rule" | "keyword" | "claude" | "confirmed" | null;
+};
+export type Invoice = {
+  invoice_id: number;
+  issuer_name: string;
+  number: string;
+  issue_date: string;
+  subtotal: string;
+  tax: string;
+  total: string;
+  received_by: string;
+  paid_with: { transaction_id: number; txn_date: string; account: string | null; description: string } | null;
+  lines: InvoiceLine[];
+};
+export type Purchases = {
+  month: string;
+  total: string;
+  matched_total: string;
+  groups: { group: string; amount: string; lines: number }[];
+  to_group: {
+    product_key: string;
+    description: string;
+    lines: number;
+    amount: string;
+    suggested_group: string | null;
+  }[];
+  invoices: Invoice[];
+  product_groups: string[];
+  suggestions_available: boolean;
+};
+export type InvoiceUpload = {
+  file_name: string;
+  outcome: "stored" | "duplicate" | "skipped" | "rejected";
+  message: string;
+  invoice_id: number | null;
+};
+export const fetchPurchases = (month: string) =>
+  send<Purchases>("GET", `/api/invoices?month=${encodeURIComponent(month)}`);
+export const setProductGroup = (product_key: string, product_group: string) =>
+  send<{ product_key: string; product_group: string; lines_updated: number }>(
+    "PUT",
+    "/api/invoices/products",
+    {
+      product_key,
+      product_group,
+    },
+  );
+export const suggestProductGroups = (month: string) =>
+  send<{ products: number }>("POST", `/api/invoices/suggest?month=${encodeURIComponent(month)}`);
+
+export async function uploadInvoices(files: File[]): Promise<InvoiceUpload[]> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  const resp = await fetch("/api/invoices", {
+    method: "POST",
+    body: form,
+    headers: { Accept: "application/json" },
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const detail = (data as { detail?: unknown }).detail;
+    throw new ApiError(typeof detail === "string" ? detail : `Upload failed (${resp.status}).`, resp.status);
+  }
+  return data as InvoiceUpload[];
+}
