@@ -15,6 +15,12 @@ export const PAGES: PageDef[] = [
     summary: "Categories, people, countries, fixed vs variable.",
   },
   {
+    path: "/purchases",
+    label: "Purchases",
+    feature: "F21",
+    summary: "Product by product, from electronic invoices.",
+  },
+  {
     path: "/transactions",
     label: "Transactions",
     feature: "F4",

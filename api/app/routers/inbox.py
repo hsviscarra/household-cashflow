@@ -5,6 +5,9 @@ PDF attachments with the inbox bearer token (checked in app.auth). Each file is 
 like an upload (a file already uploaded is a duplicate, so posting it again is harmless), then,
 when its bank and account are recognized, read into a batch that waits on the Import page for
 approval. Nothing reaches the household's transactions without that approval.
+
+Invoice XMLs (F21, ADR-021) come the same way: an XML attachment is read as an electronic
+invoice, stored with its products and matched to the card line that paid it.
 """
 
 from typing import Annotated, Literal
@@ -18,6 +21,7 @@ from app.ingestion import stage
 from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
+from app.routers.invoices import receive_xml
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 DB = Annotated[Session, Depends(get_session)]
@@ -26,18 +30,33 @@ Store = Annotated[StatementStore, Depends(get_store)]
 
 class InboxOut(BaseModel):
     file_name: str
-    outcome: Literal["stored", "duplicate", "rejected"]
+    outcome: Literal["stored", "duplicate", "skipped", "rejected"]
     message: str
     statement_id: int | None = None
-    # "read": a batch waits on the Import page; "needs_attention": stored, but it needs a person
-    # (an unknown format, an account to choose, or a statement that couldn't be read).
-    status: Literal["read", "needs_attention", "duplicate", "rejected"]
+    # "read": a batch waits on the Import page, or an invoice was stored; "needs_attention":
+    # stored, but it needs a person (an unknown format, an account to choose, or a statement that
+    # couldn't be read); "skipped": an SRI document that isn't an invoice (a credit note).
+    status: Literal["read", "needs_attention", "duplicate", "skipped", "rejected"]
     batch_id: int | None = None
+    invoice_id: int | None = None
 
 
 def _who(sender: str) -> str:
     sender = sender.strip()
     return f"gmail ({sender})"[:320] if sender else "gmail"
+
+
+Status = Literal["read", "needs_attention", "duplicate", "skipped", "rejected"]
+INVOICE_STATUS: dict[str, Status] = {
+    "stored": "read",
+    "duplicate": "duplicate",
+    "skipped": "skipped",
+    "rejected": "rejected",
+}
+
+
+def _is_xml(name: str, data: bytes) -> bool:
+    return name.lower().endswith(".xml") or data.lstrip()[:5] in (b"<?xml", b"<fact", b"<auto")
 
 
 @router.post("", response_model=InboxOut)
@@ -47,10 +66,20 @@ async def receive(
     store: Store,
     sender: Annotated[str, Form(max_length=320)] = "",
 ) -> InboxOut:
-    """One PDF from a statement email: stored, then read into a batch for approval when it can
-    be. Always answers 200 with what happened, so the script knows whether to try again."""
+    """One PDF from a statement email (stored, then read into a batch for approval when it can
+    be) or one invoice XML. Always answers 200 with what happened, so the script knows whether to
+    try again."""
     data = await file.read(MAX_BYTES + 1)
     user = _who(sender)
+    if _is_xml(file.filename or "", data):
+        inv = receive_xml(db, data, file.filename or "", user)
+        return InboxOut(
+            file_name=inv.file_name,
+            outcome=inv.outcome,
+            message=inv.message,
+            status=INVOICE_STATUS[inv.outcome],
+            invoice_id=inv.invoice_id,
+        )
     res = store_statement(db, store, data, file.filename or "", user)
     out = InboxOut(
         file_name=res.file_name,

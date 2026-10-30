@@ -437,6 +437,107 @@ class InvestmentPosition(Base):
     unrealized: Mapped[Decimal | None] = mapped_column(Money)
 
 
+PRODUCT_GROUPS = (
+    "Meat & Fish",
+    "Dairy & Eggs",
+    "Fruit & Vegetables",
+    "Bakery",
+    "Pantry",
+    "Snacks & Sweets",
+    "Drinks",
+    "Alcohol",
+    "Frozen & Ready Meals",
+    "Baby",
+    "Household & Cleaning",
+    "Personal Care",
+    "Health & Pharmacy",
+    "Pets",
+    "Services",
+    "Car",
+    "Other",
+)
+GROUP_SOURCES = ("rule", "keyword", "claude", "confirmed")
+
+
+class Invoice(Base):
+    """An electronic invoice (SRI "factura") received by email or uploaded (F21, ADR-021): who
+    issued it, when, its totals, and the card or bank line it was paid with once matched. The
+    buyer's identification isn't stored."""
+
+    __tablename__ = "invoice"
+    __table_args__ = ({"schema": "core"},)
+
+    invoice_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    access_key: Mapped[str] = mapped_column(Unicode(49), unique=True)  # SRI's clave de acceso
+    issuer_ruc: Mapped[str] = mapped_column(Unicode(13))
+    issuer_name: Mapped[str] = mapped_column(Unicode(300))
+    number: Mapped[str] = mapped_column(Unicode(20))  # 072-140-000340106
+    issue_date: Mapped[date] = mapped_column(Date, index=True)
+    subtotal: Mapped[Decimal] = mapped_column(Money)
+    tax: Mapped[Decimal] = mapped_column(Money)
+    total: Mapped[Decimal] = mapped_column(Money)
+    transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.transaction.transaction_id", ondelete="SET NULL"), index=True
+    )
+    received_by: Mapped[str] = mapped_column(Unicode(320))
+    received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    lines: Mapped[list["InvoiceLine"]] = relationship(
+        back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.line_no"
+    )
+
+
+class InvoiceLine(Base):
+    """One product on an invoice, with the product group it was put in."""
+
+    __tablename__ = "invoice_line"
+    __table_args__ = (
+        CheckConstraint(
+            f"product_group IS NULL OR {_in('product_group', PRODUCT_GROUPS)}", name="group"
+        ),
+        CheckConstraint(
+            f"group_source IS NULL OR {_in('group_source', GROUP_SOURCES)}", name="source"
+        ),
+        {"schema": "core"},
+    )
+
+    line_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("core.invoice.invoice_id", ondelete="CASCADE"), index=True
+    )
+    line_no: Mapped[int] = mapped_column(Integer)
+    code: Mapped[str | None] = mapped_column(Unicode(60))
+    description: Mapped[str] = mapped_column(Unicode(300))
+    product_key: Mapped[str] = mapped_column(Unicode(300), index=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(19, 6))
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(19, 6))
+    discount: Mapped[Decimal] = mapped_column(Money)
+    subtotal: Mapped[Decimal] = mapped_column(Money)  # before tax, after discount
+    tax: Mapped[Decimal] = mapped_column(Money)
+    total: Mapped[Decimal] = mapped_column(Money)  # what was paid for this line
+    product_group: Mapped[str | None] = mapped_column(Unicode(40))
+    group_source: Mapped[str | None] = mapped_column(Unicode(10))
+
+    invoice: Mapped[Invoice] = relationship(back_populates="lines")
+
+
+class ProductRule(Base):
+    """A product's group, confirmed once by a person (or Claude's suggestion, accepted): every
+    invoice line with the same product key gets it."""
+
+    __tablename__ = "product_rule"
+    __table_args__ = (
+        CheckConstraint(_in("product_group", PRODUCT_GROUPS), name="group"),
+        {"schema": "core"},
+    )
+
+    rule_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_key: Mapped[str] = mapped_column(Unicode(300), unique=True)
+    product_group: Mapped[str] = mapped_column(Unicode(40))
+    created_by: Mapped[str] = mapped_column(Unicode(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class AppSetting(Base):
     """A household-wide setting (F19, ADR-018), e.g. statements_from: the first month whose
     statements count instead of the Cash Flow workbook (YYYY-MM-01)."""

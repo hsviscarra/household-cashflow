@@ -12,6 +12,9 @@ sent each one as `gmail (<sender>)`.
 
 Bank of America and Capital One come next (issue #60).
 
+The same script also sends every **electronic invoice XML**, from any vendor, for the Purchases
+page (docs/runbooks/invoices.md).
+
 ## Set it up (once)
 
 1. **Turn on the inbox.** From the repo root, signed in to Azure:

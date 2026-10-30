@@ -919,3 +919,62 @@ def test_statement_by_email_on_sql_server(
     finally:
         monkeypatch.delenv("INBOX_TOKEN")
         get_settings.cache_clear()
+
+
+def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F21 on SQL Server: an invoice XML is stored with its products, a person's product group
+    becomes a rule, Claude's read-only login reads purchases, and 0022 down removes the tables
+    and the grant."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import DBAPIError
+
+    from app import mcp_server
+    from app.config import get_settings
+    from app.db import reader
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures.invoices import factura
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    out = client.post(
+        "/api/invoices", files=[("files", ("a.xml", factura(), "application/xml"))]
+    ).json()
+    assert out[0]["outcome"] == "stored", out
+    put = client.put(
+        "/api/invoices/products",
+        json={"product_key": "YOG TONI FRUT 1L", "product_group": "Dairy & Eggs"},
+    )
+    assert put.json()["lines_updated"] == 1
+    month = client.get("/api/invoices", params={"month": "2026-10"}).json()
+    assert {g["group"] for g in month["groups"]} >= {"Dairy & Eggs", "Household & Cleaning"}
+
+    monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
+    get_settings.cache_clear()
+    reader.get_reader_engine.cache_clear()
+    try:
+        assert reader.ensure_reader().endswith("ready")
+        ro = create_engine(reader.reader_url())
+        monkeypatch.setattr(mcp_server, "get_reader_engine", lambda: ro)
+        assert mcp_server.purchases("2026-10")["total"] == "15.98"
+        with ro.connect() as conn, pytest.raises(DBAPIError, match="permission"):
+            conn.execute(text("SELECT TOP 1 * FROM [core].[product_rule]"))
+        ro.dispose()
+    finally:
+        monkeypatch.delenv("READER_PASSWORD")
+        get_settings.cache_clear()
+        reader.get_reader_engine.cache_clear()
+
+    _alembic("downgrade", "0021")
+    with get_engine().connect() as conn:
+        left = conn.execute(
+            text("SELECT COUNT(*) FROM sys.tables WHERE [name] IN ('invoice', 'invoice_line')")
+        ).scalar_one()
+    assert left == 0
+    _alembic("upgrade", "head")

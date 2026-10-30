@@ -32,7 +32,7 @@ from app.models import (
     v_monthly_cashflow,
     v_spending_line,
 )
-from app.services import ibkr, networth
+from app.services import ibkr, invoices, networth
 from app.services import loans as loan_service
 from app.services import report as report_service
 from app.services.classify import merchant_key
@@ -57,6 +57,9 @@ dollarized). Months are YYYY-MM. Amounts are USD with two decimals.
 - balance_sheet, loans: what the household owns and owes (bank and card balances from
   statements; property, vehicles, investments and purchases entered on the app; loans from their
   amortization tables) and net worth by month. monthly_report: a month's saved findings.
+- purchases: what was bought in a month, from electronic invoices (supermarket, pharmacy and
+  other vendors), by product group and top products. Only invoices that reached the app count,
+  so it's part of the month's spending, not all of it.
 - save_portfolio is the only tool that writes: when Hernan asks to update his portfolio, read the
   Interactive Brokers connector (get_account_positions, get_account_summary) and save what it
   returned, unchanged. Everything else is read-only.
@@ -470,6 +473,55 @@ def save_portfolio(
         "previous": None
         if p.previous_total is None or p.previous_as_of is None
         else {"as_of": p.previous_as_of.isoformat(), "total": _s(p.previous_total)},
+    }
+
+
+@mcp.tool()
+def purchases(month: str, top: int = 15) -> dict[str, Any]:
+    """What was bought in a month (YYYY-MM) according to electronic invoices: total, spending by
+    product group (Meat & Fish, Dairy & Eggs, Baby, Household & Cleaning…), the top products by
+    amount, and each vendor's invoices. Covers only invoices received, not all spending."""
+    m = _m(month)
+    with _session() as db:
+        groups = invoices.month_groups(db, m)
+        invs = invoices.month_invoices(db, m)
+        products: dict[str, dict[str, Any]] = {}
+        vendors: dict[str, dict[str, Any]] = {}
+        for inv in invs:
+            v = vendors.setdefault(inv.issuer_name, {"invoices": 0, "amount": ZERO})
+            v["invoices"] += 1
+            v["amount"] += inv.total
+            for ln in inv.lines:
+                p = products.setdefault(
+                    ln.product_key,
+                    {
+                        "product": ln.description,
+                        "group": ln.product_group,
+                        "qty": ZERO,
+                        "amt": ZERO,
+                    },
+                )
+                p["qty"] += ln.quantity
+                p["amt"] += ln.total
+    ranked = sorted(products.values(), key=lambda p: -p["amt"])[: max(1, min(top, 50))]
+    return {
+        "month": month,
+        "invoices": len(invs),
+        "total": _s(sum((i.total for i in invs), ZERO)),
+        "by_group": [{"group": g.group, "amount": _s(g.amount), "lines": g.lines} for g in groups],
+        "top_products": [
+            {
+                "product": p["product"],
+                "group": p["group"],
+                "quantity": format(p["qty"].normalize(), "f"),
+                "amount": _s(p["amt"]),
+            }
+            for p in ranked
+        ],
+        "vendors": [
+            {"vendor": k, "invoices": v["invoices"], "amount": _s(v["amount"])}
+            for k, v in sorted(vendors.items(), key=lambda kv: -kv[1]["amount"])
+        ],
     }
 
 
