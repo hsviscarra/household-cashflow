@@ -18,6 +18,7 @@ from app.routers import (
     costs,
     health,
     history,
+    inbox,
     investments,
     networth,
     projections,
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(status.router)
     app.include_router(spending.router)
     app.include_router(costs.router)
+    app.include_router(inbox.router)
     app.include_router(networth.router)
     app.include_router(projections.router)
     app.include_router(investments.router)

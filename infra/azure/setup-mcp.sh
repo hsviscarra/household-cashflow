@@ -35,7 +35,10 @@ az containerapp update -g "$RG" -n "$APP" \
   --set-env-vars MCP_TOKEN=secretref:mcp-token READER_PASSWORD=secretref:reader-password -o none
 
 echo "2/3 Letting /mcp past the sign-in (it checks the token instead)..."
-az containerapp auth update -g "$RG" -n "$APP" --excluded-paths "/api/health,/mcp" -o none
+EXCLUDED="/api/health,/mcp"
+# Keep the statement inbox's path (F20, setup-inbox.sh) when it's on.
+if [ -n "$(secret inbox-token)" ]; then EXCLUDED="$EXCLUDED,/api/inbox"; fi
+az containerapp auth update -g "$RG" -n "$APP" --excluded-paths "$EXCLUDED" -o none
 
 FQDN=$(az containerapp show -g "$RG" -n "$APP" --query properties.configuration.ingress.fqdn -o tsv)
 URL="https://$FQDN/mcp"

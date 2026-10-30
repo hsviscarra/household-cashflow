@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.25.0] — F20 Statements by email
+
+### F20 — Statements arrive by email
+- A Google Apps Script in Gmail (`infra/gmail/Code.gs`) checks once a day for statement emails
+  from Banco Pichincha (account and card), PacifiCard and Diners Club, and posts their PDFs to the
+  app (ADR-020).
+- Each file is stored like an upload and read into a batch that waits on the Import page for
+  approval; a file already in the app is skipped. Emails are labeled `cashflow-imported` or
+  `cashflow-check`; `backfill()` loads the backlog since a chosen date.
+- New `POST /api/inbox`, protected by its own bearer token (`INBOX_TOKEN`) instead of the sign-in;
+  one-time `infra/azure/setup-inbox.sh`; runbook `docs/runbooks/gmail-statements.md`.
+
 ## [0.24.0] — F22 Interactive Brokers portfolio
 
 ### F22 — The IBKR portfolio on the balance sheet

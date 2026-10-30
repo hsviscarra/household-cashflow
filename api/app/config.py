@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     statements_dir: str = "data/statements"
     # Claude's read-only MCP endpoint (F18): /mcp answers only with this bearer token; empty = off.
     mcp_token: str = ""
+    # Statements by email (F20): the Gmail script posts PDFs to /api/inbox with this bearer token;
+    # empty = the endpoint is off.
+    inbox_token: str = ""
     # Password of the read-only database login the MCP endpoint queries with (SELECT on mart
     # views only). Created or updated at start-up; empty = the endpoint uses the app's login
     # (local development and tests only).
