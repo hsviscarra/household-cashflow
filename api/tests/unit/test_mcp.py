@@ -136,6 +136,7 @@ def test_the_protocol_over_http(
             "balance_sheet",
             "loans",
             "monthly_report",
+            "save_portfolio",
         }
         called = _rpc(
             client,

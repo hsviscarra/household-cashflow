@@ -919,3 +919,35 @@ export type Sources = {
 export const fetchSources = () => send<Sources>("GET", "/api/sources");
 export const saveSources = (statements_from: string | null) =>
   send<Sources>("PUT", "/api/sources", { statements_from });
+
+// ---------- F22: Interactive Brokers ----------
+export type Position = {
+  symbol: string;
+  description: string | null;
+  asset_class: string;
+  currency: string;
+  quantity: string;
+  price: string;
+  value: string;
+  cost_basis: string | null;
+  unrealized: string | null;
+};
+export type Portfolio = {
+  holding_id: number | null;
+  as_of: string | null;
+  total: string | null;
+  cash: string | null;
+  previous_total: string | null;
+  previous_as_of: string | null;
+  stale: boolean;
+  positions: Position[];
+};
+export type PortfolioRead = {
+  holding_id: number;
+  as_of: string;
+  total: string;
+  cash: string;
+  positions: number;
+};
+export const fetchPortfolio = () => send<Portfolio>("GET", "/api/investments/ibkr");
+export const uploadFlex = (file: File) => upload<PortfolioRead>("/api/investments/ibkr/upload", file);

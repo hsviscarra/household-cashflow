@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.24.0] — F22 Interactive Brokers portfolio
+
+### F22 — The IBKR portfolio on the balance sheet
+- Ask Claude "update my IBKR portfolio in the cash flow app": Claude reads your Interactive Brokers
+  connector and saves the positions, cash and account value with the new `save_portfolio` tool
+  (ADR-019). It's the MCP endpoint's only write (ADR-017 amended). A day whose positions plus cash
+  don't tie out to the total within 2% is refused, and every save is in the load log.
+- New Investments section on Debt & Net Worth: total, cash, unrealized gain, and each position's
+  quantity, price, value, gain and share. After a week without a save it suggests asking Claude.
+  A Flex report (XML) from Client Portal can be uploaded instead.
+- The day's total is a value of the "Interactive Brokers" item, so it counts in net worth.
+  Positions are kept per day (migration 0021, `core.investment_position`), and Claude's
+  balance_sheet lists them. Runbook `docs/runbooks/ibkr.md`.
+
 ## [0.23.0] — Small improvements
 
 ### Improvements

@@ -1056,3 +1056,35 @@ class SourcesOut(BaseModel):
     workbook_first: date | None
     workbook_last: date | None
     check: list[SourceMonthOut]
+
+
+# ---------------- F22: Interactive Brokers ----------------
+class PositionOut(BaseModel):
+    symbol: str
+    description: str | None
+    asset_class: str
+    currency: str
+    quantity: Decimal
+    price: Decimal
+    value: Decimal
+    cost_basis: Decimal | None
+    unrealized: Decimal | None
+
+
+class PortfolioOut(BaseModel):
+    holding_id: int | None
+    as_of: date | None
+    total: Decimal | None
+    cash: Decimal | None
+    previous_total: Decimal | None
+    previous_as_of: date | None
+    stale: bool
+    positions: list[PositionOut]
+
+
+class PortfolioReadOut(BaseModel):
+    holding_id: int
+    as_of: date
+    total: Decimal
+    cash: Decimal
+    positions: int

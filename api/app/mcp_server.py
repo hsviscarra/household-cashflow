@@ -1,8 +1,10 @@
-"""Claude's read-only MCP endpoint (F18, ADR-017): the household's analysis views as tools.
+"""Claude's MCP endpoint (F18, ADR-017): the household's analysis views as tools.
 
 Served at /mcp by the app (streamable HTTP, stateless, JSON responses), behind a bearer token
-(MCP_TOKEN, checked in app.auth). Every tool reads the `mart` views through the read-only
-`cashflow_reader` login (app.db.reader): nothing here can change data or read a table directly.
+(MCP_TOKEN, checked in app.auth). Every reading tool goes through the read-only `cashflow_reader`
+login (app.db.reader). The one exception (F22, ADR-019) is save_portfolio: it writes the
+Interactive Brokers value and positions Claude read through Hernan's IBKR connector, with the
+app's own login, and nothing else; each save is in audit.load_log.
 Months are "YYYY-MM"; amounts are USD strings with two decimals.
 """
 
@@ -15,10 +17,13 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import StreamableHTTPASGIApp
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.routing import Route
 
+from app.db import get_engine
 from app.db.reader import get_reader_engine
 from app.models import (
     v_category_month,
@@ -27,8 +32,8 @@ from app.models import (
     v_monthly_cashflow,
     v_spending_line,
 )
+from app.services import ibkr, networth
 from app.services import loans as loan_service
-from app.services import networth
 from app.services import report as report_service
 from app.services.classify import merchant_key
 
@@ -37,7 +42,7 @@ ZERO = Decimal(0)
 MAX_LINES = 500
 
 INSTRUCTIONS = """\
-Read-only access to Hernan and Lauren's household cash flow (Quito, Ecuador; USD, the country is
+Access to Hernan and Lauren's household cash flow (Quito, Ecuador; USD, the country is
 dollarized). Months are YYYY-MM. Amounts are USD with two decimals.
 - Cash flow (cash_flow, compare_months): income, expenses, savings, debt payments and net per
   month. The "spending" view counts card purchases when made; the "cash" view counts money in and
@@ -52,6 +57,9 @@ dollarized). Months are YYYY-MM. Amounts are USD with two decimals.
 - balance_sheet, loans: what the household owns and owes (bank and card balances from
   statements; property, vehicles, investments and purchases entered on the app; loans from their
   amortization tables) and net worth by month. monthly_report: a month's saved findings.
+- save_portfolio is the only tool that writes: when Hernan asks to update his portfolio, read the
+  Interactive Brokers connector (get_account_positions, get_account_summary) and save what it
+  returned, unchanged. Everything else is read-only.
 Quote the numbers you use; don't invent causes the data doesn't show.
 """
 
@@ -282,7 +290,7 @@ def _session() -> Session:
     return Session(get_reader_engine())
 
 
-def _item(i: networth.Item) -> dict[str, Any]:
+def _item(i: networth.Item, positions: list[Any] | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {
         "name": i.name,
         "side": i.side,
@@ -304,6 +312,18 @@ def _item(i: networth.Item) -> dict[str, Any]:
         }
     if i.loan and i.loan.monthly_payment is not None:
         out["monthly_payment"] = _s(i.loan.monthly_payment)
+    if positions:
+        out["positions"] = [
+            {
+                "symbol": p.symbol,
+                "description": p.description,
+                "quantity": format(p.quantity.normalize(), "f"),
+                "price": format(p.price.normalize(), "f"),
+                "value": _s(p.value),
+                "unrealized": None if p.unrealized is None else _s(p.unrealized),
+            }
+            for p in positions
+        ]
     return out
 
 
@@ -316,7 +336,12 @@ def balance_sheet(as_of: str | None = None) -> dict[str, Any]:
     day = date.fromisoformat(as_of) if as_of else date.today()
     with _session() as db:
         sheet = networth.sheet(db, day, months=12)
-    items = [i for i in sheet.items if i.is_active]
+        items = [i for i in sheet.items if i.is_active]
+        held = {
+            i.holding_id: ibkr.latest_positions(db, i.holding_id, day)
+            for i in items
+            if i.holding_class == "investment" and i.holding_id is not None
+        }
     assets, debts = sheet.total("asset"), sheet.total("liability")
     return {
         "as_of": sheet.as_of.isoformat(),
@@ -324,7 +349,7 @@ def balance_sheet(as_of: str | None = None) -> dict[str, Any]:
         "liabilities": _s(debts),
         "net_worth": _s(assets - debts),
         "commitments": _s(sheet.commitments),
-        "items": [_item(i) for i in items],
+        "items": [_item(i, held.get(i.holding_id or -1)) for i in items],
         "net_worth_by_month": [
             {"month": _month(p.month), "net_worth": _s(p.net)} for p in sheet.series
         ],
@@ -388,6 +413,69 @@ def monthly_report(month: str) -> dict[str, Any]:
         "findings": [{"title": f.title, "text": f.text, "tone": f.tone} for f in r.findings],
         "facts": r.facts,
     }
+
+
+class PositionIn(BaseModel):
+    """One position from the IBKR connector's get_account_positions, as it returned it."""
+
+    symbol: str = Field(description="contract_description, e.g. VOO")
+    quantity: Decimal = Field(description="position")
+    price: Decimal = Field(description="market_price")
+    value: Decimal = Field(description="market_value, in the position's currency")
+    currency: str = "USD"
+    asset_class: str = "STK"
+    average_price: Decimal | None = Field(None, description="average_price (cost per unit)")
+    unrealized: Decimal | None = Field(None, description="unrealized_pnl")
+    description: str | None = None
+    fx_rate: Decimal = Field(Decimal(1), description="To USD; 1 for USD positions")
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Save the Interactive Brokers portfolio",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    )
+)
+def save_portfolio(
+    total: Decimal,
+    cash: Decimal,
+    positions: list[PositionIn],
+    as_of: str | None = None,
+) -> dict[str, Any]:
+    """Save the Interactive Brokers account into the app: its value on the balance sheet and in
+    net worth, and its positions. Pass exactly what the IBKR connector returned: `total` is
+    get_account_summary's net_liquidation, `cash` its total_cash_value, `positions` every entry
+    of get_account_positions. `as_of` is the day (YYYY-MM-DD, default today). Saving a day again
+    replaces it. Refused, with nothing saved, when positions plus cash don't tie out to the total
+    within 2%, so include every position."""
+    day = date.fromisoformat(as_of) if as_of else date.today()
+    report = ibkr.from_connector(
+        day,
+        total,
+        cash,
+        [ibkr.ConnectorPosition(**p.model_dump()) for p in positions],
+    )
+    with Session(get_writer_engine()) as db:
+        saved = ibkr.store(db, report, "claude (IBKR connector)")
+        p = ibkr.portfolio(db)
+    return {
+        "saved": True,
+        "as_of": saved.as_of.isoformat(),
+        "total": _s(saved.total),
+        "cash": _s(saved.cash),
+        "positions": saved.positions,
+        "previous": None
+        if p.previous_total is None or p.previous_as_of is None
+        else {"as_of": p.previous_as_of.isoformat(), "total": _s(p.previous_total)},
+    }
+
+
+def get_writer_engine() -> Any:
+    """The app's own login, for save_portfolio only (a seam the tests replace)."""
+    return get_engine()
 
 
 def http_endpoint() -> tuple[Route, StreamableHTTPSessionManager]:

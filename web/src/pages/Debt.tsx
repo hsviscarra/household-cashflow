@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { fetchDebt, type Debt } from "../api";
 import { MonthBars } from "../components/charts";
+import InvestmentsSection from "./Investments";
 import BalanceSheetSection from "./NetWorth";
 import { money, monthLong, monthShort, num } from "../money";
 import { ExportLinks } from "../components/ExportLinks";
@@ -29,6 +30,7 @@ export default function DebtPage() {
   return (
     <>
       <BalanceSheetSection />
+      <InvestmentsSection />
       <section className="mt-14" aria-label="Interest and fees">
         <h2 className="font-display text-3xl font-bold leading-tight">
           {d ? debtHeadline(d) : "Interest and fees"}
