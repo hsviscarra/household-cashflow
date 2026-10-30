@@ -17,15 +17,21 @@ test("purchases: an invoice XML becomes products by group, and a product gets it
   const groups = page.getByRole("region", { name: "By product group" });
   await expect(groups).toContainText("Household & Cleaning");
 
+  // The phone run comes after the desktop one: by then the yogurt already has its group.
   const todo = page.getByRole("region", { name: "Products to group" });
-  await todo.getByLabel("Group for YOG TONI FRUT 1L").selectOption("Dairy & Eggs");
-  await todo
-    .locator("li", { hasText: "YOG TONI FRUT 1L" })
-    .getByRole("button", { name: "Save group" })
-    .click();
-  await expect(page.getByText("YOG TONI FRUT 1L: saved as Dairy & Eggs.")).toBeVisible();
+  const choose = todo.getByLabel("Group for YOG TONI FRUT 1L");
+  if (await choose.count()) {
+    await choose.selectOption("Dairy & Eggs");
+    await todo
+      .locator("li", { hasText: "YOG TONI FRUT 1L" })
+      .getByRole("button", { name: "Save group" })
+      .click();
+    await expect(page.getByText("YOG TONI FRUT 1L: saved as Dairy & Eggs.")).toBeVisible();
+  }
 
   const list = page.getByRole("region", { name: "Invoices" });
   await list.getByRole("button", { name: /SUPER PRUEBA/ }).click();
-  await expect(list.getByRole("table")).toContainText("DETERGENTE POLVO 2KG");
+  const products = list.getByRole("table");
+  await expect(products).toContainText("DETERGENTE POLVO 2KG");
+  await expect(products.getByRole("row", { name: /YOG TONI FRUT 1L/ })).toContainText("Dairy & Eggs");
 });
