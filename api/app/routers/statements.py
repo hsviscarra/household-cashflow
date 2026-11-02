@@ -44,7 +44,7 @@ def list_statements(db: DB) -> list[StatementOut]:
         select(StatementFile).order_by(
             StatementFile.uploaded_at.desc(), StatementFile.statement_file_id.desc()
         )
-    )
+    ).all()  # in full before to_out loads each one's accounts (one open result per connection)
     return [to_out(sf, batches.get(sf.statement_file_id)) for sf in rows]
 
 
