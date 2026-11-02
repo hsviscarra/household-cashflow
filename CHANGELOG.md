@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.4] — Pichincha account statements with English month names
+
+### Fixes
+- The January 2026 Banco Pichincha account statement prints dates in English ("09-Dec",
+  "05-Jan"), and every line was rejected as an unknown month. Jan, Apr, Aug and Dec are now read
+  too (the other abbreviations are the same in Spanish).
+
 ## [0.26.3] — Imports with rejected lines open again
 
 ### Fixes
