@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.2] — One picture statement at a time
+
+### Fixes
+- Emailed PacifiCard statements alternately failed with HTTP 500: while one was read in the
+  background, the next one's quick header read got no CPU and tesseract hit its 2-minute timeout,
+  which wasn't handled. Picture statements are now read one at a time; while one is being read,
+  the inbox answers 503 "send it again later" at once (the Gmail script retries on its next run),
+  and a tesseract timeout or failure is an ordinary reading error.
+
 ## [0.26.1] — Emailed statements read in the background
 
 ### Fixes

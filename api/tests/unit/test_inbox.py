@@ -149,3 +149,47 @@ def test_refused_files(inbox: None, client: TestClient) -> None:
     assert empty["status"] == "rejected" and empty["message"] == "The file is empty."
     resp = client.post("/api/inbox", data={"sender": SENDER}, headers=AUTH)
     assert resp.status_code == 422  # no file at all
+
+
+# ---------------------------------------------------------------- one picture at a time
+def test_busy_while_reading_a_picture(inbox: None, client: TestClient) -> None:
+    """While one picture statement is read, another picture-only PDF is asked to come back later
+    (503, the script retries next run); a PDF with a text layer still goes through."""
+    from app.ingestion import ocr
+
+    picture = s.scanned(s.capitalone_full())
+    assert ocr._READING.acquire(blocking=False)
+    try:
+        assert ocr.busy()
+        resp = client.post(
+            "/api/inbox", files={"file": ("p.pdf", picture, "application/pdf")}, headers=AUTH
+        )
+        assert resp.status_code == 503 and resp.headers["retry-after"] == "300"
+        assert "send this one again" in resp.json()["detail"]
+        assert post(client, s.diners_full())["outcome"] == "stored"  # text layer: not blocked
+        assert post(client, b"not a pdf")["status"] == "rejected"  # refused as before
+    finally:
+        ocr._READING.release()
+    assert not ocr.busy()
+
+
+def test_tesseract_timeouts_are_errors_not_crashes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from PIL import Image
+
+    from app.ingestion import ocr
+
+    def slow(*args: object, **kwargs: object) -> object:
+        raise subprocess.TimeoutExpired("tesseract", 120)
+
+    def failed(*args: object, **kwargs: object) -> object:
+        raise subprocess.CalledProcessError(1, "tesseract")
+
+    image = Image.new("L", (10, 10), 255)
+    monkeypatch.setattr(subprocess, "run", slow)
+    with pytest.raises(ocr.OcrError, match="took too long"):
+        ocr._tesseract(image)
+    monkeypatch.setattr(subprocess, "run", failed)
+    with pytest.raises(ocr.OcrError, match="exit code 1"):
+        ocr._tesseract(image)
