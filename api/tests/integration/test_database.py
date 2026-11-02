@@ -905,13 +905,14 @@ def test_statement_by_email_on_sql_server(
         out = client.post("/api/inbox", files=files, data={"sender": "bank@x"}, headers=auth)
         assert out.status_code == 200, out.text
         got = out.json()
-        assert got["status"] == "read" and got["batch_id"]
-        with get_engine().connect() as conn:
+        assert got["status"] == "read" and got["statement_id"]
+        with get_engine().connect() as conn:  # read by the background task after the answer
             status, by = conn.execute(
                 text(
-                    "SELECT [status], [created_by] FROM [stg].[import_batch] WHERE [batch_id] = :b"
+                    "SELECT [status], [created_by] FROM [stg].[import_batch] "
+                    "WHERE [statement_file_id] = :s"
                 ),
-                {"b": got["batch_id"]},
+                {"s": got["statement_id"]},
             ).one()
         assert (status, by) == ("preview", "gmail (bank@x)")
         again = client.post("/api/inbox", files=files, headers=auth).json()

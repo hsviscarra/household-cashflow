@@ -10,13 +10,15 @@ Invoice XMLs (F21, ADR-021) come the same way: an XML attachment is read as an e
 invoice, stored with its products and matched to the card line that paid it.
 """
 
+import logging
+from collections.abc import Callable
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db.session import get_session
+from app.db.session import get_session, get_session_factory
 from app.ingestion import stage
 from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
@@ -25,6 +27,8 @@ from app.routers.invoices import receive_xml
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 DB = Annotated[Session, Depends(get_session)]
+Sessions = Annotated[Callable[[], Session], Depends(get_session_factory)]
+log = logging.getLogger(__name__)
 Store = Annotated[StatementStore, Depends(get_store)]
 
 
@@ -64,11 +68,14 @@ async def receive(
     file: UploadFile,
     db: DB,
     store: Store,
+    sessions: Sessions,
+    later: BackgroundTasks,
     sender: Annotated[str, Form(max_length=320)] = "",
 ) -> InboxOut:
-    """One PDF from a statement email (stored, then read into a batch for approval when it can
-    be) or one invoice XML. Always answers 200 with what happened, so the script knows whether to
-    try again."""
+    """One PDF from a statement email or one invoice XML. Always answers 200 with what happened,
+    so the script knows whether to try again. A statement is stored now and read into a batch
+    right after the answer: a picture-only statement (PacifiCard) needs text recognition, which
+    can take minutes, longer than Azure lets a request wait."""
     data = await file.read(MAX_BYTES + 1)
     user = _who(sender)
     if _is_xml(file.filename or "", data):
@@ -100,12 +107,26 @@ async def receive(
             else "Stored, but its format isn't recognized; open the Import page."
         )
         return out
-    try:
-        batch = stage.parse_statement(db, store, sf, user)
-    except stage.StageError as exc:
-        db.rollback()
-        out.message = f"Stored, but not read: {exc}"
-        return out
-    out.status, out.batch_id = "read", batch.batch_id
-    out.message = "Read; waiting for approval on the Import page."
+    later.add_task(read_statement, sessions, store, sf.statement_file_id, user)
+    out.status = "read"
+    out.message = "Stored; reading it now. It will wait on the Import page for approval."
     return out
+
+
+def read_statement(
+    sessions: Callable[[], Session], store: StatementStore, statement_id: int, user: str
+) -> None:
+    """After the answer: read the stored statement into a batch. If it can't be read, it stays
+    on the Import page, where Read shows why."""
+    with sessions() as db:
+        sf = db.get(StatementFile, statement_id)
+        if sf is None:
+            return
+        try:
+            stage.parse_statement(db, store, sf, user)
+        except stage.StageError as exc:
+            db.rollback()
+            log.warning("Emailed statement %s not read: %s", statement_id, exc)
+        except Exception:  # a background task has nobody to answer: log it, keep the app up
+            db.rollback()
+            log.exception("Emailed statement %s failed while reading", statement_id)

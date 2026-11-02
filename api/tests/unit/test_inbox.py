@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -66,9 +66,12 @@ def test_a_statement_is_read_and_waits_for_approval(
 ) -> None:
     out = post(client, s.capitalone_full(), "Statement_102026_4003.pdf")
     assert (out["outcome"], out["status"]) == ("stored", "read")
-    assert out["message"] == "Read; waiting for approval on the Import page."
-    batch = db.get(ImportBatch, out["batch_id"])
-    assert batch is not None and batch.status == "preview" and batch.tieout_ok
+    assert out["message"] == "Stored; reading it now. It will wait on the Import page for approval."
+    # Read right after the answer (TestClient runs the background task before returning).
+    batch = db.scalars(
+        select(ImportBatch).where(ImportBatch.statement_file_id == out["statement_id"])
+    ).one()
+    assert batch.status == "preview" and batch.tieout_ok
     assert batch.created_by == f"gmail ({SENDER})"
     sf = db.get(StatementFile, out["statement_id"])
     assert sf is not None and sf.uploaded_by == f"gmail ({SENDER})"
@@ -99,15 +102,40 @@ def test_files_that_need_a_person(inbox: None, client: TestClient) -> None:
 
 
 def test_stored_but_not_read(
-    inbox: None, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    inbox: None,
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Reading fails after the answer: the statement stays on the Import page (Read shows why),
+    and the app keeps going, whatever the error."""
+    errors: list[Exception] = [
+        stage.StageError("The statement could not be read: no lines.", 422),
+        RuntimeError("OCR crashed"),
+    ]
+
     def broken(*args: object) -> ImportBatch:
-        raise stage.StageError("The statement could not be read: no lines.", 422)
+        raise errors.pop(0)
 
     monkeypatch.setattr(stage, "parse_statement", broken)
     out = post(client, s.capitalone_full())
-    assert (out["outcome"], out["status"]) == ("stored", "needs_attention")
-    assert out["message"] == "Stored, but not read: The statement could not be read: no lines."
+    assert (out["outcome"], out["status"]) == ("stored", "read")
+    assert "not read: The statement could not be read: no lines." in caplog.text
+    out2 = post(client, s.capitalone_full(previous="900.00"))
+    assert out2["status"] == "read" and "failed while reading" in caplog.text
+    assert db.scalar(select(func.count()).select_from(ImportBatch)) == 0
+    listed = {st["statement_file_id"]: st for st in client.get("/api/statements").json()}
+    assert listed[out["statement_id"]]["can_read"] and listed[out["statement_id"]]["batch"] is None
+
+
+def test_read_statement_gone(engine: Engine, store: object) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    from app.routers import inbox as inbox_router
+
+    # Deleted before the task ran: nothing to do.
+    inbox_router.read_statement(sessionmaker(bind=engine), store, 999, "gmail")  # type: ignore[arg-type]
 
 
 def test_refused_files(inbox: None, client: TestClient) -> None:

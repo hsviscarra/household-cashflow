@@ -50,7 +50,10 @@ const SOURCES = [
 const DONE = 'cashflow-imported';
 const CHECK = 'cashflow-check';
 const RECENT = 'newer_than:45d';
-const MAX_FILES_PER_RUN = 40; // keeps a run well under Apps Script's 6-minute limit
+const MAX_FILES_PER_RUN = 40;
+// Apps Script stops a run at 6 minutes, mid-email, before it can label anything. Stop starting new
+// files after 4.5 minutes instead; the next run (or backfill again) picks up where this one left.
+const TIME_BUDGET_MS = 4.5 * 60 * 1000;
 
 /** Every day: statements and invoices from the last 45 days that haven't been sent yet. */
 function run() {
@@ -82,6 +85,7 @@ function importStatements_(window) {
   if (!url || !token) {
     throw new Error('Set APP_URL and INBOX_TOKEN in Project Settings -> Script properties.');
   }
+  const started = Date.now();
   const done = label_(DONE);
   const check = label_(CHECK);
   let sent = 0;
@@ -95,7 +99,7 @@ function importStatements_(window) {
       for (const message of thread.getMessages()) {
         for (const file of message.getAttachments({ includeInlineImages: false })) {
           if (!source.files.test(file.getName())) continue;
-          if (sent >= MAX_FILES_PER_RUN) {
+          if (sent >= MAX_FILES_PER_RUN || Date.now() - started > TIME_BUDGET_MS) {
             summary_(counts, true);
             return;
           }
