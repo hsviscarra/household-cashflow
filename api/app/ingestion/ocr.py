@@ -12,6 +12,7 @@ import io
 import re
 import shutil
 import subprocess
+import threading
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -45,7 +46,17 @@ VOTES = ((32, 165), (40, 130), (40, 200), (56, 165), (32, 200))  # (text height 
 
 
 class OcrError(Exception):
-    """OCR is not available, or the file holds no page images."""
+    """OCR is not available, the file holds no page images, or reading timed out."""
+
+
+# One statement read at a time. The server has half a CPU: reading one PacifiCard takes minutes,
+# and a second reading at the same time starved the first's tesseract into its timeout (HTTP 500
+# on emailed statements, 2026-11-02). The inbox checks `busy()` and asks to be called back later.
+_READING = threading.Lock()
+
+
+def busy() -> bool:
+    return _READING.locked()
 
 
 @dataclass(frozen=True)
@@ -101,6 +112,10 @@ def _tesseract(image: Image.Image, *args: str) -> str:
         )
     except FileNotFoundError as exc:
         raise OcrError("OCR (tesseract) is not installed on this server.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise OcrError("Reading the picture took too long; try again in a few minutes.") from exc
+    except subprocess.CalledProcessError as exc:
+        raise OcrError(f"OCR failed (tesseract exit code {exc.returncode}).") from exc
     return done.stdout.decode("utf-8", errors="replace")
 
 
@@ -198,7 +213,11 @@ def header_text(data: bytes, whole: bool = False) -> str:
     images = page_images(data)
     if not images:
         return ""
-    first = images[0]
+    with _READING:
+        return _header(images[0], whole)
+
+
+def _header(first: Image.Image, whole: bool) -> str:
     if whole:
         return _tesseract(
             ImageOps.grayscale(first).point(lambda p: 0 if p < INK else 255), "--psm", "3"
@@ -214,30 +233,33 @@ def ocr_pages(data: bytes, crop: Callable[[Image.Image], Image.Image] | None = N
     images = page_images(data)
     if not images:
         raise OcrError("This PDF has no page images to read.")
-    pages = []
-    for img in images:
-        part = crop(img) if crop else img
-        gray = ImageOps.grayscale(part)
-        words = _words(_prepare(part))
+    with _READING:
+        return [_page(img, crop) for img in images]
 
-        # The word before a closing "+"/"-" is an amount even when its decimal point was lost.
-        before_sign = {
-            id(a)
-            for a, b in pairwise(words)
-            if a.line == b.line and b.text in ("+", "-") and DIGIT_LIKE.match(a.text)
-        }
 
-        def better(w: Word, gray: Image.Image = gray, before_sign: set[int] = before_sign) -> str:
-            if NUMBER_LIKE.match(w.text) or id(w) in before_sign:
-                return _amount(gray, w)
-            if DATE_LIKE.match(w.text):
-                return _reread(gray, w, w.text, DATE_CHARS, DATE) or w.text
-            return w.text
+def _page(img: Image.Image, crop: Callable[[Image.Image], Image.Image] | None) -> str:
+    """One page image read into lines (see ocr_pages)."""
+    part = crop(img) if crop else img
+    gray = ImageOps.grayscale(part)
+    words = _words(_prepare(part))
 
-        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-            texts = list(pool.map(better, words))
-        lines: dict[tuple[int, int, int], list[str]] = defaultdict(list)
-        for w, text in zip(words, texts, strict=True):
-            lines[w.line].append(text)  # dicts keep the reading order
-        pages.append("\n".join(" ".join(line) for line in lines.values()))
-    return pages
+    # The word before a closing "+"/"-" is an amount even when its decimal point was lost.
+    before_sign = {
+        id(a)
+        for a, b in pairwise(words)
+        if a.line == b.line and b.text in ("+", "-") and DIGIT_LIKE.match(a.text)
+    }
+
+    def better(w: Word, gray: Image.Image = gray, before_sign: set[int] = before_sign) -> str:
+        if NUMBER_LIKE.match(w.text) or id(w) in before_sign:
+            return _amount(gray, w)
+        if DATE_LIKE.match(w.text):
+            return _reread(gray, w, w.text, DATE_CHARS, DATE) or w.text
+        return w.text
+
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        texts = list(pool.map(better, words))
+    lines: dict[tuple[int, int, int], list[str]] = defaultdict(list)
+    for w, text in zip(words, texts, strict=True):
+        lines[w.line].append(text)  # dicts keep the reading order
+    return "\n".join(" ".join(line) for line in lines.values())

@@ -15,11 +15,13 @@ from collections.abc import Callable
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session, get_session_factory
-from app.ingestion import stage
+from app.ingestion import ocr, stage
+from app.ingestion.detect import PdfError, read_pdf
 from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
@@ -63,7 +65,18 @@ def _is_xml(name: str, data: bytes) -> bool:
     return name.lower().endswith(".xml") or data.lstrip()[:5] in (b"<?xml", b"<fact", b"<auto")
 
 
-@router.post("", response_model=InboxOut)
+BUSY = "Busy reading another picture statement; send this one again in a few minutes."
+
+
+def _needs_ocr(data: bytes) -> bool:
+    """A PDF without a text layer (PacifiCard's screenshots, scans): reading it needs OCR."""
+    try:
+        return not read_pdf(data).text.strip()
+    except PdfError:
+        return False  # store_statement refuses it with the reason
+
+
+@router.post("", response_model=InboxOut, responses={503: {"description": BUSY}})
 async def receive(
     file: UploadFile,
     db: DB,
@@ -71,7 +84,7 @@ async def receive(
     sessions: Sessions,
     later: BackgroundTasks,
     sender: Annotated[str, Form(max_length=320)] = "",
-) -> InboxOut:
+) -> InboxOut | JSONResponse:
     """One PDF from a statement email or one invoice XML. Always answers 200 with what happened,
     so the script knows whether to try again. A statement is stored now and read into a batch
     right after the answer: a picture-only statement (PacifiCard) needs text recognition, which
@@ -87,6 +100,9 @@ async def receive(
             status=INVOICE_STATUS[inv.outcome],
             invoice_id=inv.invoice_id,
         )
+    if ocr.busy() and _needs_ocr(data):
+        # Only one picture is read at a time; the script tries again on its next run.
+        return JSONResponse({"detail": BUSY}, status_code=503, headers={"Retry-After": "300"})
     res = store_statement(db, store, data, file.filename or "", user)
     out = InboxOut(
         file_name=res.file_name,
