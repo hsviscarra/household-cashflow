@@ -55,6 +55,11 @@ page (docs/runbooks/invoices.md).
   statement that couldn't be read), or the app refused the file. To send one again, remove the
   label.
 - **No label yet:** not sent yet, or the app couldn't answer. The next day's run tries again.
+  A run stops starting new files after 4.5 minutes (Google allows 6); the log then says "More
+  left", and the next run, or running it again, continues.
+
+A statement is read right after the app answers, so it can take a minute or two (several for a
+PacifiCard, which needs text recognition) to appear on the Import page.
 
 ## When statements arrive
 

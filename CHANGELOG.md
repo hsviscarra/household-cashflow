@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.1] — Emailed statements read in the background
+
+### Fixes
+- The inbox answers as soon as a statement is stored and reads it right after. A picture-only
+  statement (PacifiCard) needs text recognition, which took longer than the 4 minutes Azure lets a
+  request wait (HTTP 504), and the Gmail script then hit Google's 6-minute limit before reaching
+  the other banks and the invoices. A statement that can't be read stays on the Import page, where
+  Read shows why.
+- The Gmail script stops starting new files after 4.5 minutes; the next run continues.
+
 ## [0.26.0] — F21 Purchases from electronic invoices
 
 ### F21 — Purchases, product by product

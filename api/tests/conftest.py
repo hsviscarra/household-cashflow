@@ -11,7 +11,7 @@ from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.session import get_session
+from app.db.session import get_session, get_session_factory
 from app.ingestion.storage import LocalStore, get_store
 from app.main import create_app
 from app.models import Account, Base, Category, MerchantRule
@@ -70,6 +70,7 @@ def client(engine: Engine, store: LocalStore) -> Iterator[TestClient]:
 
     app = create_app()
     app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_session_factory] = lambda: factory
     app.dependency_overrides[database_check] = lambda: lambda: True
     app.dependency_overrides[get_store] = lambda: store
     yield TestClient(app)
