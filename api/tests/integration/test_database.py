@@ -979,3 +979,37 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
         ).scalar_one()
     assert left == 0
     _alembic("upgrade", "head")
+
+
+def test_batch_with_rejected_lines_opens_on_sql_server(tmp_path: object) -> None:
+    """A batch whose statement has rejected lines opens (it failed with "Connection is busy with
+    results for another command": the rejects' result was still open while the statement's
+    accounts were loaded; SQL Server allows one open result per connection)."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("downgrade", "0004")
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    data = s.capitalone_full(
+        extra_lines=["Interest Charge Calculation", "Sep 9 Sep 9 ODD LINE $1.00"]
+    )
+    up = client.post("/api/statements", files=[("files", ("r.pdf", data, "application/pdf"))])
+    st = up.json()[0]["statement"]
+    read = client.post(f"/api/statements/{st['statement_file_id']}/read")
+    assert read.status_code == 200, read.text
+    b = read.json()
+    assert not b["tieout_ok"] and [r["text"] for r in b["rejects"]] == [
+        "Sep 9 Sep 9 ODD LINE $1.00"
+    ]
+    again = client.get(f"/api/batches/{b['batch_id']}")
+    assert again.status_code == 200, again.text
+    assert client.get("/api/statements").status_code == 200
+    assert client.get("/api/recurring/templates").status_code == 200

@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.3] — Imports with rejected lines open again
+
+### Fixes
+- An import whose statement has rejected lines (usually one that doesn't tie out) failed to open
+  with HTTP 500 ("Connection is busy with results for another command"): the rejected lines were
+  still being read when the statement's accounts were loaded, and SQL Server allows one open
+  result per connection. The same pattern is fixed in the statements and recurring-template
+  lists. An SQL Server test now opens such an import.
+
 ## [0.26.2] — One picture statement at a time
 
 ### Fixes

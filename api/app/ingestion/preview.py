@@ -89,9 +89,11 @@ def batch_out(db: Session, batch: ImportBatch) -> BatchOut:
             t[0] += 1
             t[1] += s.amount
 
+    # Read in full now: SQL Server allows one open result per connection, and building the
+    # statement below runs more queries (HTTP 500 on batches with rejected lines, 2026-11-02).
     rejects = db.scalars(
         select(RejectedLine).where(RejectedLine.statement_file_id == sf.statement_file_id)
-    )
+    ).all()
     return BatchOut(
         batch_id=batch.batch_id,
         status=batch.status,

@@ -92,7 +92,7 @@ def _lines_out(db: Session, rows: list[Transaction]) -> list[TransactionOut]:
 def list_templates(db: DB) -> list[TemplateOut]:
     rows = db.scalars(
         select(RecurringTemplate).order_by(RecurringTemplate.sort_order, RecurringTemplate.name)
-    )
+    ).all()  # in full before _template_out queries (one open result per connection)
     return [_template_out(db, t) for t in rows]
 
 
