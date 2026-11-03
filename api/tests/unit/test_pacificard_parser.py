@@ -80,6 +80,32 @@ def test_a_misread_amount_is_caught() -> None:
     assert "Purchases and debits (SUBTOTAL CONSUMOS)" in [c.name for c in p.checks if not c.ok]
 
 
+def test_an_unreadable_digit_is_filled_from_the_printed_subtotal() -> None:
+    """April 2026 read "INT €.04 +" for 6.04 of interest: rejected, so charges were 6.04 short.
+    The one unreadable amount in a group takes the subtotal's remainder when it fits the shape."""
+    p = pacificard.parse(
+        [NOISY.replace("Int 4.10 +", "Int €.10 +").replace("cons 0.21", "cons §.21")]
+    )
+    assert p.tieout_ok and not p.rejects, [c for c in p.checks if not c.ok]
+    by_desc = {ln.description: ln for ln in p.lines}
+    assert by_desc["CARGOS CAPITAL ANTERIOR"].amount == Decimal("-4.10")
+    assert [ln.line_no for ln in p.lines] == sorted(ln.line_no for ln in p.lines)
+
+
+def test_an_unreadable_amount_that_does_not_fit_stays_rejected() -> None:
+    # Two characters can't be one digit (4.10 doesn't fit "€€.10"), and two unreadable lines in
+    # one group can't share a remainder: both stay rejected and the statement doesn't tie out.
+    for text in (
+        NOISY.replace("Int 4.10 +", "Int €€.10 +"),
+        NOISY.replace("Int 4.10 +", "Int €.10 +")
+        .replace("cons 0.21", "cons §.21")
+        .replace("CONS 5.03", "CONS €.03"),
+    ):
+        p = pacificard.parse([text])
+        assert not p.tieout_ok and p.rejects
+        assert all("amount not readable" in r.reason for r in p.rejects)
+
+
 def test_unreadable_start_date_and_bad_lines() -> None:
     text = NOISY.replace("desde: 25/AGO/2026", "desde: 2AGO/2026").replace(
         "SEP/07 100004", "SEP/3S 100004"

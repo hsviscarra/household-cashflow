@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.8] — A PacifiCard amount with an unreadable digit
+
+### Fixes
+- **PacifiCard April 2026** read the interest line as "INT €.04 +" (6.04), so the line was
+  rejected and charges were 6.04 short. An amount with one or two unreadable characters now takes
+  its printed subtotal's remainder, only when it is the one such line in its group and the
+  remainder fits the characters that were read. The total-due check still has to agree.
+
 ## [0.26.7] — PacifiCard and older Pichincha card statements read again
 
 ### Fixes
