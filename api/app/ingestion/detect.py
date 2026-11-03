@@ -95,9 +95,15 @@ def _en(fmt: str) -> Callable[[str], date]:
     return lambda s: datetime.strptime(" ".join(s.split()), fmt).date()
 
 
+# Some statements print the period's month in English ("Del 01 Aug 2026", Produbanco); only these
+# four differ from the Spanish abbreviations.
+EN_MONTHS = {"jan": 1, "apr": 4, "aug": 8, "dec": 12}
+
+
 def _es(s: str) -> date:
     day, mon, year = s.split()
-    return date(int(year), ES_MONTHS[mon[:3].lower()], int(day))
+    key = mon[:3].lower()
+    return date(int(year), ES_MONTHS.get(key) or EN_MONTHS[key], int(day))
 
 
 def _es_slash(s: str) -> date:

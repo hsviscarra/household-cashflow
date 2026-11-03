@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.6] — Produbanco statements whose text comes out of order
+
+### Fixes
+- Some Produbanco PDFs give their lines out of order (Lauren's July and August 2026), and the
+  line-by-line balance check failed although every amount and the totals were right. Lines are now
+  put in the bank's order by chaining their printed balances from the opening one; a missing or
+  misread line still fails the check.
+- A period printed with an English month ("Del 01 Aug 2026") is recognized at upload, so the
+  statement shows its period.
+
 ## [0.26.5] — Diners purchases with an IVA column
 
 ### Fixes
