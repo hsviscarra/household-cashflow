@@ -25,9 +25,12 @@ from app.ingestion.parsers.base import (
 )
 
 NAME = "pichincha"
+# Spanish ("18-ago.") and, in some statements (January 2026), English ("09-Dec", "05-Jan"): only
+# Jan, Apr, Aug and Dec differ.
 MONTHS = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
     "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12,
+    "jan": 1, "apr": 4, "aug": 8, "dec": 12,
 }  # fmt: skip
 AMT = r"-?[\d,]*\d\.\d{2}"
 DMY = r"(\d{2})-(\d{2})-(\d{4})"

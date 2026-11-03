@@ -46,6 +46,33 @@ def test_parses_and_ties_out() -> None:
     assert {c.name for c in st.checks} >= {"Number of debits", "Credits add up to the summary"}
 
 
+def test_english_month_names_across_the_new_year() -> None:
+    """The January 2026 statement printed "09-Dec" and "05-Jan" (every line was rejected as an
+    unknown month): English abbreviations read the same, and December falls in the year before."""
+    pages = read_pages(s.pichincha_account_full())
+    english = [
+        p.replace(
+            "FECHA ÚLTIMO CORTE (FACTURA) 07-08-2026", "FECHA ÚLTIMO CORTE (FACTURA) 06-12-2025"
+        )
+        .replace("FECHA ESTE CORTE 04-09-2026", "FECHA ESTE CORTE 09-01-2026")
+        .replace("13-ago.", "09-Dec")
+        .replace("18-ago.", "11-Dec")
+        .replace("19-ago.", "31-Dec")
+        .replace("03-sep.", "05-Jan")
+        for p in pages
+    ]
+    st = PARSERS["pichincha"](english)
+    assert st.tieout_ok and not st.rejects, [r.reason for r in st.rejects]
+    assert [ln.txn_date.isoformat() for ln in st.lines] == [
+        "2025-12-09",
+        "2025-12-11",
+        "2025-12-31",
+        "2025-12-31",
+        "2026-01-05",
+    ]
+    assert pichincha_account.MONTHS["aug"] == pichincha_account.MONTHS["ago"] == 8
+
+
 def test_a_wrong_count_or_balance_blocks() -> None:
     bad = PARSERS["pichincha"](read_pages(s.pichincha_account_full(credit_count=3)))
     assert not bad.tieout_ok
