@@ -83,3 +83,12 @@ them; the picker can create subcategories only, while a new group is a deliberat
   `parent_id`). Only to a group, never under a subcategory, and only one of the same kind: moving
   spending under income would change what its lines mean. Groups don't move. Lines and rules
   point at the category, so they move with it.
+
+## Update (0.30.0): one merchant, two categories
+
+A merchant card groups lines by merchant, but one merchant can mean two categories (the same
+store for groceries and for a gift). With more than one line, each line has a checkbox. Unticked
+lines stay on the card for another category (`transaction_ids` in the resolve request: loaded
+lines on Review, staged lines on a statement's page). With only some lines chosen, "save a rule"
+turns off, because a rule matches every line of the merchant. Amount ranges in Rule details are
+the way to keep two categories apart for good.

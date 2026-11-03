@@ -239,3 +239,30 @@ def test_accept_likely_suggestions_on_review(client: TestClient, db: Session, au
     )
     left = client.get("/api/review", params={"month": "2026-07-01"}).json()["groups"]
     assert "TRANSFERENCIA INTERBANCARIA B.L." in {g["merchant_key"] for g in left}
+
+
+def test_one_merchant_two_categories_on_the_statement_page(
+    client: TestClient,
+    db: Session,
+) -> None:
+    lines = [("Ago 5", "8", "DEBITO VISA", "-12.00"), ("Ago 9", "7", "DEBITO VISA", "-80.00")]
+    jul = _read(client, "jul.pdf", s.produbanco_full())
+    client.post(f"/api/batches/{jul['batch_id']}/approve", headers=USER)
+    data = s.produbanco_full(opening="243.40", period="Del 01 Ago 2026 Al 31 Ago 2026", lines=lines)
+    bid = _read(client, "aug.pdf", data)["batch_id"]
+    visa = next(
+        g
+        for g in client.get(f"/api/batches/{bid}/review").json()["groups"]
+        if g["merchant_key"] == "DEBITO VISA"
+    )
+    small = next(ln["transaction_id"] for ln in visa["lines"] if ln["amount"] == "-12.0000")
+    body = {
+        "merchant_key": "DEBITO VISA",
+        "category_id": _cat(db, "Groceries", "Supermarket"),
+        "transaction_ids": [small],
+        "save_rule": False,
+    }
+    assert client.post(f"/api/batches/{bid}/resolve", json=body).json()["categorized"] == 1
+    left = client.get(f"/api/batches/{bid}/review").json()["groups"]
+    rest = next(g for g in left if g["merchant_key"] == "DEBITO VISA")
+    assert [ln["amount"] for ln in rest["lines"]] == ["-80.0000"]  # the other one waits

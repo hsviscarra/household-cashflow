@@ -126,9 +126,23 @@ export function MerchantCard({
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const n = group.lines.length;
+  // One merchant can mean two things (the same shop for groceries and for a gift): untick lines
+  // to categorize only some; the others stay here for another category. null = every line.
+  const [picked, setPicked] = useState<Set<number> | null>(null);
+  const chosen = picked ? group.lines.filter((ln) => picked.has(ln.transaction_id)) : group.lines;
+  const subset = chosen.length < n;
+  const toggle = (id: number) => {
+    const next = new Set(picked ?? group.lines.map((ln) => ln.transaction_id));
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    // A rule would catch every line of this merchant: off by default when only some are chosen.
+    if (next.size < n && !subset) setSaveRule(false);
+    setPicked(next.size === n ? null : next);
+  };
   const save = useMutation({
     mutationFn: resolve,
     onSuccess: (r, body) => {
+      setPicked(null); // what is left of the merchant starts all chosen again
       REFRESH.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       const label = options.find((o) => o.id === body.category_id)?.label ?? "the category";
       notify(
@@ -145,6 +159,7 @@ export function MerchantCard({
     save.mutate({
       merchant_key: group.merchant_key,
       category_id: id,
+      transaction_ids: subset ? chosen.map((ln) => ln.transaction_id) : null,
       save_rule: saveRule,
       pattern: saveRule ? pattern.trim() || group.merchant_key : null,
       match_type: matchType,
@@ -170,21 +185,39 @@ export function MerchantCard({
             key={ln.transaction_id}
             className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5"
           >
-            <span>
-              <span className="num">{day(ln.txn_date)}</span>
-              <span className="text-muted">
-                {" "}
-                · {ln.account_name ?? "—"}
-                {ln.person ? ` · ${ln.person}` : ""}
-              </span>
-              {ln.description !== group.merchant_key && (
-                <span className="block font-mono text-xs text-muted">{ln.description}</span>
+            <span className="flex items-baseline gap-2">
+              {n > 1 && (
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 self-center"
+                  aria-label={`Include ${day(ln.txn_date)}, ${showAmount(ln.amount)}`}
+                  checked={!picked || picked.has(ln.transaction_id)}
+                  onChange={() => toggle(ln.transaction_id)}
+                />
               )}
+              <span>
+                <span className="num">{day(ln.txn_date)}</span>
+                <span className="text-muted">
+                  {" "}
+                  · {ln.account_name ?? "—"}
+                  {ln.person ? ` · ${ln.person}` : ""}
+                </span>
+                {ln.description !== group.merchant_key && (
+                  <span className="block font-mono text-xs text-muted">{ln.description}</span>
+                )}
+              </span>
             </span>
             <span className="num">{showAmount(ln.amount)}</span>
           </li>
         ))}
       </ul>
+      {n > 1 && (
+        <p className="mt-1 text-xs text-muted">
+          {subset
+            ? `${chosen.length} of ${n} chosen. The others stay here for another category. A rule would catch every line of this merchant, so it's off; to keep two categories apart, use Rule details → amounts.`
+            : "Lines of this merchant belong in different categories? Untick the ones that don't go with this one."}
+        </p>
+      )}
 
       {s && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-info-bg px-4 py-2 text-sm">
@@ -194,7 +227,7 @@ export function MerchantCard({
           <button
             type="button"
             className="btn btn-secondary"
-            disabled={save.isPending}
+            disabled={save.isPending || chosen.length === 0}
             aria-label={`Use ${s.category_path} for ${group.merchant_key}`}
             onClick={() => submit(s.category_id)}
           >
@@ -217,8 +250,16 @@ export function MerchantCard({
           groups={groups}
           required
         />
-        <button type="submit" className="btn btn-secondary" disabled={save.isPending || categoryId === ""}>
-          {save.isPending ? "Saving…" : `Categorize ${n} ${n === 1 ? "line" : "lines"}`}
+        <button
+          type="submit"
+          className="btn btn-secondary"
+          disabled={save.isPending || categoryId === "" || chosen.length === 0}
+        >
+          {save.isPending
+            ? "Saving…"
+            : subset
+              ? `Categorize ${chosen.length} of ${n} lines`
+              : `Categorize ${n} ${n === 1 ? "line" : "lines"}`}
         </button>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:col-span-2">
           <label className="flex items-center gap-2">
