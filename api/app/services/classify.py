@@ -14,7 +14,16 @@ from decimal import Decimal
 from sqlalchemy import Exists, and_, exists, select
 from sqlalchemy.orm import Session, aliased
 
-from app.models import Account, Category, ChangeLog, MerchantRule, MerchantSuggestion, Transaction
+from app.models import (
+    Account,
+    Category,
+    ChangeLog,
+    ImportBatch,
+    MerchantRule,
+    MerchantSuggestion,
+    StgTransaction,
+    Transaction,
+)
 from app.services import rules as rule_engine
 from app.services import transfers
 
@@ -155,6 +164,7 @@ class Resolved:
     categorized: int
     rule_id: int | None
     also_by_rule: int
+    waiting_by_rule: int = 0  # lines in statements not approved yet
 
 
 def resolve(
@@ -206,14 +216,15 @@ def resolve(
     for t in rows:
         set_category(db, t, category, source, reason, user, rule.rule_id if rule else None)
 
-    also = 0
+    also = waiting = 0
     if rule is not None:
         also = apply_rule(db, rule, user, skip={t.transaction_id for t in rows})
+        waiting = classify_waiting(db, rule=rule)
     db.query(MerchantSuggestion).filter(MerchantSuggestion.merchant_key == key).delete()
     db.commit()
     if category.kind == "transfer":
         transfers.match(db, user)  # a line just called a transfer may have its other side loaded
-    return Resolved(len(rows), rule.rule_id if rule else None, also)
+    return Resolved(len(rows), rule.rule_id if rule else None, also, waiting)
 
 
 def apply_rule(db: Session, rule: MerchantRule, user: str, skip: set[int] | None = None) -> int:
@@ -230,6 +241,49 @@ def apply_rule(db: Session, rule: MerchantRule, user: str, skip: set[int] | None
             set_category(db, t, category, "rule", f"Rule {rule.rule_id}", user, rule.rule_id)
             count += 1
     return count
+
+
+# ---------------- statements waiting for approval ----------------
+def classify_waiting(
+    db: Session, *, batch_id: int | None = None, rule: MerchantRule | None = None
+) -> int:
+    """Apply rules to the uncategorized lines of statements still waiting for approval (all of
+    them, or one batch), so a rule saved after a statement was read still reaches it. With `rule`,
+    only that rule. Lines a rule or the statement's section already categorized are left alone.
+    Returns how many lines were categorized; the caller commits."""
+    q = (
+        select(StgTransaction, Account)
+        .join(ImportBatch, ImportBatch.batch_id == StgTransaction.batch_id)
+        .join(Account, Account.account_id == StgTransaction.account_id)
+        .where(ImportBatch.status == "preview", StgTransaction.category_id.is_(None))
+    )
+    if batch_id is not None:
+        q = q.where(StgTransaction.batch_id == batch_id)
+    waiting = db.execute(q).all()
+    if not waiting:
+        return 0
+    rows = [rule] if rule is not None else list(db.scalars(select(MerchantRule)))
+    rules = [rule_engine.Rule.of(r) for r in rows]
+    patterns = {r.rule_id: r.pattern for r in rows}
+    by_id = {c.category_id: c for c in db.scalars(select(Category))}
+    count = 0
+    for s, account in waiting:
+        hit = rule_engine.first_match(rules, s.description_raw, s.amount)
+        if hit is None:
+            continue
+        s.type = rule_type(by_id[hit.category_id].kind, account, s.amount)
+        s.category_id, s.rule_id = hit.category_id, hit.rule_id
+        s.merchant = patterns[hit.rule_id].strip(" *")
+        count += 1
+    db.flush()
+    return count
+
+
+def rule_type(kind: str, account: Account, amount: Decimal) -> str:
+    # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
+    money_in = "refund" if account.kind == "credit_card" else "income"
+    default = money_in if amount > 0 else "expense"
+    return {"transfer": "transfer", "income": "income", "savings": "savings"}.get(kind, default)
 
 
 # ---------------- one line ----------------

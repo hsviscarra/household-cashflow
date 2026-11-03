@@ -103,6 +103,17 @@ beforeEach(() => {
         };
         return json({ batch_id: 9, loaded: 3, skipped_duplicates: 1 });
       }
+      if (url === "/api/batches/9/apply-rules") {
+        const done = current.uncategorized;
+        current = {
+          ...current,
+          uncategorized: 0,
+          lines: current.lines.map((l) =>
+            l.category_id ? l : { ...l, category_id: 7, category_path: "Shopping / Other Retail" },
+          ),
+        };
+        return json({ categorized: done, batch: current });
+      }
       if (url === "/api/batches/9/reject") {
         current = {
           ...current,
@@ -229,6 +240,33 @@ describe("Import batch", () => {
     expect(screen.getByRole("button", { name: "Approve import" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(await screen.findByText(/Discarded by hernan@example.com/)).toBeInTheDocument();
+  });
+
+  it("applies rules saved after the statement was read", async () => {
+    renderAt("/import/batches/9");
+    fireEvent.click(await screen.findByRole("button", { name: "Apply rules again" }));
+    expect(await screen.findByText("Rules categorized 1 more line.")).toBeInTheDocument();
+    expect(calls).toContain("POST /api/batches/9/apply-rules");
+    const lines = screen.getByRole("table", { name: "Statement lines" });
+    expect(within(lines).getByText("Shopping / Other Retail")).toBeInTheDocument();
+    // Nothing left to categorize: the button goes away.
+    expect(screen.queryByRole("button", { name: "Apply rules again" })).not.toBeInTheDocument();
+  });
+
+  it("says when no rule matches", async () => {
+    current = batch();
+    const fetchMock = vi.mocked(fetch);
+    const real = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((url, init) =>
+      url === "/api/batches/9/apply-rules"
+        ? Promise.resolve(new Response(JSON.stringify({ categorized: 0, batch: current })))
+        : real(url, init),
+    );
+    renderAt("/import/batches/9");
+    fireEvent.click(await screen.findByRole("button", { name: "Apply rules again" }));
+    expect(
+      await screen.findByText("No rule matches the lines that still need a category."),
+    ).toBeInTheDocument();
   });
 
   it("explains a missing batch", async () => {

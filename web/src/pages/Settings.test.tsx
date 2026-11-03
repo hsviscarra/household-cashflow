@@ -127,6 +127,7 @@ function fakeFetch(input: string, init?: RequestInit) {
       is_active: true,
       category_path: "Salary",
       ...body,
+      applied: 4,
     };
     db.rules.push(r);
     return json(r, 201);
@@ -253,7 +254,11 @@ describe("Settings: merchant rules", () => {
     });
     fireEvent.change(screen.getByLabelText("Category"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
-    expect(await screen.findByText("Rule added: KENILITY → Salary.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Rule added: KENILITY → Salary. It categorized 4 lines that needed a category.",
+      ),
+    ).toBeInTheDocument();
 
     const table = screen.getByRole("table");
     fireEvent.click(await within(table).findByLabelText("Rule UBER EATS active"));

@@ -228,12 +228,15 @@ function GroupCard({ group, options, notify }: { group: ReviewGroup; options: Op
   const save = useMutation({
     mutationFn: resolveMerchant,
     onSuccess: (r) => {
-      ["review", "transactions", "cashflow", "rules"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ["review", "transactions", "cashflow", "rules", "batch"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k] }),
+      );
       const label = options.find((o) => o.id === categoryId)?.label ?? "the category";
       notify(
         `${group.merchant_key}: ${r.categorized} ${r.categorized === 1 ? "line" : "lines"} → ${label}` +
           (r.rule_id ? ". Rule saved for next time" : "") +
           (r.also_by_rule ? `; it also categorized ${r.also_by_rule} more` : "") +
+          (r.waiting_by_rule ? ` and ${r.waiting_by_rule} in statements waiting for approval` : "") +
           ".",
       );
     },

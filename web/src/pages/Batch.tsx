@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import { approveBatch, fetchBatch, rejectBatch, type Batch, type StgLine } from "../api";
+import { applyRules, approveBatch, fetchBatch, rejectBatch, type Batch, type StgLine } from "../api";
 import { money, num, showAmount } from "../money";
 
 const day = (iso: string) =>
@@ -42,6 +42,10 @@ export default function BatchPage() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
     },
   });
+  const rerun = useMutation({
+    mutationFn: () => applyRules(id),
+    onSuccess: (r) => qc.setQueryData(["batch", id], r.batch),
+  });
   const discard = useMutation({
     mutationFn: () => rejectBatch(id),
     onSuccess: () => {
@@ -63,7 +67,7 @@ export default function BatchPage() {
 
   const b = data;
   const account = b.statement.accounts.map((a) => a.name).join(", ");
-  const actionError = (approve.error ?? discard.error) as Error | null;
+  const actionError = (approve.error ?? discard.error ?? rerun.error) as Error | null;
 
   return (
     <section>
@@ -94,6 +98,13 @@ export default function BatchPage() {
             </Link>
           </p>
         )}
+        {rerun.data && (
+          <p className="mt-4 rounded-2xl bg-info-bg px-4 py-3">
+            {rerun.data.categorized
+              ? `Rules categorized ${rerun.data.categorized} more ${rerun.data.categorized === 1 ? "line" : "lines"}.`
+              : "No rule matches the lines that still need a category."}
+          </p>
+        )}
         {actionError && (
           <p className="mt-4 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">{actionError.message}</p>
         )}
@@ -117,6 +128,11 @@ export default function BatchPage() {
           >
             Discard
           </button>
+          {b.uncategorized > 0 && (
+            <button className="btn btn-secondary" disabled={rerun.isPending} onClick={() => rerun.mutate()}>
+              {rerun.isPending ? "Applying rules…" : "Apply rules again"}
+            </button>
+          )}
           {!b.tieout_ok && (
             <span className="text-danger-ink">The statement doesn’t tie out, so it can’t be loaded.</span>
           )}
