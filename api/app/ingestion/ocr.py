@@ -9,6 +9,7 @@ can't slip through: the parser's tie-out compares every line with the printed su
 """
 
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -23,7 +24,14 @@ from PIL import Image, ImageOps
 from pypdf import PdfReader
 
 WIDE = 3500  # pixels: each page picture is enlarged to about this width before reading
-WORKERS = 4  # tesseract processes at once for the re-reads
+# Tesseract processes at once for the re-reads. The server has half a CPU; more processes only
+# queue for it (OCR_WORKERS to change).
+WORKERS = int(os.environ.get("OCR_WORKERS", "2"))
+# One thread per tesseract: by default it starts one per core it can see (the host's, in a
+# container limited to half a CPU), and the threads throttle each other. Measured on the October
+# 2026 PacifiCard: 21.4 s -> 11.8 s on 2 CPUs; reads on the server timed out before (2026-11-03).
+TESSERACT_ENV = {**os.environ, "OMP_THREAD_LIMIT": "1"}
+TIMEOUT = 300  # seconds for one tesseract run; the full page is the long one
 INK = 165  # darker than the watermark (191) is text
 # A word that should be an amount: digit-like characters around a decimal point ("§.03", "a11.a9").
 # Signs ("+570.00", "310,00-") are kept from the first reading; either decimal mark is accepted.
@@ -108,7 +116,8 @@ def _tesseract(image: Image.Image, *args: str) -> str:
             input=buf.getvalue(),
             capture_output=True,
             check=True,
-            timeout=120,
+            timeout=TIMEOUT,
+            env=TESSERACT_ENV,
         )
     except FileNotFoundError as exc:
         raise OcrError("OCR (tesseract) is not installed on this server.") from exc

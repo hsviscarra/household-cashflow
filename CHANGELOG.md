@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.7] — PacifiCard and older Pichincha card statements read again
+
+### Fixes
+- **PacifiCard reading timed out** on the server ("Reading the picture took too long", or 504 on
+  Read lines): tesseract started one thread per core it could see (the host's) inside a container
+  limited to half a CPU, and the threads throttled each other. It now runs with one thread
+  (OMP_THREAD_LIMIT=1; 21.4 s -> 11.8 s locally), two re-reads at a time (OCR_WORKERS), and a
+  5-minute limit per run.
+- **PacifiCard period:** when "hasta" is unreadable ("2VOCT/2026"), the period ends on the
+  "Fecha de corte" date, whose month may be read with an extra letter ("O0CT").
+- **PacifiCard lines with "OCT /23"** (a space before the slash) were skipped; the October 2026
+  statement was 0.29 short.
+- **Pichincha card statements before July 2026** print "MOVIMIENTOS 44,59 70,00- 25,41 0,00"
+  (plural, decimal comma) and stopped at "Summary line not found".
+
 ## [0.26.6] — Produbanco statements whose text comes out of order
 
 ### Fixes

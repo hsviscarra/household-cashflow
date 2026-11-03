@@ -29,7 +29,11 @@ TO_LETTER = str.maketrans("0425618", "OASZGIB")
 TO_DIGIT = str.maketrans("OoSsIlBZ$§", "0055118255")
 
 PERIOD = re.compile(r"desde:?\s*(\S+)\s+hasta:?\s*(\S+)", re.I)
-LINE_START = re.compile(r"^(?P<mon>[\w$§]{3})/ ?(?P<day>[\w$§]{1,2}) (?P<rest>.+)$")
+# The cut-off date printed under the period: the period's end when "hasta" is unreadable (the
+# October 2026 statement read "hasta 2VOCT/2026" and "Fecha de corte: 23/O0CT/2026").
+CUT = re.compile(r"Fecha de corte:?\s*(\S+)", re.I)
+# OCR may put a space on either side of the slash ("OCT /23", "SEP/ 28").
+LINE_START = re.compile(r"^(?P<mon>[\w$§]{3}) ?/ ?(?P<day>[\w$§]{1,2}) (?P<rest>.+)$")
 OPERATIONS = ("CONS", "PAGO", "INT", "CARG", "N/D", "N/C", "DIF")
 # How each operation moves the debt, for the tie-out (the summary box groups them this way).
 GROUPS = {"CONS": "purchases", "N/D": "purchases", "DIF": "purchases", "PAGO": "payments"}
@@ -68,7 +72,7 @@ def _day(token: str) -> int:
 
 
 def _period_date(token: str) -> date | None:
-    m = re.fullmatch(r"(\w{1,2})/(\w{3})/(\d{4})", token)
+    m = re.fullmatch(r"(\w{1,2})/(\w{3,4})/(\d{4})", token)  # "O0CT": a letter read twice
     if not m:
         return None
     try:
@@ -134,6 +138,8 @@ def parse(pages: list[str]) -> ParsedStatement:
     text = "\n".join(pages)
     p = PERIOD.search(text)
     end = _period_date(p.group(2)) if p else None
+    if end is None and (cut := CUT.search(text)):
+        end = _period_date(cut.group(1))
     if end is None:
         raise ParseError("Period (Periodo de corte desde … hasta …) could not be read.")
     start = _period_date(p.group(1)) if p else None
