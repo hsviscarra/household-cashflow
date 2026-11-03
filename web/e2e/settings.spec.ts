@@ -14,8 +14,11 @@ test("categories are grouped by what they count as", async ({ page }) => {
   await page.goto("/settings?tab=categories");
   await expect(page.getByRole("heading", { name: "Expenses" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Income" })).toBeVisible();
+  // Groups start collapsed (F23); "uber" finds Food Delivery through its description, seeded by
+  // migration 0023.
+  await expect(page.getByText("Food Delivery")).toHaveCount(0);
+  await page.getByLabel("Find a category").fill("uber eats");
   await expect(page.getByText("Food Delivery")).toBeVisible();
-  // Seeded by migration 0023 (F23): every category says what goes in it.
   await expect(page.getByText(/^Ready meals delivered: Uber Eats/)).toBeVisible();
 });
 

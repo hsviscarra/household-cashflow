@@ -135,10 +135,37 @@ def create_category(body: CategoryIn, db: DB) -> Category:
 @router.patch("/categories/{category_id}", response_model=CategoryOut)
 def update_category(category_id: int, body: CategoryPatch, db: DB) -> Category:
     category = _get(db, Category, category_id, "Category")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    if "parent_id" in changes:
+        _move(db, category, changes.pop("parent_id"))
+    for field, value in changes.items():
         setattr(category, field, value)
     _commit(db, "A category with that name already exists there.")
     return category
+
+
+def _move(db: Session, category: Category, parent_id: int | None) -> None:
+    """A subcategory moves to another group; groups stay groups (one level, ADR-022)."""
+    if parent_id == category.parent_id:
+        return
+    if category.parent_id is None:
+        raise HTTPException(422, "Only a subcategory can move to another group.")
+    if parent_id is None:
+        raise HTTPException(
+            422, "A subcategory stays inside a group: choose the group to move it to."
+        )
+    target = _get(db, Category, parent_id, "Group")
+    if target.parent_id is not None:
+        raise HTTPException(422, "Move it to a group, not to another subcategory.")
+    if target.kind != category.kind:
+        raise HTTPException(
+            422,
+            f"{target.name} counts as {target.kind} and {category.name} as {category.kind}: "
+            "move it to a group of the same kind.",
+        )
+    siblings = db.scalars(select(Category).where(Category.parent_id == target.category_id))
+    category.sort_order = len(list(siblings))
+    category.parent_id = target.category_id
 
 
 # ---------------- merchant rules ----------------

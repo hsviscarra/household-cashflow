@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Account, CategoryGroup, Rule } from "../api";
-import Settings from "./Settings";
+import Settings, { usage } from "./Settings";
 import { pickCategory } from "../test/pick";
 
 // Small in-memory stand-in for the F1 API, so the page is tested against real request shapes.
@@ -47,8 +47,21 @@ function seed(): Db {
             is_active: true,
             sort_order: 0,
             description: "Ready meals delivered: Uber Eats.",
+            lines: 12,
+            rules: 1,
           },
         ],
+      },
+      {
+        category_id: 30,
+        parent_id: null,
+        name: "Groceries",
+        kind: "expense",
+        color: "#4E9A2A",
+        is_fixed: false,
+        is_active: true,
+        sort_order: 1,
+        children: [],
       },
       {
         category_id: 20,
@@ -123,6 +136,10 @@ function fakeFetch(input: string, init?: RequestInit) {
     const all = db.categories.flatMap((g) => [g, ...g.children]);
     const c = all.find((x) => x.category_id === Number(one[1]))!;
     Object.assign(c, body);
+    if (body.parent_id) {
+      db.categories.forEach((g) => (g.children = g.children.filter((x) => x.category_id !== c.category_id)));
+      db.categories.find((g) => g.category_id === body.parent_id)!.children.push(c);
+    }
     return json(c);
   }
   if (path === "/api/merchant-rules" && method === "GET") return json(db.rules);
@@ -229,6 +246,7 @@ describe("Settings: categories", () => {
     renderSettings("categories");
     expect(await screen.findByRole("heading", { name: "Expenses" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Income" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /1 subcategory in Dining/ }));
     fireEvent.change(screen.getByLabelText("New subcategory in Dining"), {
       target: { value: "Coffee" },
     });
@@ -245,6 +263,7 @@ describe("Settings: categories", () => {
 describe("Settings: category descriptions", () => {
   it("shows what goes in each category and edits it", async () => {
     renderSettings("categories");
+    fireEvent.click(await screen.findByRole("button", { name: /1 subcategory in Dining/ }));
     expect(await screen.findByText("Ready meals delivered: Uber Eats.")).toBeInTheDocument();
     expect(screen.getAllByText("No description yet: Edit to say what goes here.").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Edit Food Delivery" }));
@@ -256,6 +275,60 @@ describe("Settings: category descriptions", () => {
     const sent = calls.find((c) => c.method === "PATCH")?.body as Record<string, unknown>;
     expect(sent.description).toBe("Delivered meals, not groceries.");
     expect(await screen.findByText("Delivered meals, not groceries.")).toBeInTheDocument();
+  });
+});
+
+describe("Settings: finding and organizing categories", () => {
+  it("collapses groups, shows how much each is used, and finds by description", async () => {
+    renderSettings("categories");
+    const toggle = await screen.findByRole("button", { name: /1 subcategory in Dining/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Food Delivery")).toBeNull();
+    // The group counts its subcategories' lines.
+    const dining = toggle.closest("li")!;
+    expect(dining).toHaveTextContent("12 lines");
+    expect(screen.getAllByText("Not used yet").length).toBeGreaterThan(0); // Groceries, Salary
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(screen.getByText("12 lines · 1 rule")).toBeInTheDocument(); // Food Delivery itself
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(screen.queryByText("Food Delivery")).toBeNull();
+
+    // "uber" is only in Food Delivery's description: Dining opens with it; other groups hide.
+    fireEvent.change(screen.getByLabelText("Find a category"), { target: { value: "UBER" } });
+    expect(screen.getByText("1 group matches “UBER”.")).toBeInTheDocument();
+    expect(screen.getByText("Food Delivery")).toBeInTheDocument();
+    expect(screen.queryByText("Salary")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Expand all" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Find a category"), { target: { value: "zzz" } });
+    expect(screen.getByText("Nothing matches “zzz”.")).toBeInTheDocument();
+  });
+
+  it("moves a subcategory to another group of the same kind", async () => {
+    renderSettings("categories");
+    fireEvent.click(await screen.findByRole("button", { name: /1 subcategory in Dining/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Food Delivery" }));
+    const group = screen.getByLabelText("In the group");
+    // Only spending groups: Salary (income) isn't offered.
+    expect(
+      within(group)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Dining", "Groceries"]);
+    fireEvent.change(group, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save category" }));
+    expect(
+      await screen.findByText("Moved Food Delivery to Groceries; its lines and rules moved with it."),
+    ).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "PATCH")?.body as Record<string, unknown>;
+    expect(sent.parent_id).toBe(30);
+    expect(await screen.findByRole("button", { name: /1 subcategory in Groceries/ })).toBeInTheDocument();
+  });
+
+  it("describes usage in words", () => {
+    expect(usage(0, 0)).toBe("Not used yet");
+    expect(usage(1, 0)).toBe("1 line");
+    expect(usage(0, 2)).toBe("2 rules");
+    expect(usage(1234, 1)).toBe("1,234 lines · 1 rule");
   });
 });
 

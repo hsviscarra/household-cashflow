@@ -115,7 +115,7 @@ export const createCategory = (c: {
 }) => send<Category>("POST", "/api/categories", c);
 export const updateCategory = (
   id: number,
-  c: Partial<Pick<Category, "name" | "color" | "is_fixed" | "is_active" | "description">>,
+  c: Partial<Pick<Category, "name" | "color" | "is_fixed" | "is_active" | "description" | "parent_id">>,
 ) => send<Category>("PATCH", `/api/categories/${id}`, c);
 
 export const fetchRules = () => send<Rule[]>("GET", "/api/merchant-rules");
