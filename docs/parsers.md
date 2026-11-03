@@ -79,6 +79,10 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
 
 - **Older summary:** before July 2026 the summary reads "MOVIMIENTOS 44,59 70,00- 25,41 0,00"
   (plural, Ecuadorian amounts); both are read (0.26.7).
+- **Installments with the purchase date (0.26.9):** from mid-2026 a deferred installment reads
+  "05/01 … DIFERIDO (6/12) 71,04 426,24" (purchase date, installment, amount, deferred balance).
+  It's dated on the cut-off and kept as a purchase with reference "6/12", when the purchase date
+  falls within the plan's months; otherwise it's rejected.
 
 ## Banco Pichincha (bank account, `pichincha`) — F19
 

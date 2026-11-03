@@ -40,6 +40,29 @@ def test_deferred_purchase_keeps_installment_and_balance() -> None:
     assert Decimal("200.00") in p.totals.values()
 
 
+def test_installment_with_the_purchase_date() -> None:
+    """From mid-2026 an installment prints the purchase's own date and "DIFERIDO (n/m)"; June 2026
+    rejected "05/01 … DIFERIDO (6/12) 71,04 426,24" as outside the period (card 71.04 short)."""
+    old = "20/06 3703738 TIENDA DE PRUEBA DIFERIDO CONSUMO 2/6 50,00 200,00"
+    pages = read_pages(pichincha_full())
+    assert any(old in page for page in pages)
+    new = "05/03 3703738 TIENDA DE PRUEBA DIFERIDO (2/6) 50,00 200,00"
+    p = pichincha.parse([page.replace(old, new) for page in pages])
+    assert p.tieout_ok and not p.rejects, [c for c in p.checks if not c.ok]
+    dif = next(ln for ln in p.lines if ln.description.startswith("TIENDA"))
+    assert (dif.txn_date, dif.amount, dif.reference, dif.section) == (
+        date(2026, 7, 12),  # billed on the cut-off
+        Decimal("-50.00"),
+        "2/6",
+        "purchase",
+    )
+    assert dif.description == "TIENDA DE PRUEBA DIFERIDO"
+    # A purchase date older than the plan (a 2-month plan from March) is still rejected.
+    late = pichincha.parse([page.replace(old, new.replace("(2/6)", "(2/2)")) for page in pages])
+    assert [r.reason for r in late.rejects] == ["05/03 is outside the statement period"]
+    assert not pichincha._bought_within("31/02", date(2026, 7, 12), 6)
+
+
 def test_wrong_card_subtotal_fails() -> None:
     p = pichincha.parse(read_pages(pichincha_full(subtotal_delta="1")))
     assert [c.name for c in p.checks if not c.ok] == ["Card •••• 6331 subtotal"]

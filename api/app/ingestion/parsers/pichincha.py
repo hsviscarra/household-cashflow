@@ -29,6 +29,9 @@ LINE = re.compile(
     rf"^(?P<d>\d{{2}}/\d{{2}}) (?:(?P<ref>\d{{3,}}) )?(?P<desc>.+?) "
     rf"(?:(?P<cuota>\d{{1,2}}/\d{{1,2}}) )?(?P<amt>{NUM})(?: (?P<dif>{NUM}))?$"
 )
+# From mid-2026 an installment reads "05/01 978746 PTP - BMI … DIFERIDO (6/12) 71,04 426,24": the
+# purchase's own date (January), installment 6 of 12, then the deferred balance.
+INSTALLMENT = re.compile(r" DIFERIDO \((?P<n>\d{1,2})/(?P<of>\d{1,2})\)$")
 OPERATION = re.compile(r" (?P<op>CONSUMO|N/D|N/C)(?: (?P<ctry>[A-Z]{3}))?$")
 SUBTOTAL_CARD = re.compile(rf"^SUBTOTAL : ({NUM})$")
 SUBTOTAL_PAYMENTS = re.compile(rf"^SUBTOTAL PAGOS ({NUM})$")
@@ -55,6 +58,18 @@ def _date(day_month: str, start: date, end: date) -> date:
         if start - timedelta(days=62) <= d <= end + timedelta(days=7):
             return d
     raise ValueError(f"{day_month} is outside the statement period")
+
+
+def _bought_within(day_month: str, end: date, months: int) -> bool:
+    """An installment's purchase date: at most the plan's length (plus a month) before the end."""
+    for year in (end.year, end.year - 1, end.year - 2):
+        try:
+            d = datetime.strptime(f"{day_month}/{year}", "%d/%m/%Y").date()
+        except ValueError:
+            return False
+        if end - timedelta(days=31 * (months + 1)) <= d <= end:
+            return True
+    return False
 
 
 def _section(desc: str, op: str | None) -> str:
@@ -139,12 +154,18 @@ def parse(pages: list[str]) -> ParsedStatement:
                 continue
             if not (ln := LINE.match(line)):
                 continue
+            desc = ln.group("desc").strip()
+            cuota = ln.group("cuota")
+            if inst := INSTALLMENT.search(desc):
+                cuota = f"{inst.group('n')}/{inst.group('of')}"
+                desc = desc[: inst.start()] + " DIFERIDO"
             try:
                 d = _date(ln.group("d"), start, end)
             except ValueError as exc:
-                out.rejects.append(Reject(page_no, line_no, line, str(exc)))
-                continue
-            desc = ln.group("desc").strip()
+                if not (inst and _bought_within(ln.group("d"), end, int(inst.group("of")))):
+                    out.rejects.append(Reject(page_no, line_no, line, str(exc)))
+                    continue
+                d = end  # billed on this statement's cut-off; the date printed is the purchase's
             op = OPERATION.search(desc)
             if op:
                 desc = desc[: op.start()].strip()
@@ -153,7 +174,7 @@ def parse(pages: list[str]) -> ParsedStatement:
                 Line(
                     page=page_no,
                     line_no=line_no,
-                    section=_section(desc, op.group("op") if op else None),
+                    section=_section(desc, "CONSUMO" if inst else op.group("op") if op else None),
                     text=line,
                     txn_date=d,
                     post_date=None,
@@ -161,7 +182,7 @@ def parse(pages: list[str]) -> ParsedStatement:
                     description=desc,
                     cardholder=card,
                     person=person,  # lines before the card blocks: the account owner
-                    reference=ln.group("cuota"),
+                    reference=cuota,
                 )
             )
             if ln.group("dif"):
