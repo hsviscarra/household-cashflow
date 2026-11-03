@@ -125,6 +125,12 @@ digits after `CUENTA:`, or Produbanco's only account without digits on file (Lau
   to 6.73, and each month opens at the previous month's close. Interbank transfers (empleada,
   condo fee, office rent in, Dad's insurance) still need a category: F9 rules and F10 matching.
 
+- **Line order:** some PDFs give their text out of order (July 2026: Jul 13, then the Jul 31 lines,
+  then Jul 15). Each line carries its balance, so the parser chains them from the opening balance
+  (earlier dates first, stepping back when a balance repeats, e.g. -2,000 and +2,000 on one day).
+  If no order fits every balance, a line is missing or misread and the gaps check fails (0.26.6).
+- **Period months** can be English ("Del 01 Aug 2026 Al 31 Aug 2026"); lines stay Spanish.
+
 ## Diners Club (`diners`) — F8
 
 Hernan's and Lauren's statements share one layout. Neither account has card digits on file, so the

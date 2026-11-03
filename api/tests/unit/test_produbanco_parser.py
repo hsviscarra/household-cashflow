@@ -56,3 +56,70 @@ def test_wrong_layout_and_bad_lines() -> None:
     )
     p = produbanco.parse([head + "Quito Feb 30 1 DEBITO VISA -1.00 9.00 9.00\n?? -1.00 9.00 9.00"])
     assert len(p.rejects) == 2 and not p.tieout_ok
+
+
+# The bank's order, with a balance that repeats on Jul 30 (-2,000 then +2,000, like Lauren's July).
+ROUND_TRIP = [
+    ("Jul 13", "1", "TARIFA POR TRANSF.INTERBANCARIA B.L", "-0.41"),
+    ("Jul 15", "2", "TRANSFERENCIA INTERBANCARIA B.L.", "-241.00"),
+    ("Jul 30", "3", "TRANSFERENCIA CTAS TERCEROS BCA ENL", "-2,000.00"),
+    ("Jul 30", "4", "TRANSFERENCIA INTERBANCARIA B.L.", "+2,000.00"),
+    ("Jul 31", "5", "TRANSFERENCIA CTAS TERCEROS BCA ENL", "+2,000.00"),
+    ("Jul 31", "6", "CAPITALIZACION DE INTERESES EN CUEN", "+0.01"),
+]
+
+
+def _scramble(pages: list[str], move: list[str]) -> list[str]:
+    """The PDF's text with some lines moved up, as the July 2026 statement gave it: Jul 13, then
+    the Jul 31 lines, then the rest."""
+    lines = pages[0].splitlines()
+    moved = [ln for ln in lines if any(f" {ref} " in ln and ln.startswith("Quito") for ref in move)]
+    rest = [ln for ln in lines if ln not in moved]
+    at = next(i for i, ln in enumerate(rest) if " 1 TARIFA" in ln) + 1
+    return ["\n".join(rest[:at] + moved + rest[at:])]
+
+
+def test_text_out_of_order_is_put_back_in_the_banks_order() -> None:
+    pages = _scramble(read_pages(produbanco_full(lines=ROUND_TRIP, opening="5590.48")), ["5", "6"])
+    assert " 5 TRANSFERENCIA" in pages[0].splitlines()[12]  # really out of order
+    p = produbanco.parse(pages)
+    assert p.tieout_ok and not p.rejects, [(c.name, c.actual) for c in p.checks if not c.ok]
+    assert [ln.description[:14] for ln in p.lines][2:5] == [
+        "TRANSFERENCIA ",
+        "TRANSFERENCIA ",
+        "TRANSFERENCIA ",
+    ]
+    assert [ln.amount for ln in p.lines] == [
+        Decimal("-0.41"),
+        Decimal("-241.00"),
+        Decimal("-2000.00"),  # the repeated balance: the earlier date first, then +2,000
+        Decimal("2000.00"),
+        Decimal("2000.00"),
+        Decimal("0.01"),
+    ]
+
+
+def test_a_missing_line_still_fails_whatever_the_order() -> None:
+    pages = read_pages(produbanco_full(lines=ROUND_TRIP, opening="5590.48"))
+    without = ["\n".join(ln for ln in pages[0].splitlines() if " 2 TRANSFERENCIA" not in ln)]
+    p = produbanco.parse(without)
+    failed = {c.name for c in p.checks if not c.ok}
+    assert failed == {
+        "Opening balance + lines = closing balance",
+        "Gaps in the running balance, line by line",
+    }
+
+
+def test_english_period_months() -> None:
+    from app.ingestion.detect import detect, read_pdf
+
+    data = produbanco_full(
+        period="Del 01 Aug 2026 Al 31 Aug 2026", lines=[("Ago 3", "1", "X", "+1.00")]
+    )
+    d = detect(read_pdf(data).text)
+    assert (d.source, d.period_start, d.period_end) == (
+        "produbanco",
+        date(2026, 8, 1),
+        date(2026, 8, 31),
+    )
+    assert produbanco.parse(read_pages(data)).tieout_ok
