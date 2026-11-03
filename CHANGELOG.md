@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.10] — The last Pichincha card installment
+
+### Fixes
+- **Pichincha card April 2026** printed the last installment as "DIFERIDO (FINAL)" and counted it
+  as a charge, so TOTAL CONSUMOS MES was 66.15 short. It's now an installment like "(n/m)":
+  a purchase with reference "FINAL", whose purchase date may be up to the longest plan (36
+  months) before the cut-off.
+
 ## [0.26.9] — Pichincha card installments with the purchase date
 
 ### Fixes

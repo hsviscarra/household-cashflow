@@ -31,7 +31,9 @@ LINE = re.compile(
 )
 # From mid-2026 an installment reads "05/01 978746 PTP - BMI … DIFERIDO (6/12) 71,04 426,24": the
 # purchase's own date (January), installment 6 of 12, then the deferred balance.
-INSTALLMENT = re.compile(r" DIFERIDO \((?P<n>\d{1,2})/(?P<of>\d{1,2})\)$")
+# The last one reads "DIFERIDO (FINAL)" (April 2026), with no plan length: up to the longest plan.
+INSTALLMENT = re.compile(r" DIFERIDO \((?:(?P<n>\d{1,2})/(?P<of>\d{1,2})|(?P<final>FINAL))\)$")
+LONGEST_PLAN = 36  # months, the longest deferral the card offers
 OPERATION = re.compile(r" (?P<op>CONSUMO|N/D|N/C)(?: (?P<ctry>[A-Z]{3}))?$")
 SUBTOTAL_CARD = re.compile(rf"^SUBTOTAL : ({NUM})$")
 SUBTOTAL_PAYMENTS = re.compile(rf"^SUBTOTAL PAGOS ({NUM})$")
@@ -157,12 +159,13 @@ def parse(pages: list[str]) -> ParsedStatement:
             desc = ln.group("desc").strip()
             cuota = ln.group("cuota")
             if inst := INSTALLMENT.search(desc):
-                cuota = f"{inst.group('n')}/{inst.group('of')}"
+                cuota = inst.group("final") or f"{inst.group('n')}/{inst.group('of')}"
+                plan = LONGEST_PLAN if inst.group("final") else int(inst.group("of"))
                 desc = desc[: inst.start()] + " DIFERIDO"
             try:
                 d = _date(ln.group("d"), start, end)
             except ValueError as exc:
-                if not (inst and _bought_within(ln.group("d"), end, int(inst.group("of")))):
+                if not (inst and _bought_within(ln.group("d"), end, plan)):
                     out.rejects.append(Reject(page_no, line_no, line, str(exc)))
                     continue
                 d = end  # billed on this statement's cut-off; the date printed is the purchase's
