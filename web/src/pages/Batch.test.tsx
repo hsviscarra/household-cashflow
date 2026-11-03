@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Batch, Statement } from "../api";
 import BatchPage from "./Batch";
+import { pickCategory } from "../test/pick";
 import { StatementsCard } from "./ImportStatements";
 import TransactionsPage from "./Transactions";
 
@@ -82,11 +83,72 @@ function batch(over: Partial<Batch> = {}): Batch {
   };
 }
 
+const XYZ_LINE = {
+  transaction_id: 3,
+  txn_date: "2026-09-02",
+  amount: "-40.00",
+  description: "NEW MERCHANT XYZ",
+  account_name: "Capital One Venture",
+  person: "Lauren",
+};
+const CATEGORIES = [
+  {
+    category_id: 6,
+    parent_id: null,
+    name: "Shopping",
+    kind: "expense",
+    color: "#C2185B",
+    is_fixed: false,
+    is_active: true,
+    sort_order: 0,
+    children: [
+      {
+        category_id: 7,
+        parent_id: 6,
+        name: "Other Retail",
+        kind: "expense",
+        color: null,
+        is_fixed: false,
+        is_active: true,
+        sort_order: 0,
+        description: "Other stores: electronics, home goods.",
+      },
+    ],
+  },
+];
 let current: Batch;
 let calls: string[];
+let suggestion: {
+  category_id: number;
+  category_path: string;
+  confidence: string;
+  reason: string;
+  model: string;
+} | null;
+let available: boolean;
+const batchReview = () => ({
+  month: null,
+  groups:
+    current.uncategorized > 0
+      ? [{ merchant_key: "NEW MERCHANT XYZ", lines: [XYZ_LINE], total: "-40.00", suggestion }]
+      : [],
+  uncategorized_lines: current.uncategorized,
+  suggestions_available: available,
+});
+const categorizeXyz = () => {
+  current = {
+    ...current,
+    uncategorized: 0,
+    lines: current.lines.map((l) =>
+      l.category_id ? l : { ...l, category_id: 7, category_path: "Shopping / Other Retail" },
+    ),
+  };
+};
 beforeEach(() => {
   current = batch();
   calls = [];
+  suggestion = null;
+  available = true;
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
@@ -102,6 +164,26 @@ beforeEach(() => {
           decided_at: "2026-10-20T16:00:00",
         };
         return json({ batch_id: 9, loaded: 3, skipped_duplicates: 1 });
+      }
+      if (url === "/api/batches/9/review") return json(batchReview());
+      if (url === "/api/categories") return json(CATEGORIES);
+      if (url === "/api/batches/9/resolve") {
+        categorizeXyz();
+        return json({ categorized: 1, rule_id: 31, also_by_rule: 0, waiting_by_rule: 2 });
+      }
+      if (url === "/api/batches/9/suggest") {
+        suggestion = {
+          category_id: 7,
+          category_path: "Shopping / Other Retail",
+          confidence: "0.9",
+          reason: "a store",
+          model: "claude-haiku-5-5",
+        };
+        return json({ asked: 1, suggested: 1, model: "claude-haiku-5-5" });
+      }
+      if (url === "/api/batches/9/accept-suggestions") {
+        categorizeXyz();
+        return json({ merchants: 1, lines: 1, also_by_rule: 0 });
       }
       if (url === "/api/batches/9/apply-rules") {
         const done = current.uncategorized;
@@ -267,6 +349,62 @@ describe("Import batch", () => {
     expect(
       await screen.findByText("No rule matches the lines that still need a category."),
     ).toBeInTheDocument();
+  });
+
+  it("categorizes a merchant on the statement page before approving", async () => {
+    renderAt("/import/batches/9");
+    const section = await screen.findByRole("region", { name: "Needs a category" });
+    expect(section).toHaveTextContent("1 line from 1 merchant");
+    const card = within(section).getByRole("listitem", { name: "NEW MERCHANT XYZ" });
+    pickCategory(
+      within(card).getByRole("combobox", { name: "Category for NEW MERCHANT XYZ" }),
+      "retail",
+      "Shopping / Other Retail",
+    );
+    fireEvent.click(within(card).getByRole("button", { name: "Categorize 1 line" }));
+    expect(
+      await within(section).findByText(
+        "NEW MERCHANT XYZ: 1 line → Shopping / Other Retail. Rule saved for next time and 2 in statements waiting for approval.",
+      ),
+    ).toBeInTheDocument();
+    expect(calls).toContain("POST /api/batches/9/resolve");
+    // Every line has a category now: the section goes and the header says so.
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Needs a category" })).toBeNull());
+    expect(screen.queryByText(/need a category/)).toBeNull();
+  });
+
+  it("asks Claude about this statement, then accepts the likely suggestion", async () => {
+    renderAt("/import/batches/9");
+    const section = await screen.findByRole("region", { name: "Needs a category" });
+    fireEvent.click(within(section).getByRole("button", { name: "Ask Claude about 1 merchants" }));
+    expect(
+      await within(section).findByText(/Claude suggested a category for 1 of 1 merchants/),
+    ).toBeInTheDocument();
+    expect(calls).toContain("POST /api/batches/9/suggest");
+    expect(await within(section).findByText(/Claude suggests/)).toHaveTextContent("(likely, 90%): a store");
+    fireEvent.click(within(section).getByRole("button", { name: "✓ Accept 1 likely suggestion" }));
+    await waitFor(() => expect(calls).toContain("POST /api/batches/9/accept-suggestions"));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Needs a category" })).toBeNull());
+  });
+
+  it("uses one suggestion with a click; says when Claude is off", async () => {
+    suggestion = {
+      category_id: 7,
+      category_path: "Shopping / Other Retail",
+      confidence: "0.6",
+      reason: "maybe a store",
+      model: "claude-haiku-5-5",
+    };
+    available = false;
+    renderAt("/import/batches/9");
+    const section = await screen.findByRole("region", { name: "Needs a category" });
+    expect(section).toHaveTextContent("Claude suggestions are off");
+    // 60% is not "likely": no accept-all, but the one-click button is there.
+    expect(within(section).queryByRole("button", { name: /likely suggestion/ })).toBeNull();
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Use Shopping / Other Retail for NEW MERCHANT XYZ" }),
+    );
+    await waitFor(() => expect(calls).toContain("POST /api/batches/9/resolve"));
   });
 
   it("explains a missing batch", async () => {

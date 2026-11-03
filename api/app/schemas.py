@@ -391,7 +391,7 @@ class SuggestionOut(BaseModel):
 
 
 class ReviewLineOut(BaseModel):
-    transaction_id: int
+    transaction_id: int  # on a statement's page (F23), the staged line's id
     txn_date: date
     amount: Decimal
     description: str
@@ -461,6 +461,12 @@ class ChangeOut(_Out):
     reason: str
     changed_by: str
     changed_at: datetime
+
+
+class AcceptedOut(BaseModel):
+    merchants: int  # suggestions accepted (each saved as a rule)
+    lines: int
+    also_by_rule: int  # more lines those rules categorized, loaded or waiting
 
 
 class SuggestOut(BaseModel):

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.ingestion.preview import category_paths
-from app.models import Account, Category, MerchantSuggestion, Transaction
+from app.models import Account, Category, MerchantSuggestion
 from app.services import classify
 
 log = logging.getLogger(__name__)
@@ -207,27 +207,27 @@ def parse_answer(
     return answers
 
 
-def suggest(db: Session, month: date | None = None) -> tuple[int, int]:
-    """Ask Claude about the uncategorized merchants that have no suggestion yet.
+def suggest(db: Session, month: date | None = None, batch_id: int | None = None) -> tuple[int, int]:
+    """Ask Claude about the uncategorized merchants that have no suggestion yet: a month's
+    loaded lines, or one statement waiting for approval (F23).
     Returns (merchants asked, suggestions stored)."""
     if not available():
         raise SuggestError("Suggestions are off: set ANTHROPIC_API_KEY on the server.", 503)
-    groups = [g for g in classify.review_groups(db, month) if g.suggestion is None]
-    groups = groups[:MAX_MERCHANTS]
+    found = (
+        classify.batch_groups(db, batch_id)
+        if batch_id is not None
+        else classify.review_groups(db, month)
+    )
+    groups = [g for g in found if g.suggestion is None][:MAX_MERCHANTS]
     if not groups:
         return 0, 0
 
     accounts = {a.account_id: a for a in db.scalars(select(Account))}
-    ids = [ln.transaction_id for g in groups for ln in g.lines]
-    rows = {
-        t.transaction_id: t
-        for t in db.scalars(select(Transaction).where(Transaction.transaction_id.in_(ids)))
-    }
     asked = []
     for g in groups:
         lines = []
         for ln in g.lines[:SAMPLES]:
-            account = accounts.get(rows[ln.transaction_id].account_id or -1)
+            account = accounts.get(ln.account_id or -1)
             lines.append(
                 {
                     "description": ln.description,

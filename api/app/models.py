@@ -746,6 +746,9 @@ class StgTransaction(Base):
     type: Mapped[str] = mapped_column(Unicode(12))
     category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
     rule_id: Mapped[int | None] = mapped_column(ForeignKey("core.merchant_rule.rule_id"))
+    # Set when a person chose the category on the statement's page (F23): "manual" or
+    # "suggestion". Otherwise approval derives it (rule or the statement's section).
+    category_source: Mapped[str | None] = mapped_column(Unicode(12))
     person: Mapped[str | None] = mapped_column(Unicode(10))
     country: Mapped[str | None] = mapped_column(Unicode(2))
     pay_reference: Mapped[str | None] = mapped_column(Unicode(100))

@@ -2,6 +2,7 @@
 suggestions, editing a line, splits and each line's change history."""
 
 from datetime import date
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -11,8 +12,9 @@ from sqlalchemy.orm import Session
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
-from app.models import Account, Transaction
+from app.models import Account, ImportBatch, Transaction
 from app.schemas import (
+    AcceptedOut,
     ChangeOut,
     ResolveIn,
     ResolveOut,
@@ -32,6 +34,8 @@ from app.services import suggest as suggestions
 router = APIRouter(prefix="/api", tags=["classification"])
 DB = Annotated[Session, Depends(get_session)]
 Month = Annotated[date | None, Query(description="Any day of the month; all months if left out")]
+# "Likely" or better, as the Review page labels confidence (ADR-006).
+HIGH = Decimal("0.8")
 
 
 def _user(request: Request) -> str:
@@ -98,8 +102,11 @@ def review(
         date | None, Query(description="Any day of the month; all months if left out")
     ] = None,
 ) -> ReviewOut:
+    return _review_out(db, classify.review_groups(db, month), month)
+
+
+def _review_out(db: Session, groups: list[classify.ReviewGroup], month: date | None) -> ReviewOut:
     paths = category_paths(db)
-    groups = classify.review_groups(db, month)
     return ReviewOut(
         month=month.replace(day=1) if month else None,
         groups=[
@@ -219,3 +226,88 @@ def remove_split(transaction_id: int, db: DB, request: Request) -> Response:
 @router.get("/transactions/{transaction_id}/history", response_model=list[ChangeOut])
 def transaction_history(transaction_id: int, db: DB) -> list[ChangeOut]:
     return [ChangeOut.model_validate(c) for c in classify.history(db, _row(db, transaction_id))]
+
+
+# ---------------- F23: accepting Claude's suggestions in one click ----------------
+MinConfidence = Annotated[
+    Decimal, Query(ge=0, le=1, description="Accept suggestions at least this sure (0 to 1)")
+]
+
+
+@router.post("/review/accept-suggestions", response_model=AcceptedOut)
+def accept_suggestions(
+    db: DB, request: Request, month: Month = None, min_confidence: MinConfidence = HIGH
+) -> AcceptedOut:
+    done = classify.accept_suggestions(
+        db, _user(request), min_confidence=min_confidence, month=month
+    )
+    return AcceptedOut(**vars(done))
+
+
+# ---------------- F23: categorizing a statement before it is approved ----------------
+def _waiting(db: Session, batch_id: int) -> ImportBatch:
+    batch = db.get(ImportBatch, batch_id)
+    if batch is None:
+        raise HTTPException(404, f"Import {batch_id} not found.")
+    return batch
+
+
+@router.get("/batches/{batch_id}/review", response_model=ReviewOut)
+def batch_review(batch_id: int, db: DB) -> ReviewOut:
+    """The statement's uncategorized lines grouped by merchant, like the Review page."""
+    _waiting(db, batch_id)
+    return _review_out(db, classify.batch_groups(db, batch_id), None)
+
+
+@router.post("/batches/{batch_id}/resolve", response_model=ResolveOut)
+def batch_resolve(batch_id: int, body: ResolveIn, db: DB, request: Request) -> ResolveOut:
+    try:
+        done = classify.resolve_staged(
+            db,
+            batch_id,
+            body.merchant_key,
+            body.category_id,
+            _user(request),
+            save_rule=body.save_rule,
+            pattern=body.pattern,
+            match_type=body.match_type,
+            amount_min=body.amount_min,
+            amount_max=body.amount_max,
+            from_suggestion=body.from_suggestion,
+        )
+    except classify.ClassifyError as exc:
+        db.rollback()
+        raise _fail(exc) from exc
+    return ResolveOut(
+        categorized=done.categorized,
+        rule_id=done.rule_id,
+        also_by_rule=done.also_by_rule,
+        waiting_by_rule=done.waiting_by_rule,
+    )
+
+
+@router.post("/batches/{batch_id}/suggest", response_model=SuggestOut)
+def batch_suggest(batch_id: int, db: DB) -> SuggestOut:
+    """Ask Claude about this statement's merchants that have no suggestion yet (ADR-006)."""
+    from app.config import get_settings
+
+    _waiting(db, batch_id)
+    try:
+        asked, stored = suggestions.suggest(db, batch_id=batch_id)
+    except suggestions.SuggestError as exc:
+        db.rollback()
+        raise HTTPException(exc.status, str(exc)) from exc
+    return SuggestOut(asked=asked, suggested=stored, model=get_settings().anthropic_model)
+
+
+@router.post("/batches/{batch_id}/accept-suggestions", response_model=AcceptedOut)
+def batch_accept_suggestions(
+    batch_id: int, db: DB, request: Request, min_confidence: MinConfidence = HIGH
+) -> AcceptedOut:
+    batch = _waiting(db, batch_id)
+    if batch.status != "preview":
+        raise HTTPException(409, f"This statement is already {batch.status}.")
+    done = classify.accept_suggestions(
+        db, _user(request), min_confidence=min_confidence, batch_id=batch_id
+    )
+    return AcceptedOut(**vars(done))

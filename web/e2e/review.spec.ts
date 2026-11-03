@@ -18,6 +18,19 @@ test("review: categorize a merchant once and save the rule", async ({ page }) =>
   const read = row.getByRole("button", { name: /Read lines/ });
   if (await read.isVisible()) {
     await read.click();
+    // F23: categorize one merchant on the statement's page, before approving (no rule, so the
+    // other specs keep their queue).
+    const needs = page.getByRole("region", { name: "Needs a category" });
+    await expect(needs).toBeVisible();
+    const card = needs.getByRole("listitem", { name: "TRANSFERENCIA INTERBANCARIA B.L." });
+    await card.getByRole("combobox", { name: /^Category for/ }).fill("not sure");
+    await card.getByRole("option", { name: /^Other Expenses/ }).click();
+    await card.getByLabel("Use for this merchant from now on (save a rule)").uncheck();
+    await card.getByRole("button", { name: /^Categorize/ }).click();
+    await expect(
+      needs.getByText(/TRANSFERENCIA INTERBANCARIA B\.L\.: \d+ lines? → Other Expenses\./),
+    ).toBeVisible();
+    await expect(card).toHaveCount(0);
     await page.getByRole("button", { name: "Approve import" }).click();
     await expect(page.getByText("Import approved.")).toBeVisible();
   } else if (await row.getByRole("link", { name: "Review" }).isVisible()) {
