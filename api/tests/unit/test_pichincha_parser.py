@@ -63,6 +63,19 @@ def test_installment_with_the_purchase_date() -> None:
     assert not pichincha._bought_within("31/02", date(2026, 7, 12), 6)
 
 
+def test_final_installment() -> None:
+    """April 2026 printed the last one as "DIFERIDO (FINAL)": counted as a charge, so TOTAL CONSUMOS
+    MES was 66.15 short. It's a purchase, and its old date may be up to the longest plan back."""
+    old = "20/06 3703738 TIENDA DE PRUEBA DIFERIDO CONSUMO 2/6 50,00 200,00"
+    pages = read_pages(pichincha_full())
+    for printed, when in (("20/06", date(2026, 6, 20)), ("11/04", date(2026, 7, 12))):
+        new = f"{printed} 3703738 TIENDA DE PRUEBA DIFERIDO (FINAL) 50,00 200,00"
+        p = pichincha.parse([page.replace(old, new) for page in pages])
+        assert p.tieout_ok and not p.rejects, [c for c in p.checks if not c.ok]
+        dif = next(ln for ln in p.lines if ln.description.startswith("TIENDA"))
+        assert (dif.txn_date, dif.reference, dif.section) == (when, "FINAL", "purchase")
+
+
 def test_wrong_card_subtotal_fails() -> None:
     p = pichincha.parse(read_pages(pichincha_full(subtotal_delta="1")))
     assert [c.name for c in p.checks if not c.ok] == ["Card •••• 6331 subtotal"]

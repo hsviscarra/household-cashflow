@@ -82,7 +82,8 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
 - **Installments with the purchase date (0.26.9):** from mid-2026 a deferred installment reads
   "05/01 … DIFERIDO (6/12) 71,04 426,24" (purchase date, installment, amount, deferred balance).
   It's dated on the cut-off and kept as a purchase with reference "6/12", when the purchase date
-  falls within the plan's months; otherwise it's rejected.
+  falls within the plan's months; otherwise it's rejected. The last installment reads "DIFERIDO (FINAL)"
+  (0.26.10): reference "FINAL", and its date may be up to 36 months back, the longest plan.
 
 ## Banco Pichincha (bank account, `pichincha`) — F19
 
