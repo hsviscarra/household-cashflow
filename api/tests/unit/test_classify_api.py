@@ -326,8 +326,10 @@ def test_suggestions_are_stored_shown_and_accepted(
 ) -> None:
     sent: list[Any] = []
 
-    def fake(asked: list[suggest.Asked], categories: list[str]) -> list[suggest.Answer]:
-        sent.append((asked, categories))
+    def fake(
+        asked: list[suggest.Asked], categories: list[str], descriptions: dict[str, str]
+    ) -> list[suggest.Answer]:
+        sent.append((asked, categories, descriptions))
         keys = {x.merchant_key for x in asked} | {"UNKNOWN"}
         return [a for a in ANSWERS if a.merchant_key in keys]
 
@@ -344,8 +346,8 @@ def test_suggestions_are_stored_shown_and_accepted(
     monkeypatch.setattr(suggest, "PER_CALL", 2)  # three merchants: two requests
     out = loaded.post("/api/review/suggest", params={"month": JUL}).json()
     assert (out["asked"], out["suggested"], out["model"]) == (3, 2, "claude-haiku-5-5")
-    assert [len(a) for a, _ in sent] == [2, 1]
-    asked, categories = sent[0]
+    assert [len(a) for a, _, _ in sent] == [2, 1]
+    asked, categories, descriptions = sent[0]
     # Only description, amount, date and the bank leave the server.
     assert set(asked[0].lines[0]) == {
         "description",
@@ -356,6 +358,9 @@ def test_suggestions_are_stored_shown_and_accepted(
         "card_or_account",
     }
     assert "Office Rent" in categories and "Groceries" not in categories  # leaves only
+    # Each offered category goes with its description (F23); groups with children aren't sent.
+    assert descriptions["Groceries / Supermarket"].startswith("Supermaxi")
+    assert set(descriptions) <= set(categories)
 
     r = loaded.get("/api/review", params={"month": JUL}).json()
     groups = {g["merchant_key"]: g for g in r["groups"]}
@@ -446,6 +451,13 @@ def test_call_claude_reads_the_structured_answer(
     assert item["category_id"]["enum"] == ["c1"] and item["merchant_id"]["enum"] == ["m1"]
     sent_payload = json.loads(calls[0]["messages"][0]["content"])
     assert sent_payload["categories"] == [{"id": "c1", "path": "Pets"}]
+    # With Hernan's descriptions (F23), each category carries its own.
+    calls.clear()
+    suggest.call_claude([suggest.Asked("A", [])], ["Pets", "Travel"], {"Pets": "Dogs and cats."})
+    assert json.loads(calls[0]["messages"][0]["content"])["categories"] == [
+        {"id": "c1", "path": "Pets", "description": "Dogs and cats."},
+        {"id": "c2", "path": "Travel"},
+    ]
     assert sent_payload["merchants"][0]["id"] == "m1"
     assert calls[0]["model"] == "claude-haiku-5-5"
     # Haiku thinks first and that counts toward max_tokens: low effort, room for the answer.

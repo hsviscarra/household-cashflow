@@ -39,7 +39,9 @@ SYSTEM = (
     "from 0 to 1 (how sure "
     "you are this merchant belongs there), and a reason of at most 15 words. Use a low confidence "
     "when the description is ambiguous (for example a bare bank transfer). Spanish descriptions "
-    "are common: TRANSFERENCIA = transfer, DEBITO = debit, PAGO = payment, CONSUMO = purchase."
+    "are common: TRANSFERENCIA = transfer, DEBITO = debit, PAGO = payment, CONSUMO = purchase. "
+    "A category's description, when given, is the family's own rule for what belongs there: "
+    "follow it over your general sense of the word."
 )
 
 
@@ -94,8 +96,11 @@ def _schema(category_ids: list[str], merchant_ids: list[str]) -> dict[str, Any]:
     }
 
 
-def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
-    """One Messages API call with a JSON-schema answer. Replaced in tests."""
+def call_claude(
+    asked: list[Asked], categories: list[str], descriptions: dict[str, str] | None = None
+) -> list[Answer]:
+    """One Messages API call with a JSON-schema answer. Replaced in tests. `descriptions` (by
+    path) say what goes in each category, as Hernan wrote them (F23)."""
     import anthropic
 
     settings = get_settings()
@@ -103,7 +108,11 @@ def call_claude(asked: list[Asked], categories: list[str]) -> list[Answer]:
     merchant_ids = {f"m{i}": a.merchant_key for i, a in enumerate(asked, start=1)}
     category_ids = {f"c{i}": path for i, path in enumerate(categories, start=1)}
     payload = {
-        "categories": [{"id": cid, "path": path} for cid, path in category_ids.items()],
+        "categories": [
+            {"id": cid, "path": path}
+            | ({"description": descriptions[path]} if descriptions and path in descriptions else {})
+            for cid, path in category_ids.items()
+        ],
         "merchants": [
             {"id": mid, "lines": a.lines} for mid, a in zip(merchant_ids, asked, strict=True)
         ],
@@ -236,11 +245,16 @@ def suggest(db: Session, month: date | None = None) -> tuple[int, int]:
     # Groups only (no subcategories) are offered when they have no children.
     parents = {c.parent_id for c in db.scalars(select(Category)) if c.parent_id is not None}
     offered = sorted(p for cid, p in paths.items() if cid not in parents)
+    notes = {
+        paths[c.category_id]: c.description
+        for c in db.scalars(select(Category))
+        if c.description and c.category_id not in parents
+    }
 
     answers = [
         a
         for i in range(0, len(asked), PER_CALL)
-        for a in call_claude(asked[i : i + PER_CALL], offered)
+        for a in call_claude(asked[i : i + PER_CALL], offered, notes)
     ]
     keys = {a.merchant_key for a in asked}
     model = get_settings().anthropic_model

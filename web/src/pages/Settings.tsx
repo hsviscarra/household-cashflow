@@ -23,7 +23,7 @@ import {
   type Rule,
   type RuleInput,
 } from "../api";
-import { categoryOptions } from "../categories";
+import CategoryPicker from "../components/CategoryPicker";
 import { money } from "../money";
 
 const TABS = [
@@ -561,11 +561,16 @@ function CategoryLine(props: { category: Category; heading?: boolean; onEdit: ()
   const c = props.category;
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
-        {props.heading && <Swatch color={c.color} />}
-        <span className={props.heading ? "text-lg font-semibold" : ""}>{c.name}</span>
-        {c.is_fixed && <span className="pill bg-info-bg text-ink">Fixed</span>}
-        {!c.is_active && <span className="pill pill-muted">Hidden</span>}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          {props.heading && <Swatch color={c.color} />}
+          <span className={props.heading ? "text-lg font-semibold" : ""}>{c.name}</span>
+          {c.is_fixed && <span className="pill bg-info-bg text-ink">Fixed</span>}
+          {!c.is_active && <span className="pill pill-muted">Hidden</span>}
+        </div>
+        <p className={`text-sm ${c.description ? "text-muted" : "italic text-muted"}`}>
+          {c.description || "No description yet: Edit to say what goes here."}
+        </p>
       </div>
       <button className="btn btn-quiet" onClick={props.onEdit} aria-label={`Edit ${c.name}`}>
         Edit
@@ -586,6 +591,7 @@ function CategoryForm(props: {
   const [color, setColor] = useState(c.color ?? "#6B6788");
   const [fixed, setFixed] = useState(c.is_fixed);
   const [active, setActive] = useState(c.is_active);
+  const [about, setAbout] = useState(c.description ?? "");
   return (
     <form
       className="flex flex-wrap items-end gap-3"
@@ -595,6 +601,7 @@ function CategoryForm(props: {
           name: name.trim(),
           is_fixed: fixed,
           is_active: active,
+          description: about.trim() || null,
           ...(props.withColor ? { color: color.toUpperCase() } : {}),
         });
       }}
@@ -607,6 +614,17 @@ function CategoryForm(props: {
           maxLength={100}
           value={name}
           onChange={(e) => setName(e.target.value)}
+        />
+      </label>
+      <label className="w-full">
+        <span className="label">What goes here</span>
+        <textarea
+          className="field h-auto min-h-20 py-2"
+          maxLength={400}
+          rows={2}
+          placeholder="Shown when choosing a category, and Claude reads it when suggesting one."
+          value={about}
+          onChange={(e) => setAbout(e.target.value)}
         />
       </label>
       {props.withColor && (
@@ -666,7 +684,6 @@ function RulesTab({ notify }: { notify: Notify }) {
   const remove = useSave(deleteRule, [["rules"]], notify);
 
   if (!rules.data || !cats.data) return <Loading what="merchant rules" error={rules.error ?? cats.error} />;
-  const options = categoryOptions(cats.data);
   const q = filter.trim().toUpperCase();
   const shown = q
     ? rules.data.filter(
@@ -693,7 +710,6 @@ function RulesTab({ notify }: { notify: Notify }) {
       {adding && (
         <Panel>
           <RuleForm
-            options={options}
             busy={create.isPending}
             onCancel={() => setAdding(false)}
             onSubmit={(body) =>
@@ -786,18 +802,14 @@ function RulesTab({ notify }: { notify: Notify }) {
   );
 }
 
-function RuleForm(props: {
-  options: { id: number; label: string }[];
-  busy: boolean;
-  onCancel: () => void;
-  onSubmit: (b: RuleInput) => void;
-}) {
+function RuleForm(props: { busy: boolean; onCancel: () => void; onSubmit: (b: RuleInput) => void }) {
   const [pattern, setPattern] = useState("");
   const [matchType, setMatchType] = useState<MatchType>("contains");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [priority, setPriority] = useState(50);
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
+  const groups = useQuery({ queryKey: ["categories"], queryFn: fetchCategories }).data ?? [];
   return (
     <form
       className="grid gap-4 md:grid-cols-4"
@@ -849,22 +861,15 @@ function RuleForm(props: {
           onChange={(e) => setPriority(Number(e.target.value))}
         />
       </label>
-      <label className="md:col-span-2">
-        <span className="label">Category</span>
-        <select
-          className="field"
-          required
+      <div className="md:col-span-2">
+        <CategoryPicker
+          label="Category"
           value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : "")}
-        >
-          <option value="">Choose a category</option>
-          {props.options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={setCategoryId}
+          groups={groups}
+          required
+        />
+      </div>
       <label>
         <span className="label">Only amounts from (optional)</span>
         <input

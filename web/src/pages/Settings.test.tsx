@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Account, CategoryGroup, Rule } from "../api";
 import Settings from "./Settings";
+import { pickCategory } from "../test/pick";
 
 // Small in-memory stand-in for the F1 API, so the page is tested against real request shapes.
 type Db = { accounts: Account[]; categories: CategoryGroup[]; rules: Rule[] };
@@ -45,6 +46,7 @@ function seed(): Db {
             is_fixed: false,
             is_active: true,
             sort_order: 0,
+            description: "Ready meals delivered: Uber Eats.",
           },
         ],
       },
@@ -115,6 +117,13 @@ function fakeFetch(input: string, init?: RequestInit) {
     if (parent) parent.children.push(c);
     else db.categories.push({ ...c, children: [] });
     return json(c, 201);
+  }
+  const one = path.match(/^\/api\/categories\/(\d+)$/);
+  if (one && method === "PATCH") {
+    const all = db.categories.flatMap((g) => [g, ...g.children]);
+    const c = all.find((x) => x.category_id === Number(one[1]))!;
+    Object.assign(c, body);
+    return json(c);
   }
   if (path === "/api/merchant-rules" && method === "GET") return json(db.rules);
   if (path === "/api/merchant-rules/test") {
@@ -233,6 +242,23 @@ describe("Settings: categories", () => {
   });
 });
 
+describe("Settings: category descriptions", () => {
+  it("shows what goes in each category and edits it", async () => {
+    renderSettings("categories");
+    expect(await screen.findByText("Ready meals delivered: Uber Eats.")).toBeInTheDocument();
+    expect(screen.getAllByText("No description yet: Edit to say what goes here.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Food Delivery" }));
+    const about = screen.getByLabelText("What goes here");
+    expect(about).toHaveValue("Ready meals delivered: Uber Eats.");
+    fireEvent.change(about, { target: { value: "  Delivered meals, not groceries.  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save category" }));
+    expect(await screen.findByText("Category saved: Food Delivery.")).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "PATCH")?.body as Record<string, unknown>;
+    expect(sent.description).toBe("Delivered meals, not groceries.");
+    expect(await screen.findByText("Delivered meals, not groceries.")).toBeInTheDocument();
+  });
+});
+
 describe("Settings: merchant rules", () => {
   it("tests a description against the rules", async () => {
     renderSettings("rules");
@@ -252,7 +278,7 @@ describe("Settings: merchant rules", () => {
     fireEvent.change(screen.getByLabelText("Pattern in the statement description"), {
       target: { value: " KENILITY " },
     });
-    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "20" } });
+    pickCategory(screen.getByRole("combobox", { name: "Category" }), "salary", "Salary");
     fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
     expect(
       await screen.findByText(

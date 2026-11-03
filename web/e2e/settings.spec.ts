@@ -15,6 +15,8 @@ test("categories are grouped by what they count as", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Expenses" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Income" })).toBeVisible();
   await expect(page.getByText("Food Delivery")).toBeVisible();
+  // Seeded by migration 0023 (F23): every category says what goes in it.
+  await expect(page.getByText(/^Ready meals delivered: Uber Eats/)).toBeVisible();
 });
 
 test("a new merchant rule categorizes a description, then is removed", async ({ page }, testInfo) => {
@@ -30,7 +32,10 @@ test("a new merchant rule categorizes a description, then is removed", async ({ 
 
   await page.getByRole("button", { name: "Add rule" }).click();
   await page.getByLabel("Pattern in the statement description").fill(pattern);
-  await page.getByLabel("Category").selectOption({ label: "Travel" });
+  const category = page.getByRole("combobox", { name: "Category" });
+  await category.fill("trips"); // found by its description
+  await page.getByRole("option", { name: /^Travel/ }).click();
+  await expect(category).toHaveValue("Travel");
   await page.getByLabel("Priority (lower runs first)").fill("5");
   await page.getByRole("button", { name: "Add rule" }).click();
   await expect(page.getByText(`Rule added: ${pattern} → Travel.`)).toBeVisible();

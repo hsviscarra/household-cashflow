@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GridCell, GridRow, RecurringEntry, RecurringGrid, RecurringTemplate, Txn } from "../api";
 import RecurringPage, { cellValue, totals } from "./Recurring";
+import { pickCategory } from "../test/pick";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}-01`);
 const cell = (i: number, over: Partial<GridCell> = {}): GridCell => ({
@@ -315,7 +316,7 @@ describe("Recurring page", () => {
     const form = screen.getByRole("form", { name: "New template" });
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: " Phone " } });
     fireEvent.change(within(form).getByLabelText("Amount each month"), { target: { value: "27.12" } });
-    fireEvent.change(await within(form).findByLabelText("Category"), { target: { value: "3" } });
+    pickCategory(await within(form).findByRole("combobox", { name: "Category" }), "hous", "Housing");
     fireEvent.change(within(form).getByLabelText("Account (optional)"), { target: { value: "5" } });
     fireEvent.change(within(form).getByLabelText("Description contains (optional)"), {
       target: { value: "CONECEL" },

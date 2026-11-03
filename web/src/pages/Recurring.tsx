@@ -26,11 +26,10 @@ import {
   type TemplateType,
   type Txn,
 } from "../api";
-import { categoryOptions } from "../categories";
+import CategoryPicker from "../components/CategoryPicker";
 import { localToday, money, monthLong, monthName, monthShort, num, showAmount } from "../money";
 
 type Notify = (message: string, tone?: "good" | "bad") => void;
-type Option = { id: number; label: string };
 type Selected =
   { kind: "cell"; template: number; month: string } | { kind: "template"; template: number } | null;
 
@@ -79,7 +78,7 @@ export default function RecurringPage() {
   const now = thisMonth();
   const year = Number(params.get("year")) || Number(now.slice(0, 4));
   const grid = useQuery({ queryKey: ["recurring", "grid", year], queryFn: () => fetchRecurringGrid(year) });
-  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  useQuery({ queryKey: ["categories"], queryFn: fetchCategories }); // ready for the forms
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const templates = useQuery({ queryKey: ["recurring", "templates"], queryFn: fetchTemplates });
   const [selected, setSelected] = useState<Selected>(null);
@@ -112,7 +111,6 @@ export default function RecurringPage() {
     onError: (e: Error) => notify(e.message, "bad"),
   });
 
-  const options = cats.data ? categoryOptions(cats.data) : [];
   const rows = grid.data?.rows ?? [];
   const income = rows.filter((r) => isIncome(r.type));
   const expenses = rows.filter((r) => !isIncome(r.type));
@@ -200,7 +198,6 @@ export default function RecurringPage() {
       {panel === "copy" && <CopyForm month={month} onDone={() => setPanel(null)} notify={notify} />}
       {panel === "new" && (
         <TemplateForm
-          options={options}
           accounts={accounts.data ?? []}
           month={month}
           onDone={() => setPanel(null)}
@@ -282,7 +279,6 @@ export default function RecurringPage() {
         <TemplateEditor
           key={selTemplate.template_id}
           t={selTemplate}
-          options={options}
           accounts={accounts.data ?? []}
           notify={notify}
           onClose={() => setSelected(null)}
@@ -712,32 +708,22 @@ type Account = { account_id: number; name: string };
 function TemplateFields({
   value,
   set,
-  options,
   accounts,
 }: {
   value: Record<string, string>;
   set: (k: string, v: string) => void;
-  options: Option[];
   accounts: Account[];
 }) {
+  const groups = useQuery({ queryKey: ["categories"], queryFn: fetchCategories }).data ?? [];
   return (
     <>
-      <label>
-        <span className="label">Category</span>
-        <select
-          className="field"
-          required
-          value={value.category_id}
-          onChange={(e) => set("category_id", e.target.value)}
-        >
-          <option value="">Choose a category</option>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <CategoryPicker
+        label="Category"
+        value={value.category_id ? Number(value.category_id) : ""}
+        onChange={(id) => set("category_id", id === "" ? "" : String(id))}
+        groups={groups}
+        required
+      />
       <label>
         <span className="label">Counts as</span>
         <select className="field" value={value.type} onChange={(e) => set("type", e.target.value)}>
@@ -789,13 +775,11 @@ function TemplateFields({
 }
 
 function TemplateForm({
-  options,
   accounts,
   month,
   onDone,
   notify,
 }: {
-  options: Option[];
   accounts: Account[];
   month: string;
   onDone: () => void;
@@ -874,7 +858,7 @@ function TemplateForm({
           onChange={(e) => set("start_month", e.target.value)}
         />
       </label>
-      <TemplateFields value={v} set={set} options={options} accounts={accounts} />
+      <TemplateFields value={v} set={set} accounts={accounts} />
       <div className="flex gap-2 md:col-span-4">
         <button
           className="btn btn-secondary"
@@ -892,13 +876,11 @@ function TemplateForm({
 
 function TemplateEditor({
   t,
-  options,
   accounts,
   notify,
   onClose,
 }: {
   t: RecurringTemplate;
-  options: Option[];
   accounts: Account[];
   notify: Notify;
   onClose: () => void;
@@ -983,7 +965,7 @@ function TemplateEditor({
           />
         </label>
         <div />
-        <TemplateFields value={v} set={set} options={options} accounts={accounts} />
+        <TemplateFields value={v} set={set} accounts={accounts} />
         <div className="flex flex-wrap gap-2 md:col-span-4">
           <button className="btn btn-secondary" disabled={save.isPending}>
             Save {t.name}
