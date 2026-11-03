@@ -11,8 +11,10 @@ import {
   suggestCategories,
   type MatchType,
   type ReviewGroup,
+  type CategoryGroup,
 } from "../api";
 import { categoryOptions } from "../categories";
+import CategoryPicker from "../components/CategoryPicker";
 import { money, monthLong, num, showAmount } from "../money";
 
 type Option = { id: number; label: string };
@@ -131,6 +133,7 @@ export default function ReviewPage() {
                   key={g.merchant_key}
                   group={g}
                   options={categoryOptions(cats.data)}
+                  groups={cats.data}
                   notify={notify}
                 />
               ))}
@@ -214,7 +217,17 @@ function UnmatchedTransfers({
   );
 }
 
-function GroupCard({ group, options, notify }: { group: ReviewGroup; options: Option[]; notify: Notify }) {
+function GroupCard({
+  group,
+  options,
+  groups,
+  notify,
+}: {
+  group: ReviewGroup;
+  options: Option[];
+  groups: CategoryGroup[];
+  notify: Notify;
+}) {
   const qc = useQueryClient();
   const s = group.suggestion;
   const [categoryId, setCategoryId] = useState<number | "">(s?.category_id ?? "");
@@ -299,22 +312,13 @@ function GroupCard({ group, options, notify }: { group: ReviewGroup; options: Op
           });
         }}
       >
-        <label>
-          <span className="label">Category for {group.merchant_key}</span>
-          <select
-            className="field"
-            required
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : "")}
-          >
-            <option value="">Choose a category</option>
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CategoryPicker
+          label={`Category for ${group.merchant_key}`}
+          value={categoryId}
+          onChange={setCategoryId}
+          groups={groups}
+          required
+        />
         <button type="submit" className="btn btn-secondary" disabled={save.isPending || categoryId === ""}>
           {save.isPending ? "Saving…" : `Categorize ${n} ${n === 1 ? "line" : "lines"}`}
         </button>

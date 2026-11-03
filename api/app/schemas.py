@@ -61,6 +61,7 @@ class CategoryIn(BaseModel):
     kind: CategoryKind | None = None  # required for a group; a subcategory takes its parent's
     color: str | None = Field(default=None, pattern=HEX_COLOR)
     is_fixed: bool = False
+    description: str | None = Field(default=None, max_length=400)
 
 
 class CategoryPatch(BaseModel):
@@ -69,6 +70,7 @@ class CategoryPatch(BaseModel):
     is_fixed: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = None
+    description: str | None = Field(default=None, max_length=400)
 
 
 class CategoryOut(_Out):
@@ -80,6 +82,11 @@ class CategoryOut(_Out):
     is_fixed: bool
     is_active: bool
     sort_order: int
+    description: str | None = None
+    # How often it's used: loaded lines in it and rules pointing at it (the picker lists the
+    # most-used first; Settings shows them). Only filled by the categories list.
+    lines: int = 0
+    rules: int = 0
 
 
 class CategoryGroup(CategoryOut):

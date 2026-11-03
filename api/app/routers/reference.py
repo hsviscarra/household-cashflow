@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -73,13 +73,31 @@ def update_account(account_id: int, body: AccountPatch, db: DB) -> Account:
 @router.get("/categories", response_model=list[CategoryGroup])
 def list_categories(db: DB) -> list[CategoryGroup]:
     rows = list(db.scalars(select(Category).order_by(Category.sort_order, Category.name)))
-    groups = [r for r in rows if r.parent_id is None]
+    lines = dict(
+        db.execute(
+            select(Transaction.category_id, func.count())
+            .where(Transaction.category_id.is_not(None))
+            .group_by(Transaction.category_id)
+        ).all()
+    )
+    rules = dict(
+        db.execute(
+            select(MerchantRule.category_id, func.count()).group_by(MerchantRule.category_id)
+        ).all()
+    )
+
+    def out(c: Category) -> CategoryOut:
+        return CategoryOut.model_validate(c).model_copy(
+            update={"lines": lines.get(c.category_id, 0), "rules": rules.get(c.category_id, 0)}
+        )
+
     return [
         CategoryGroup(
-            **CategoryOut.model_validate(g).model_dump(),
-            children=[CategoryOut.model_validate(c) for c in rows if c.parent_id == g.category_id],
+            **out(g).model_dump(),
+            children=[out(c) for c in rows if c.parent_id == g.category_id],
         )
-        for g in groups
+        for g in rows
+        if g.parent_id is None
     ]
 
 
@@ -107,6 +125,7 @@ def create_category(body: CategoryIn, db: DB) -> Category:
         color=body.color,
         is_fixed=body.is_fixed,
         sort_order=order,
+        description=body.description,
     )
     db.add(category)
     _commit(db, f"{body.name!r} already exists there.")

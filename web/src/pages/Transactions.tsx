@@ -12,10 +12,8 @@ import {
   updateTransaction,
   type Txn,
 } from "../api";
-import { categoryOptions } from "../categories";
+import CategoryPicker from "../components/CategoryPicker";
 import { money, monthLong, num, showAmount } from "../money";
-
-type Option = { id: number; label: string };
 
 const SOURCE_LABEL: Record<string, string> = {
   statement: "Statement",
@@ -50,9 +48,8 @@ export default function TransactionsPage() {
     queryKey: ["transactions", month],
     queryFn: () => fetchTransactions(`${month}-01`),
   });
-  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  useQuery({ queryKey: ["categories"], queryFn: fetchCategories }); // ready for the editors
   const [open, setOpen] = useState<number | null>(null);
-  const options = cats.data ? categoryOptions(cats.data) : [];
 
   const out = (data ?? []).filter((t) => counted(t) && num(t.amount) < 0 && t.type !== "transfer");
   const totalOut = out.reduce((s, t) => s - num(t.amount), 0);
@@ -137,7 +134,7 @@ export default function TransactionsPage() {
               <EditToggle t={t} open={open} setOpen={setOpen} />
               {open === t.transaction_id && (
                 <div className="mt-3">
-                  <TxnEditor t={t} options={options} onDone={() => setOpen(null)} />
+                  <TxnEditor t={t} onDone={() => setOpen(null)} />
                 </div>
               )}
             </li>
@@ -200,7 +197,7 @@ export default function TransactionsPage() {
                   {open === t.transaction_id && (
                     <tr>
                       <td colSpan={7} className="bg-surface px-4 py-4">
-                        <TxnEditor t={t} options={options} onDone={() => setOpen(null)} />
+                        <TxnEditor t={t} onDone={() => setOpen(null)} />
                       </td>
                     </tr>
                   )}
@@ -303,8 +300,9 @@ function useInvalidate() {
     );
 }
 
-function TxnEditor({ t, options, onDone }: { t: Txn; options: Option[]; onDone: () => void }) {
+function TxnEditor({ t, onDone }: { t: Txn; onDone: () => void }) {
   const invalidate = useInvalidate();
+  const groups = useQuery({ queryKey: ["categories"], queryFn: fetchCategories }).data ?? [];
   const [categoryId, setCategoryId] = useState<number | "">(t.category_id ?? "");
   const [notes, setNotes] = useState(t.notes ?? "");
   const [message, setMessage] = useState<{ text: string; undo?: () => void; bad?: boolean } | null>(null);
@@ -350,21 +348,7 @@ function TxnEditor({ t, options, onDone }: { t: Txn; options: Option[]; onDone: 
             });
           }}
         >
-          <label>
-            <span className="label">Category</span>
-            <select
-              className="field"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : "")}
-            >
-              <option value="">Choose a category</option>
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CategoryPicker label="Category" value={categoryId} onChange={setCategoryId} groups={groups} />
           <label>
             <span className="label">Note</span>
             <input
@@ -393,7 +377,7 @@ function TxnEditor({ t, options, onDone }: { t: Txn; options: Option[]; onDone: 
       </div>
 
       <UnlinkTransfer t={t} />
-      {!t.parent_transaction_id && !t.transfer_group_id && <SplitEditor t={t} options={options} />}
+      {!t.parent_transaction_id && !t.transfer_group_id && <SplitEditor t={t} />}
 
       <details>
         <summary className="cursor-pointer text-sm text-primary">History of this line</summary>
@@ -418,8 +402,9 @@ function TxnEditor({ t, options, onDone }: { t: Txn; options: Option[]; onDone: 
 
 type PartRow = { amount: string; categoryId: number | "" };
 
-function SplitEditor({ t, options }: { t: Txn; options: Option[] }) {
+function SplitEditor({ t }: { t: Txn }) {
   const invalidate = useInvalidate();
+  const groups = useQuery({ queryKey: ["categories"], queryFn: fetchCategories }).data ?? [];
   const size = Math.abs(num(t.amount));
   const sign = num(t.amount) < 0 ? -1 : 1;
   const [rows, setRows] = useState<PartRow[] | null>(null);
@@ -508,21 +493,12 @@ function SplitEditor({ t, options }: { t: Txn; options: Option[] }) {
               onChange={(e) => set(i, { amount: e.target.value })}
             />
           </label>
-          <label>
-            <span className="label">Category of part {i + 1}</span>
-            <select
-              className="field"
-              value={r.categoryId}
-              onChange={(e) => set(i, { categoryId: e.target.value ? Number(e.target.value) : "" })}
-            >
-              <option value="">Choose a category</option>
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CategoryPicker
+            label={`Category of part ${i + 1}`}
+            value={r.categoryId}
+            onChange={(id) => set(i, { categoryId: id })}
+            groups={groups}
+          />
           <button
             type="button"
             className="btn btn-quiet h-11 px-3"

@@ -79,6 +79,9 @@ export type Category = {
   is_fixed: boolean;
   is_active: boolean;
   sort_order: number;
+  description?: string | null; // what goes here (F23)
+  lines?: number; // loaded lines in it
+  rules?: number; // merchant rules pointing at it
 };
 export type CategoryGroup = Category & { children: Category[] };
 
@@ -108,10 +111,11 @@ export const createCategory = (c: {
   parent_id?: number | null;
   kind?: CategoryKind;
   color?: string | null;
+  description?: string | null;
 }) => send<Category>("POST", "/api/categories", c);
 export const updateCategory = (
   id: number,
-  c: Partial<Pick<Category, "name" | "color" | "is_fixed" | "is_active">>,
+  c: Partial<Pick<Category, "name" | "color" | "is_fixed" | "is_active" | "description">>,
 ) => send<Category>("PATCH", `/api/categories/${id}`, c);
 
 export const fetchRules = () => send<Rule[]>("GET", "/api/merchant-rules");

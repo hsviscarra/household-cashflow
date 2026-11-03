@@ -128,6 +128,8 @@ class Category(Timestamps, Base):
     kind: Mapped[str] = mapped_column(Unicode(10))
     # Hex color for charts and chips; subcategories inherit their group's color when null.
     color: Mapped[str | None] = mapped_column(Unicode(7))
+    # What goes here (F23): shown in the category picker and sent with Claude's suggestions.
+    description: Mapped[str | None] = mapped_column(Unicode(400))
     is_fixed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")

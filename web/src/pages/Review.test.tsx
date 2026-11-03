@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Review, Txn } from "../api";
 import ReviewPage, { confidenceLabel } from "./Review";
+import { pickCategory } from "../test/pick";
 import TransactionsPage from "./Transactions";
 
 const CATEGORIES = [
@@ -239,7 +240,7 @@ describe("Review", () => {
     const rent = within(list).getByRole("listitem", { name: "TRANSFERENCIA CTAS TERCEROS BCA ENL" });
     expect(rent).toHaveTextContent("Claude suggests Office Rent (likely, 85%)");
     // The suggestion is preselected; saving keeps the rule checkbox on.
-    expect(within(rent).getByLabelText(/^Category for/)).toHaveValue("1");
+    expect(within(rent).getByRole("combobox", { name: /^Category for/ })).toHaveValue("Office Rent");
     fireEvent.click(within(rent).getByRole("button", { name: "Categorize 1 line" }));
     expect(
       await screen.findByText(
@@ -254,7 +255,11 @@ describe("Review", () => {
   it("sets a rule's pattern and amount range", async () => {
     renderAt("/review?month=2026-07");
     const visa = await screen.findByRole("listitem", { name: "DEBITO VISA" });
-    fireEvent.change(within(visa).getByLabelText(/^Category for/), { target: { value: "3" } });
+    pickCategory(
+      within(visa).getByRole("combobox", { name: /^Category for/ }),
+      "super",
+      "Groceries / Supermarket",
+    );
     fireEvent.click(within(visa).getByRole("button", { name: "Rule details" }));
     fireEvent.change(within(visa).getByLabelText("Up to"), { target: { value: "50" } });
     fireEvent.change(within(visa).getByLabelText("Match"), { target: { value: "starts_with" } });
@@ -314,7 +319,11 @@ describe("Transactions editing", () => {
     const table = screen.getByRole("table", { name: "Transactions in July 2026" });
     expect(within(table).getByText("· by rule")).toBeInTheDocument();
     fireEvent.click(within(table).getByRole("button", { name: /Edit DEBITO VISA/ }));
-    fireEvent.change(await within(table).findByLabelText("Category"), { target: { value: "3" } });
+    pickCategory(
+      await within(table).findByRole("combobox", { name: "Category" }),
+      "super",
+      "Groceries / Supermarket",
+    );
     fireEvent.click(within(table).getByRole("button", { name: "Save" }));
     expect(await within(table).findByText("Saved: Groceries / Supermarket.")).toBeInTheDocument();
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ category_id: 3 });
@@ -343,7 +352,7 @@ describe("Transactions editing", () => {
     expect(within(form).getByText("30.00 left to assign")).toBeInTheDocument();
     expect(save).toBeDisabled();
     fireEvent.change(within(form).getByLabelText("Part 2"), { target: { value: "30" } });
-    fireEvent.change(within(form).getByLabelText("Category of part 2"), { target: { value: "1" } });
+    pickCategory(within(form).getByRole("combobox", { name: "Category of part 2" }), "rent", "Office Rent");
     expect(within(form).getByText("Fully assigned")).toBeInTheDocument();
     fireEvent.click(save);
     expect(await within(table).findByText("Split into 2")).toBeInTheDocument();

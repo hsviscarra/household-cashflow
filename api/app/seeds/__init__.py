@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from sqlalchemy import Connection, Table, delete, func, insert, select
+from sqlalchemy import Connection, Table, delete, func, insert, select, update
 
-from app.seeds import v1, v2, v3, v4
+from app.seeds import v1, v2, v3, v4, v5
 
 
 def load_v1(
@@ -172,3 +172,19 @@ def unload_v4(conn: Connection, merchant_rule: Table) -> None:
             (merchant_rule.c.amount_min.is_not(None)) | (merchant_rule.c.amount_max.is_not(None)),
         )
     )
+
+
+def load_v5(conn: Connection, category: Table) -> int:
+    """Describe the seeded categories that have no description yet. Returns how many."""
+    ids = _category_ids(conn, category)
+    count = 0
+    for path, text in v5.DESCRIPTIONS.items():
+        if path not in ids:  # renamed or removed in the app: left for Hernan
+            continue
+        done = conn.execute(
+            update(category)
+            .where(category.c.category_id == ids[path], category.c.description.is_(None))
+            .values(description=text)
+        )
+        count += done.rowcount or 0
+    return count

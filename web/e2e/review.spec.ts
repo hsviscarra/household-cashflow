@@ -32,7 +32,8 @@ test("review: categorize a merchant once and save the rule", async ({ page }) =>
   await expect(page.getByText(/(need a category|Every line has a category) in July 2026\./)).toBeVisible();
   const visa = page.getByRole("listitem", { name: "DEBITO VISA" });
   if (await visa.isVisible()) {
-    await visa.getByLabel("Category for DEBITO VISA").selectOption({ label: "Groceries / Supermarket" });
+    await visa.getByRole("combobox", { name: "Category for DEBITO VISA" }).fill("supermarket");
+    await visa.getByRole("option", { name: /^Groceries \/ Supermarket/ }).click();
     await visa.getByRole("button", { name: /Categorize 1 line/ }).click();
     await expect(page.getByText(/DEBITO VISA: 1 line → Groceries \/ Supermarket\. Rule saved/)).toBeVisible();
     await expect(visa).toHaveCount(0);

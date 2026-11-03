@@ -5,6 +5,25 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.27.0] — F23 Finding and creating categories
+
+### Added
+- **Category picker** on Review, Transactions (edit and split), Settings → Merchant rules and
+  Recurring, in place of the long dropdown. Type to search groups, subcategories and their
+  descriptions, ignoring accents ("cafe", "taxi", "alicuota"). The five most used come first;
+  arrows and Enter work.
+- **What goes in each category:** every category has a description, shown under the highlighted
+  option and under the field once chosen. Claude drafted them from the merchants your rules
+  already map; edit any of them in Settings → Categories.
+- **Create a subcategory without leaving the page:** "+ Create … as a subcategory" in the picker,
+  with its group preset. "No group fits? Create a group…" is one deliberate step further.
+- Claude's category suggestions read the descriptions, so they follow your own definitions.
+- `GET /api/categories` returns how many loaded lines and rules use each category.
+
+### Migration
+- 0023 adds `core.category.description` and fills the seeded categories' descriptions (only
+  where empty). Downgrade drops the column.
+
 ## [0.26.11] — Rules reach statements waiting for approval
 
 ### Fixes
