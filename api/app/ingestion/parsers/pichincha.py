@@ -21,7 +21,9 @@ NAME = "pichincha"
 NUM = r"[\d.,]+[.,]\d{2}-?"
 
 PERIOD = re.compile(r"(\d{2}/\d{2}/\d{4}) (\d{2}/\d{2}/\d{4})")
-SUMMARY = re.compile(rf"^MOVIMIENTO ({NUM}) ({NUM}) ({NUM}) ({NUM})$")
+# "MOVIMIENTO 527.69 1,057.81- …" (2026 from July) or "MOVIMIENTOS 44,59 70,00- 25,41 0,00"
+# (earlier months, Ecuadorian amounts).
+SUMMARY = re.compile(rf"^MOVIMIENTOS? ({NUM}) ({NUM}) ({NUM}) ({NUM})$")
 CARD = re.compile(r"^(?P<name>[A-ZÁÉÍÓÚÑ ]+?) \d{4}-x{4}-x{4}-(?P<card>\d{4})\b", re.IGNORECASE)
 LINE = re.compile(
     rf"^(?P<d>\d{{2}}/\d{{2}}) (?:(?P<ref>\d{{3,}}) )?(?P<desc>.+?) "

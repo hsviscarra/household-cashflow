@@ -193,3 +193,23 @@ def test_tesseract_timeouts_are_errors_not_crashes(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(subprocess, "run", failed)
     with pytest.raises(ocr.OcrError, match="exit code 1"):
         ocr._tesseract(image)
+
+
+def test_tesseract_runs_with_one_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from PIL import Image
+
+    from app.ingestion import ocr
+
+    seen: dict[str, object] = {}
+
+    def run(*args: object, **kwargs: object) -> object:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout=b"text", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert ocr._tesseract(Image.new("L", (10, 10), 255)) == "text"
+    env = seen["env"]
+    assert isinstance(env, dict) and env["OMP_THREAD_LIMIT"] == "1"
+    assert seen["timeout"] == ocr.TIMEOUT

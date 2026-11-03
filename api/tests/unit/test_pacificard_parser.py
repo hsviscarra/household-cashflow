@@ -61,6 +61,19 @@ def test_noisy_text_ties_out() -> None:
     assert by_desc["N/D IVA SERVICIO DIGITAL BILL.I"].section == "charge"
 
 
+def test_unreadable_end_date_uses_the_cut_off_and_spaced_slashes() -> None:
+    """October 2026 read "hasta 2VOCT/2026" (end unreadable, so "Fecha de corte: 23/O0CT/2026"
+    is used) and "OCT /23 … SOLCA" with a space before the slash, which was skipped (0.29 short)."""
+    text = NOISY.replace("hasta 24/SEP/2026", "hasta 2VSEP/2026\n. Fecha de corte: 24/S3EP/2026")
+    text = text.replace("SEP/24 100003 CONTRIB", "SEP /24 100003 CONTRIB")
+    p = pacificard.parse([text])
+    assert (p.period_start, p.period_end) == (date(2026, 8, 25), date(2026, 9, 24))
+    assert p.tieout_ok and not p.rejects, [c for c in p.checks if not c.ok]
+    solca = next(ln for ln in p.lines if "SOLCA" in ln.description)
+    assert solca.amount == Decimal("-0.21")
+    assert pacificard._period_date("23/O0CT/2026") == date(2026, 10, 23)
+
+
 def test_a_misread_amount_is_caught() -> None:
     p = pacificard.parse([NOISY.replace("cons 0.21 +", "cons 6.21 +")])
     assert not p.tieout_ok

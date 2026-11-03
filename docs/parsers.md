@@ -77,6 +77,9 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
 - **Checked on the real Jun 13 – Jul 12, 2026 statement:** 26 lines, ties out to 44.59; every
   line categorized by the seeded rules.
 
+- **Older summary:** before July 2026 the summary reads "MOVIMIENTOS 44,59 70,00- 25,41 0,00"
+  (plural, Ecuadorian amounts); both are read (0.26.7).
+
 ## Banco Pichincha (bank account, `pichincha`) — F19
 
 Same source as the card. Detection tells them apart by the summary's "CHEQUES / DÉBITOS"
@@ -207,3 +210,7 @@ last four are stored; the statement is matched as Pacificard's only account.
   one stops instead of loading wrong); continuity.
 - **Checked on the real statements Apr 25 – Sep 24, 2026 (five months):** 8, 6, 6, 8 and 9 lines,
   all tie out and chain month to month; about 15–20 s each to read.
+
+- **OCR quirks (0.26.7):** an unreadable "hasta" falls back to "Fecha de corte" (month may read
+  "O0CT"); a line date may have a space before the slash ("OCT /23"). Tesseract runs with
+  OMP_THREAD_LIMIT=1: on half a CPU, its default one thread per visible core timed out.

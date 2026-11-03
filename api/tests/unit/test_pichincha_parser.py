@@ -65,3 +65,23 @@ def test_wrong_layout_and_bad_dates() -> None:
         ]
     )
     assert p.rejects and not p.tieout_ok
+
+
+def test_older_summary_label_and_ecuadorian_amounts() -> None:
+    """Statements before July 2026 print "MOVIMIENTOS 44,59 70,00- 25,41 0,00" (plural, decimal
+    comma); the reader stopped at "Summary line not found"."""
+    import re
+
+    def older(page: str) -> str:
+        def ec(m: re.Match[str]) -> str:
+            return " ".join(
+                x.replace(",", "X").replace(".", ",").replace("X", ".") for x in m.group(1).split()
+            )
+
+        return re.sub(r"^MOVIMIENTO (.+)$", lambda m: f"MOVIMIENTOS {ec(m)}", page, flags=re.M)
+
+    pages = [older(p) for p in read_pages(pichincha_full())]
+    assert any(ln.startswith("MOVIMIENTOS ") and "," in ln for p in pages for ln in p.splitlines())
+    p = pichincha.parse(pages)
+    assert p.tieout_ok and not p.rejects
+    assert p.opening_balance == Decimal("400.00")
