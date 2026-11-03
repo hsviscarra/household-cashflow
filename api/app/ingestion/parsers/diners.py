@@ -157,10 +157,23 @@ def parse(pages: list[str]) -> ParsedStatement:
                 out.rejects.append(Reject(page_no, line_no, line, str(exc)))
                 continue
             cuota = m.group("cuota") if block == "purchases" else None
-            if cuota:
-                # An installment of an earlier purchase is billed in this period.
-                d = end if d < start - timedelta(days=7) else d
-                deferred += amount(m.group("x3") or m.group("x2") or "0,00")
+            value = amount(m.group("amt"))
+            if block == "purchases":
+                # Columns: CUOTA, VALOR, IVA, SALDO DIF. An installment line ends with its
+                # remaining balance ("(6/12) 336,00 2.016,00"); any number between is IVA.
+                # Otherwise a second number is IVA, part of the charge ("TARIFA CONSUMO
+                # GASOLINERA 0,20 0,03" costs 0,23; it was dropped, 2026-11-02).
+                extra = [amount(x) for x in (m.group("x2"), m.group("x3")) if x]
+                if cuota:
+                    d = end if d < start - timedelta(days=7) else d  # an earlier purchase
+                    if extra:
+                        deferred += extra.pop()
+                elif len(extra) > 1:
+                    out.rejects.append(
+                        Reject(page_no, line_no, line, "Too many amounts for a purchase")
+                    )
+                    continue
+                value += sum(extra, Decimal(0))
             desc = m.group("desc").strip()
             on_card = card if block == "purchases" else None
             out.lines.append(
@@ -171,7 +184,7 @@ def parse(pages: list[str]) -> ParsedStatement:
                     text=line,
                     txn_date=d,
                     post_date=None,
-                    amount=-amount(m.group("amt")),  # charges are money out; "708,82-" is in
+                    amount=-value,  # charges are money out; "708,82-" is in
                     description=desc,
                     cardholder=on_card,
                     person=_person(card_names[on_card]) if on_card else None,

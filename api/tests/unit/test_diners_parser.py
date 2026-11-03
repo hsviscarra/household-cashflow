@@ -47,6 +47,18 @@ def test_statement_ties_out_with_main_and_additional_card() -> None:
     assert by_desc['SU PAGO "MUCHAS GRACIAS"'].amount == Decimal("650.00")
 
 
+def test_a_purchase_with_iva_counts_value_plus_iva() -> None:
+    """A gas station fee prints VALOR 0,20 and IVA 0,03: it costs 0,23 (it used to be read as
+    0,20 with a "deferred balance" of 0,03, leaving the card 3 cents short)."""
+    p = diners.parse(read_pages(diners_full(with_iva=True)))
+    assert p.tieout_ok, [(c.name, c.expected, c.actual) for c in p.checks if not c.ok]
+    fee = next(ln for ln in p.lines if ln.description == "TARIFA CONSUMO GASOLINERA")
+    assert fee.amount == Decimal("-0.23")
+    # The installment's remaining balance still goes to deferred, not to the charge.
+    deferred = next(c for c in p.checks if c.name.startswith("Remaining balance"))
+    assert deferred.ok
+
+
 def test_wrong_card_subtotal_fails() -> None:
     p = diners.parse(read_pages(diners_full(subtotal_delta="1")))
     assert [c.name for c in p.checks if not c.ok] == ["Card •••• 1234 subtotal"]
