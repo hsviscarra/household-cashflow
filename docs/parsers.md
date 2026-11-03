@@ -161,6 +161,10 @@ account is chosen by the main cardholder's name on the `* PRINCIPAL` card line (
 Continuity (all sources): the opening balance is compared only with a statement that ends within
 a week of this one's start; a missing month is left for the data status page (F12).
 
+- **Purchases columns: CUOTA, VALOR, IVA, SALDO DIF.** An installment line ends with its remaining
+  balance ("(6/12) 336,00 2.016,00"). Without a cuota, a second number is the line's IVA and is
+  part of the charge: "TARIFA CONSUMO GASOLINERA 0,20 0,03" costs 0,23 (0.26.5).
+
 ## Scans of any bank (OCR fallback) — 0.9.2
 
 A PDF without a text layer is read with OCR (ADR-005) and goes to the bank's own parser, so the

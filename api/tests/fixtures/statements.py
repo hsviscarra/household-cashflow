@@ -448,8 +448,14 @@ DINERS_DEBITS = [
 ]
 
 
-def diners_full(*, previous: str = "650,00", subtotal_delta: str = "0") -> bytes:
-    """Synthetic Diners statement: a main card, an additional card, deferred purchase, charges."""
+DINERS_IVA_LINE = "18/06 110 TARIFA CONSUMO GASOLINERA 0,20 0,03"  # VALOR 0,20 + IVA 0,03
+
+
+def diners_full(
+    *, previous: str = "650,00", subtotal_delta: str = "0", with_iva: bool = False
+) -> bytes:
+    """Synthetic Diners statement: a main card, an additional card, deferred purchase, charges.
+    `with_iva`: a purchase with an IVA column (a gas station fee), which counts value plus IVA."""
     from decimal import Decimal
 
     from app.ingestion.parsers.pichincha import amount
@@ -460,7 +466,10 @@ def diners_full(*, previous: str = "650,00", subtotal_delta: str = "0") -> bytes
     def ec(x: Decimal) -> str:
         return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+    hernan_lines = [*DINERS_HERNAN, *([DINERS_IVA_LINE] if with_iva else [])]
     hernan = Decimal("300.00") + total(DINERS_HERNAN[1:])  # the installment, not its balance
+    if with_iva:
+        hernan += Decimal("0.23")
     extra = total(DINERS_ADDITIONAL)
     debits = total(DINERS_DEBITS)
     prev = amount(previous)
@@ -484,7 +493,7 @@ def diners_full(*, previous: str = "650,00", subtotal_delta: str = "0") -> bytes
         "Consumo período actual",
         "FECHA Nº VALE ESTABLECIMIENTO CUOTA VALOR IVA SALDO DIF.",
         f"{main} 0036-xxxx-xxxx-1234 * PRINCIPAL DC SPHAERA MILES PAGO MIN",
-        *DINERS_HERNAN,
+        *hernan_lines,
         f"SUBTOTAL DE CONSUMOS: {ec(hernan + Decimal(subtotal_delta))}",
         "PRUEBA LAUREN ADICIONAL 0036-xxxx-xxxx-5678 * ADICIONAL DC SPHAERA MILES",
         *DINERS_ADDITIONAL,

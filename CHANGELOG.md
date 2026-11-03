@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.5] — Diners purchases with an IVA column
+
+### Fixes
+- A Diners purchase that prints IVA in its own column ("TARIFA CONSUMO GASOLINERA 0,20 0,03")
+  was read as 0,20, the 0,03 taken for a deferred balance, so the card's subtotal was a few cents
+  short and the statement didn't tie out (May and September 2026). The IVA is now part of the
+  charge; an installment line's last number is still its remaining balance.
+
 ## [0.26.4] — Pichincha account statements with English month names
 
 ### Fixes
