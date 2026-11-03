@@ -214,3 +214,7 @@ last four are stored; the statement is matched as Pacificard's only account.
 - **OCR quirks (0.26.7):** an unreadable "hasta" falls back to "Fecha de corte" (month may read
   "O0CT"); a line date may have a space before the slash ("OCT /23"). Tesseract runs with
   OMP_THREAD_LIMIT=1: on half a CPU, its default one thread per visible core timed out.
+
+- **Unreadable digits (0.26.8):** an amount like "€.04" (one or two characters OCR couldn't
+  read) is filled from its printed subtotal when it is the group's only such line and the
+  remainder fits ("6.04"); otherwise the line stays rejected.

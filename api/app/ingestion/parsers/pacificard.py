@@ -24,6 +24,8 @@ from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError,
 NAME = "pacificard"
 AMT = r"\d{1,3}(?:,?\d{3})*\.\d{2}"
 AMOUNT = re.compile(rf"^{AMT}$")
+# An amount with one or two characters OCR couldn't read before the cents ("€.04" for 6.04).
+GARBLED = re.compile(r"^(?=(?:[\d,]*[^\d,.\s]){1,2}[\d,]*\.\d{2}$)[^\s.]{1,9}\.\d{2}$")
 MONTHS = [*ES_MONTHS, "set"]
 TO_LETTER = str.maketrans("0425618", "OASZGIB")
 TO_DIGIT = str.maketrans("OoSsIlBZ$§", "0055118255")
@@ -190,6 +192,7 @@ def parse(pages: list[str]) -> ParsedStatement:
     )
 
     moved = {"purchases": Decimal(0), "payments": Decimal(0), "charges": Decimal(0)}
+    unread: list[tuple[str, int, str, Line]] = []
     for page_no, line_no, line, m in rows:
         person = next(
             (who for pg, ln, who in reversed(holders) if (pg, ln) < (page_no, line_no)), None
@@ -197,9 +200,10 @@ def parse(pages: list[str]) -> ParsedStatement:
         tokens = m.group("rest").split()
         try:
             sign = {"+": 1, "=": 1, "-": -1}[tokens[-1]]
-            if not AMOUNT.match(tokens[-2]):
+            garbled = bool(GARBLED.match(tokens[-2]))
+            if not AMOUNT.match(tokens[-2]) and not garbled:
                 raise ValueError("amount not readable")
-            usd = tokens[-3] if AMOUNT.match(tokens[-3]) else tokens[-2]
+            usd = tokens[-3] if not garbled and AMOUNT.match(tokens[-3]) else tokens[-2]
             op_at = -4 if usd is tokens[-3] else -3
             op = _operation(tokens[op_at])
             when = _line_date(m.group("mon"), m.group("day"), start, end)
@@ -207,26 +211,61 @@ def parse(pages: list[str]) -> ParsedStatement:
             rejects.append(Reject(page_no, line_no, line, f"Line could not be read: {exc}"))
             continue
         desc = re.sub(r"^W/D ", "N/D ", " ".join(tokens[1:op_at]))  # tokens[0]: the reference
-        moved[GROUPS[op]] += sign * _num(usd)
-        out.lines.append(
-            Line(
-                page=page_no,
-                line_no=line_no,
-                section=_section(op, desc),
-                text=line,
-                txn_date=when,
-                post_date=None,
-                amount=-sign * _num(usd),  # "+" adds to the debt: money out
-                description=desc,
-                person=person,
-            )
+        line_out = Line(
+            page=page_no,
+            line_no=line_no,
+            section=_section(op, desc),
+            text=line,
+            txn_date=when,
+            post_date=None,
+            amount=Decimal(0),
+            description=desc,
+            person=person,
         )
+        if garbled:
+            unread.append((GROUPS[op], sign, usd, line_out))
+            continue
+        moved[GROUPS[op]] += sign * _num(usd)
+        line_out.amount = -sign * _num(usd)  # "+" adds to the debt: money out
+        out.lines.append(line_out)
+    _fill_unread(out, moved, unread, rejects)
 
     _settle_ties(
         out, moved, found["opening"], found["closing"] + found["revolving"] + found["owed"]
     )
     _tie_out(out, moved)
     return out
+
+
+def _fill_unread(
+    out: ParsedStatement,
+    moved: dict[str, Decimal],
+    unread: list[tuple[str, int, str, Line]],
+    rejects: list[Reject],
+) -> None:
+    """An amount with unreadable characters ("€.04") takes its printed subtotal's remainder, but
+    only when it is the group's one such line and the remainder fits the characters that were
+    read (6.04 fits "€.04"; 16.04 doesn't). The total-due check still has to agree on its own."""
+    printed = {"purchases": 1, "payments": -1, "charges": 1}  # payments are printed positive
+    for group, sign, token, line in unread:
+        gap = None
+        total = out.totals.get(group)
+        if total is not None and sum(g == group for g, *_ in unread) == 1:
+            gap = (printed[group] * total - moved[group]) * sign
+        shape = "".join(c if c in ",.0123456789" else r"\d" for c in token)
+        text = f"{gap:,.2f}" if gap is not None else ""
+        if (
+            gap is None
+            or gap <= 0
+            or not re.fullmatch(shape, text.replace(",", "") if "," not in token else text)
+        ):
+            reason = "Line could not be read: amount not readable"
+            rejects.append(Reject(line.page, line.line_no, line.text, reason))
+            continue
+        moved[group] += sign * gap
+        line.amount = -sign * gap  # "+" adds to the debt: money out
+        out.lines.append(line)
+    out.lines.sort(key=lambda ln: (ln.page, ln.line_no))
 
 
 def _settle_ties(
