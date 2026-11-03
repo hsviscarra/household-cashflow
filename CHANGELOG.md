@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.9] — Pichincha card installments with the purchase date
+
+### Fixes
+- **Pichincha card June 2026** was 71.04 short on card 2829: the installment
+  "05/01 … DIFERIDO (6/12) 71,04 426,24" prints the purchase's own date (January) and was
+  rejected as outside the period. An installment ("DIFERIDO (n/m)") whose purchase date falls
+  within its plan is now read as a purchase dated on the statement's cut-off, with "n/m" as its
+  reference.
+
 ## [0.26.8] — A PacifiCard amount with an unreadable digit
 
 ### Fixes
