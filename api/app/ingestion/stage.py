@@ -362,7 +362,8 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
                     category_id=s.category_id,
                     rule_id=s.rule_id,
                     category_source=(
-                        "rule" if s.rule_id else ("section" if s.category_id else None)
+                        s.category_source
+                        or ("rule" if s.rule_id else ("section" if s.category_id else None))
                     ),
                     person=s.person,
                     country=s.country,

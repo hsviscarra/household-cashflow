@@ -5,6 +5,22 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.28.0] — F23 Categorize before approving; Claude's suggestions in one click
+
+### Added
+- **Needs a category** on a statement's page: its uncategorized lines grouped by merchant, with
+  the same cards as Review. Categorize before approving; a saved rule also reaches your other
+  statements and loaded lines.
+- **Ask Claude about one statement** from its page.
+- **One click for a suggestion:** "✓ Use …" on each card saves Claude's suggestion (and the rule).
+- **✓ Accept N likely suggestions** on Review and on a statement's page: every suggestion at 80%
+  or more is accepted, with a rule each; the rest wait for you.
+- Lines categorized on the statement's page keep "chosen" or "Claude's suggestion" as their
+  source after approval.
+
+### Migration
+- 0024 adds `stg.stg_transaction.category_source`. Downgrade drops it.
+
 ## [0.27.0] — F23 Finding and creating categories
 
 ### Added

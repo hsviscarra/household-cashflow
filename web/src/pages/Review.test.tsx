@@ -184,6 +184,10 @@ beforeEach(() => {
         );
         return Promise.resolve(new Response(null, { status: 204 }));
       }
+      if (url.startsWith("/api/review/accept-suggestions")) {
+        review = { ...review, groups: review.groups.slice(1), uncategorized_lines: 2 };
+        return json({ merchants: 1, lines: 1, also_by_rule: 4 });
+      }
       if (url.startsWith("/api/review/suggest"))
         return json({ asked: 1, suggested: 1, model: "claude-haiku-5-5" });
       if (url === "/api/review/resolve") {
@@ -225,6 +229,37 @@ function renderAt(path: string) {
     </QueryClientProvider>,
   );
 }
+
+describe("Review: one click for Claude's suggestions", () => {
+  it("uses a suggestion with one click, keeping the rule", async () => {
+    renderAt("/review?month=2026-07");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Use Office Rent for TRANSFERENCIA CTAS TERCEROS BCA ENL" }),
+    );
+    expect(
+      await screen.findByText(/TRANSFERENCIA CTAS TERCEROS BCA ENL: 1 line → Office Rent\. Rule saved/),
+    ).toBeInTheDocument();
+    const sent = calls.find((c) => c.url === "/api/review/resolve")?.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ category_id: 1, save_rule: true, from_suggestion: true });
+  });
+
+  it("accepts every likely suggestion at once", async () => {
+    renderAt("/review?month=2026-07");
+    fireEvent.click(await screen.findByRole("button", { name: "✓ Accept 1 likely suggestion" }));
+    expect(
+      await screen.findByText(
+        "Accepted 1 suggestion: 1 line categorized and a rule saved for each; the rules also categorized 4 more.",
+      ),
+    ).toBeInTheDocument();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toContain(
+      "POST /api/review/accept-suggestions?month=2026-07-01",
+    );
+    expect(
+      await screen.findByText("2 lines from 1 merchant need a category in July 2026."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /likely suggestion/ })).not.toBeInTheDocument();
+  });
+});
 
 describe("Review", () => {
   it("labels confidence with a word and a number", () => {

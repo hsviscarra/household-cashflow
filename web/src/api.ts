@@ -431,6 +431,18 @@ export const suggestCategories = (month?: string | null) =>
     "POST",
     `/api/review/suggest${monthQuery(month)}`,
   );
+
+// F23: one click for Claude's likely suggestions, and categorizing a statement before approval.
+export type Accepted = { merchants: number; lines: number; also_by_rule: number };
+export const acceptSuggestions = (month?: string | null) =>
+  send<Accepted>("POST", `/api/review/accept-suggestions${monthQuery(month)}`);
+export const fetchBatchReview = (id: number) => send<Review>("GET", `/api/batches/${id}/review`);
+export const resolveBatchMerchant = (id: number, body: ResolveInput) =>
+  send<Resolved>("POST", `/api/batches/${id}/resolve`, body);
+export const suggestBatch = (id: number) =>
+  send<{ asked: number; suggested: number; model: string }>("POST", `/api/batches/${id}/suggest`);
+export const acceptBatchSuggestions = (id: number) =>
+  send<Accepted>("POST", `/api/batches/${id}/accept-suggestions`);
 export const updateTransaction = (
   id: number,
   body: { category_id?: number; notes?: string | null; person?: Owner | null },

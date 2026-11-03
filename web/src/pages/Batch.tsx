@@ -1,7 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { applyRules, approveBatch, fetchBatch, rejectBatch, type Batch, type StgLine } from "../api";
+import {
+  acceptBatchSuggestions,
+  applyRules,
+  approveBatch,
+  fetchBatch,
+  fetchBatchReview,
+  fetchCategories,
+  rejectBatch,
+  resolveBatchMerchant,
+  suggestBatch,
+  type Batch,
+  type StgLine,
+} from "../api";
+import { MerchantQueue, type Notify } from "../components/MerchantReview";
 import { money, num, showAmount } from "../money";
 
 const day = (iso: string) =>
@@ -44,7 +58,10 @@ export default function BatchPage() {
   });
   const rerun = useMutation({
     mutationFn: () => applyRules(id),
-    onSuccess: (r) => qc.setQueryData(["batch", id], r.batch),
+    onSuccess: (r) => {
+      qc.setQueryData(["batch", id], r.batch);
+      qc.invalidateQueries({ queryKey: ["batch-review", id] });
+    },
   });
   const discard = useMutation({
     mutationFn: () => rejectBatch(id),
@@ -144,6 +161,8 @@ export default function BatchPage() {
           {b.decided_at ? ` on ${longDay(b.decided_at.slice(0, 10))}` : ""}.
         </p>
       )}
+
+      {b.status === "preview" && b.uncategorized > 0 && !approve.data && <NeedsCategory batchId={id} />}
 
       <ByCategory batch={b} />
       <Lines lines={b.lines} multi={b.statement.accounts.length > 1} />
@@ -327,5 +346,54 @@ function Lines({ lines, multi }: { lines: StgLine[]; multi: boolean }) {
         Amounts out of the household show without a sign; money back (payments, refunds) shows with +.
       </p>
     </div>
+  );
+}
+
+/** Categorize this statement's lines before approving (F23): the Review cards for its merchants. */
+function NeedsCategory({ batchId }: { batchId: number }) {
+  const review = useQuery({ queryKey: ["batch-review", batchId], queryFn: () => fetchBatchReview(batchId) });
+  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  const [status, setStatus] = useState<{ message: string; tone: "good" | "bad" } | null>(null);
+  const notify: Notify = (message, tone = "good") => setStatus({ message, tone });
+  const data = review.data;
+  if (review.error) {
+    return (
+      <p className="mt-8 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
+        Could not load the lines that need a category: {(review.error as Error).message}
+      </p>
+    );
+  }
+  if (!data || !cats.data || !data.groups.length) return null;
+  const n = data.uncategorized_lines;
+  return (
+    <section className="mt-8" aria-labelledby="needs-category">
+      <h2 id="needs-category" className="font-display text-2xl font-bold">
+        Needs a category
+      </h2>
+      <p className="mt-1 text-muted">
+        {n} {n === 1 ? "line" : "lines"} from {data.groups.length}{" "}
+        {data.groups.length === 1 ? "merchant" : "merchants"}. Categorize them now, or approve and do it later
+        on Review. A saved rule also categorizes your other statements.
+      </p>
+      <p
+        aria-live="polite"
+        className={
+          status
+            ? `mt-3 rounded-2xl px-4 py-3 ${status.tone === "good" ? "bg-good-bg text-good-ink" : "bg-danger-bg text-danger-ink"}`
+            : "sr-only"
+        }
+      >
+        {status?.message ?? ""}
+      </p>
+      <MerchantQueue
+        data={data}
+        groups={cats.data}
+        notify={notify}
+        label="Merchants in this statement"
+        resolve={(body) => resolveBatchMerchant(batchId, body)}
+        ask={() => suggestBatch(batchId)}
+        accept={() => acceptBatchSuggestions(batchId)}
+      />
+    </section>
   );
 }

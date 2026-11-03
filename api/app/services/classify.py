@@ -98,12 +98,13 @@ def set_category(
 # ---------------- review queue ----------------
 @dataclass
 class ReviewLine:
-    transaction_id: int
+    transaction_id: int  # a loaded line; on a statement's page, the staged line (stg_id)
     txn_date: date
     amount: Decimal
     description: str
     account_name: str | None
     person: str | None
+    account_id: int | None = None
 
 
 @dataclass
@@ -147,8 +148,49 @@ def review_groups(db: Session, month: date | None = None) -> list[ReviewGroup]:
                 t.description_raw,
                 accounts.get(t.account_id) if t.account_id else None,
                 t.person,
+                t.account_id,
             )
         )
+    return _with_suggestions(db, groups)
+
+
+def staged_uncategorized(db: Session, batch_id: int) -> list[StgTransaction]:
+    """A statement's lines still waiting for a category (already-loaded duplicates aside)."""
+    return list(
+        db.scalars(
+            select(StgTransaction)
+            .where(
+                StgTransaction.batch_id == batch_id,
+                StgTransaction.category_id.is_(None),
+                StgTransaction.is_duplicate == False,  # noqa: E712 (SQL Server needs = 0)
+            )
+            .order_by(StgTransaction.txn_date, StgTransaction.stg_id)
+        )
+    )
+
+
+def batch_groups(db: Session, batch_id: int) -> list[ReviewGroup]:
+    """The Review queue for one statement waiting for approval (F23): its uncategorized lines
+    grouped by merchant, so they can be categorized before the statement is loaded."""
+    accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
+    groups: dict[str, ReviewGroup] = {}
+    for s in staged_uncategorized(db, batch_id):
+        key = merchant_key(s.description_raw)
+        groups.setdefault(key, ReviewGroup(key)).lines.append(
+            ReviewLine(
+                s.stg_id,
+                s.txn_date,
+                s.amount,
+                s.description_raw,
+                accounts.get(s.account_id),
+                s.person,
+                s.account_id,
+            )
+        )
+    return _with_suggestions(db, groups)
+
+
+def _with_suggestions(db: Session, groups: dict[str, ReviewGroup]) -> list[ReviewGroup]:
     if groups:
         found = db.scalars(
             select(MerchantSuggestion).where(MerchantSuggestion.merchant_key.in_(list(groups)))
@@ -192,24 +234,11 @@ def resolve(
     if not rows:
         raise ClassifyError("Those lines are already categorized or no longer exist.", 409)
 
-    rule: MerchantRule | None = None
-    if save_rule:
-        text = (pattern or key).strip()
-        error = rule_engine.validate_pattern(text, match_type)
-        if error:
-            raise ClassifyError(error)
-        if amount_min is not None and amount_max is not None and amount_min > amount_max:
-            raise ClassifyError("The lowest amount must not be above the highest.")
-        rule = MerchantRule(
-            pattern=text,
-            match_type=match_type,
-            category_id=category.category_id,
-            priority=REVIEW_RULE_PRIORITY,
-            amount_min=amount_min,
-            amount_max=amount_max,
-        )
-        db.add(rule)
-        db.flush()
+    rule = (
+        _new_rule(db, key, category, pattern, match_type, amount_min, amount_max)
+        if save_rule
+        else None
+    )
 
     source = "suggestion" if from_suggestion else "manual"
     reason = "Review: accepted Claude's suggestion" if from_suggestion else "Review: chosen"
@@ -225,6 +254,122 @@ def resolve(
     if category.kind == "transfer":
         transfers.match(db, user)  # a line just called a transfer may have its other side loaded
     return Resolved(len(rows), rule.rule_id if rule else None, also, waiting)
+
+
+def _new_rule(
+    db: Session,
+    key: str,
+    category: Category,
+    pattern: str | None,
+    match_type: str,
+    amount_min: Decimal | None,
+    amount_max: Decimal | None,
+) -> MerchantRule:
+    text = (pattern or key).strip()
+    error = rule_engine.validate_pattern(text, match_type)
+    if error:
+        raise ClassifyError(error)
+    if amount_min is not None and amount_max is not None and amount_min > amount_max:
+        raise ClassifyError("The lowest amount must not be above the highest.")
+    rule = MerchantRule(
+        pattern=text,
+        match_type=match_type,
+        category_id=category.category_id,
+        priority=REVIEW_RULE_PRIORITY,
+        amount_min=amount_min,
+        amount_max=amount_max,
+    )
+    db.add(rule)
+    db.flush()
+    return rule
+
+
+def resolve_staged(
+    db: Session,
+    batch_id: int,
+    key: str,
+    category_id: int,
+    user: str,
+    *,
+    save_rule: bool = False,
+    pattern: str | None = None,
+    match_type: str = "contains",
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
+    from_suggestion: bool = False,
+) -> Resolved:
+    """Categorize a merchant's lines in a statement waiting for approval (F23). With save_rule,
+    the rule also reaches loaded lines and the other waiting statements, as in Review."""
+    category = db.get(Category, category_id)
+    if category is None:
+        raise ClassifyError(f"Category {category_id} not found.", 404)
+    batch = db.get(ImportBatch, batch_id)
+    if batch is None:
+        raise ClassifyError(f"Import {batch_id} not found.", 404)
+    if batch.status != "preview":
+        raise ClassifyError(f"This statement is already {batch.status}.", 409)
+    rows = [s for s in staged_uncategorized(db, batch_id) if merchant_key(s.description_raw) == key]
+    if not rows:
+        raise ClassifyError("Those lines are already categorized or no longer exist.", 409)
+    rule = (
+        _new_rule(db, key, category, pattern, match_type, amount_min, amount_max)
+        if save_rule
+        else None
+    )
+    for s in rows:
+        s.category_id = category.category_id
+        s.type = type_for(category, s.amount)
+        s.rule_id = rule.rule_id if rule else None
+        s.category_source = "suggestion" if from_suggestion else "manual"
+    also = waiting = 0
+    if rule is not None:
+        db.flush()
+        also = apply_rule(db, rule, user)
+        waiting = classify_waiting(db, rule=rule)
+    db.query(MerchantSuggestion).filter(MerchantSuggestion.merchant_key == key).delete()
+    db.commit()
+    return Resolved(len(rows), rule.rule_id if rule else None, also, waiting)
+
+
+@dataclass
+class Accepted:
+    merchants: int
+    lines: int
+    also_by_rule: int
+
+
+def accept_suggestions(
+    db: Session,
+    user: str,
+    *,
+    min_confidence: Decimal,
+    month: date | None = None,
+    batch_id: int | None = None,
+) -> Accepted:
+    """Accept every Claude suggestion at or above `min_confidence`, saving a rule for each (one
+    click on Review or a statement's page). Lower ones stay for a person to look at."""
+    groups = batch_groups(db, batch_id) if batch_id is not None else review_groups(db, month)
+    picked = [
+        (g.merchant_key, g.suggestion.category_id)
+        for g in groups
+        if g.suggestion is not None and g.suggestion.confidence >= min_confidence
+    ]
+    done = Accepted(0, 0, 0)
+    for key, category_id in picked:
+        try:
+            if batch_id is not None:
+                r = resolve_staged(
+                    db, batch_id, key, category_id, user, save_rule=True, from_suggestion=True
+                )
+            else:
+                r = resolve(db, key, category_id, user, save_rule=True, from_suggestion=True)
+        except ClassifyError:
+            db.rollback()  # an earlier rule may have categorized it already; go on
+            continue
+        done.merchants += 1
+        done.lines += r.categorized
+        done.also_by_rule += r.also_by_rule + r.waiting_by_rule
+    return done
 
 
 def apply_rule(db: Session, rule: MerchantRule, user: str, skip: set[int] | None = None) -> int:

@@ -50,6 +50,24 @@ them; the picker can create subcategories only, while a new group is a deliberat
 - Descriptions are data, not code: Hernan's edits survive later migrations, since seed v5 only
   fills empty ones.
 - The picker loads the category list once (React Query cache) and reuses it on every page.
-- Next (F23 parts 2 and 3): categorize on the statement's page before approving, one-click
-  acceptance of Claude's suggestions, and Settings → Categories with search, counts and moving a
-  subcategory to another group.
+- Next (F23 part 3): Settings → Categories with search, counts and moving a subcategory to
+  another group.
+
+## Part 2 (0.28.0): categorize before approving, accept suggestions in one click
+
+- **A statement's page** has a "Needs a category" section: its uncategorized lines grouped by
+  merchant, with the same cards as Review (`GET /api/batches/{id}/review`). Categorizing there
+  (`POST /api/batches/{id}/resolve`) sets the staged lines. Saving a rule (on by default) also
+  reaches loaded lines and the other waiting statements, as in Review (#74). A merchant can
+  still be left for Review after approval.
+- **`stg.stg_transaction.category_source`** (migration 0024) records "manual" or "suggestion",
+  so the loaded line says who chose its category instead of "by rule". Lines it doesn't mark
+  keep the old derivation (rule, or the statement's section).
+- **Claude for one statement:** `POST /api/batches/{id}/suggest` asks about that statement's
+  merchants without a suggestion. Suggestions stay keyed by merchant, so Review sees them too.
+- **One click.** A suggestion shows a "✓ Use …" button that saves it, with the rule if that box
+  is on. "✓ Accept N likely suggestions" (`POST /api/review/accept-suggestions` and
+  `/api/batches/{id}/accept-suggestions`) accepts every suggestion at 80% or more ("likely",
+  the same word the cards show) and saves a rule for each. The rest wait for a person.
+- The cards and the two Claude buttons are one shared component (`MerchantReview`) on both
+  pages.
