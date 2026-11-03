@@ -92,6 +92,7 @@ export type Rule = {
   is_active: boolean;
   amount_min: Money | null; // on the absolute amount; null = no limit
   amount_max: Money | null;
+  applied?: number; // lines this save categorized (loaded or waiting for approval)
 };
 export type RuleInput = Pick<Rule, "pattern" | "match_type" | "category_id" | "priority"> &
   Partial<Pick<Rule, "amount_min" | "amount_max">>;
@@ -357,6 +358,8 @@ export const approveBatch = (id: number) =>
     "POST",
     `/api/batches/${id}/approve`,
   );
+export const applyRules = (id: number) =>
+  send<{ categorized: number; batch: Batch }>("POST", `/api/batches/${id}/apply-rules`);
 export const rejectBatch = (id: number) => send<Batch>("POST", `/api/batches/${id}/reject`);
 export const fetchTransactions = (month: string) => send<Txn[]>("GET", `/api/transactions?month=${month}`);
 
@@ -399,7 +402,12 @@ export type ResolveInput = {
   amount_max?: Money | null;
   from_suggestion?: boolean;
 };
-export type Resolved = { categorized: number; rule_id: number | null; also_by_rule: number };
+export type Resolved = {
+  categorized: number;
+  rule_id: number | null;
+  also_by_rule: number;
+  waiting_by_rule?: number; // lines in statements not approved yet
+};
 export type Change = {
   change_id: number;
   column_name: string;

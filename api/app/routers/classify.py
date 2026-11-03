@@ -146,7 +146,10 @@ def resolve(body: ResolveIn, db: DB, request: Request) -> ResolveOut:
         db.rollback()
         raise _fail(exc) from exc
     return ResolveOut(
-        categorized=done.categorized, rule_id=done.rule_id, also_by_rule=done.also_by_rule
+        categorized=done.categorized,
+        rule_id=done.rule_id,
+        also_by_rule=done.also_by_rule,
+        waiting_by_rule=done.waiting_by_rule,
     )
 
 

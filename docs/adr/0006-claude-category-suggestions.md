@@ -41,3 +41,13 @@ merchants, never as the source of truth.
 - Merchants already suggested aren't asked again until the suggestion is used or removed.
 - If a future feature sends whole statements (the new-format fallback parser in the plan), it
   needs its own confirmation step and ADR.
+
+## Update (0.26.11): where a saved rule applies
+
+A rule used to reach only lines read after it was saved and uncategorized lines already loaded.
+Statements read but not yet approved kept the categories they had when read, so a rule saved
+while reviewing one month didn't reach the other months waiting on the Import page (the Gmail
+backfill reads many at once). Now a saved rule, from Review or Settings, also categorizes the
+uncategorized lines of every statement waiting for approval. Approving runs the current rules
+once more, and a statement's page has "Apply rules again". A line already categorized is never
+changed.

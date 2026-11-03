@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.26.11] — Rules reach statements waiting for approval
+
+### Fixes
+- **A rule saved while reviewing didn't reach the other statements** on the Import page: lines
+  kept the category they got when the statement was read, so the same merchant had to be
+  categorized again in every month. A rule saved in Review or Settings now also categorizes the
+  uncategorized lines of every statement waiting for approval, and approving runs the current
+  rules once more. Lines already categorized are never changed.
+
+### Added
+- **Apply rules again** on a statement's page, while lines still need a category.
+- Review and Settings say how many lines a saved rule categorized, waiting ones included.
+
 ## [0.26.10] — The last Pichincha card installment
 
 ### Fixes

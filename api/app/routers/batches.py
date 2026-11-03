@@ -14,7 +14,7 @@ from app.ingestion.preview import batch_out, category_paths
 from app.ingestion.storage import StatementStore, get_store
 from app.models import Account, ImportBatch, StatementFile, Transaction
 from app.routers.classify import transaction_out
-from app.schemas import ApproveOut, BatchOut, TransactionOut
+from app.schemas import ApplyRulesOut, ApproveOut, BatchOut, TransactionOut
 from app.services import classify, transfers
 
 router = APIRouter(prefix="/api", tags=["batches"])
@@ -59,6 +59,17 @@ def approve_batch(batch_id: int, request: Request, db: DB) -> ApproveOut:
     except stage.StageError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return ApproveOut(batch_id=batch_id, loaded=loaded, skipped_duplicates=skipped)
+
+
+@router.post("/batches/{batch_id}/apply-rules", response_model=ApplyRulesOut)
+def apply_rules(batch_id: int, db: DB) -> ApplyRulesOut:
+    """Run today's rules on the batch's uncategorized lines (rules saved after it was read)."""
+    batch = _batch(db, batch_id)
+    if batch.status != "preview":
+        raise HTTPException(409, f"This batch is already {batch.status}.")
+    count = classify.classify_waiting(db, batch_id=batch_id)
+    db.commit()
+    return ApplyRulesOut(categorized=count, batch=batch_out(db, batch))
 
 
 @router.post("/batches/{batch_id}/reject", response_model=BatchOut)

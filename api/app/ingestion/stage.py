@@ -35,7 +35,7 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import recurring, transfers
+from app.services import classify, recurring, transfers
 from app.services import rules as rule_engine
 
 EC_PLACES = ("QUITO", "GUAYAQUIL", "ECUADOR", "RUMINAHUI", "CUMBAYA", "MEJIA", "PICHIN")
@@ -96,14 +96,10 @@ def _classify(
         type_ = SECTION_TYPES[line.section]
         return _Classified(type_, cat.category_id if cat else None, None, None)
 
-    # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
-    money_in = "refund" if account.kind == "credit_card" else "income"
-    default = money_in if line.amount > 0 else "expense"
     hit = rule_engine.first_match(rules, line.description, line.amount)
     if hit is None:
-        return _Classified(default, None, None, None)
-    kind = by_id[hit.category_id].kind
-    type_ = {"transfer": "transfer", "income": "income", "savings": "savings"}.get(kind, default)
+        return _Classified(classify.rule_type("expense", account, line.amount), None, None, None)
+    type_ = classify.rule_type(by_id[hit.category_id].kind, account, line.amount)
     return _Classified(type_, hit.category_id, hit.rule_id, patterns[hit.rule_id].strip(" *"))
 
 
@@ -332,6 +328,9 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
     if not batch.tieout_ok:
         raise StageError("The statement does not tie out; it can't be loaded.", 409)
 
+    classify.classify_waiting(
+        db, batch_id=batch.batch_id
+    )  # rules saved since the statement was read
     staged = list(
         db.scalars(select(StgTransaction).where(StgTransaction.batch_id == batch.batch_id))
     )

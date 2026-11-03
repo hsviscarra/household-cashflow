@@ -122,6 +122,8 @@ class RuleOut(_Out):
     is_active: bool
     amount_min: Decimal | None
     amount_max: Decimal | None
+    # Lines this save categorized (loaded or waiting for approval); 0 when only listing.
+    applied: int = 0
 
 
 class RuleTestOut(BaseModel):
@@ -420,6 +422,12 @@ class ResolveOut(BaseModel):
     categorized: int
     rule_id: int | None
     also_by_rule: int
+    waiting_by_rule: int = 0  # lines in statements not approved yet
+
+
+class ApplyRulesOut(BaseModel):
+    categorized: int
+    batch: BatchOut
 
 
 class TransactionPatch(BaseModel):

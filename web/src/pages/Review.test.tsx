@@ -187,7 +187,7 @@ beforeEach(() => {
         return json({ asked: 1, suggested: 1, model: "claude-haiku-5-5" });
       if (url === "/api/review/resolve") {
         review = { ...review, groups: review.groups.slice(1), uncategorized_lines: 2 };
-        return json({ categorized: 1, rule_id: 77, also_by_rule: 2 });
+        return json({ categorized: 1, rule_id: 77, also_by_rule: 2, waiting_by_rule: 3 });
       }
       if (url.startsWith("/api/review")) return json(review);
       if (url === "/api/categories") return json(CATEGORIES);
@@ -242,7 +242,9 @@ describe("Review", () => {
     expect(within(rent).getByLabelText(/^Category for/)).toHaveValue("1");
     fireEvent.click(within(rent).getByRole("button", { name: "Categorize 1 line" }));
     expect(
-      await screen.findByText(/Rule saved for next time; it also categorized 2 more\./),
+      await screen.findByText(
+        /Rule saved for next time; it also categorized 2 more and 3 in statements waiting for approval\./,
+      ),
     ).toBeInTheDocument();
     const sent = calls.find((c) => c.url === "/api/review/resolve")?.body as Record<string, unknown>;
     expect(sent).toMatchObject({ category_id: 1, save_rule: true, from_suggestion: true });

@@ -3,11 +3,12 @@
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.models import Account, Category, MerchantRule, StgTransaction, Transaction
 from app.schemas import (
@@ -23,6 +24,7 @@ from app.schemas import (
     RulePatch,
     RuleTestOut,
 )
+from app.services import classify
 from app.services import rules as rule_engine
 
 router = APIRouter(prefix="/api", tags=["reference"])
@@ -130,7 +132,7 @@ def _paths(db: Session) -> dict[int, str]:
     return out
 
 
-def _rule_out(rule: MerchantRule, paths: dict[int, str]) -> RuleOut:
+def _rule_out(rule: MerchantRule, paths: dict[int, str], applied: int = 0) -> RuleOut:
     return RuleOut(
         rule_id=rule.rule_id,
         pattern=rule.pattern,
@@ -141,6 +143,7 @@ def _rule_out(rule: MerchantRule, paths: dict[int, str]) -> RuleOut:
         is_active=rule.is_active,
         amount_min=rule.amount_min,
         amount_max=rule.amount_max,
+        applied=applied,
     )
 
 
@@ -166,17 +169,17 @@ def list_rules(db: DB) -> list[RuleOut]:
 
 
 @router.post("/merchant-rules", response_model=RuleOut, status_code=status.HTTP_201_CREATED)
-def create_rule(body: RuleIn, db: DB) -> RuleOut:
+def create_rule(body: RuleIn, db: DB, request: Request) -> RuleOut:
     _check_rule(db, body.pattern, body.match_type, body.category_id)
     _check_range(body.amount_min, body.amount_max)
     rule = MerchantRule(**body.model_dump())
     db.add(rule)
     _commit(db, "Could not save the rule.")
-    return _rule_out(rule, _paths(db))
+    return _rule_out(rule, _paths(db), _apply(db, rule, request))
 
 
 @router.patch("/merchant-rules/{rule_id}", response_model=RuleOut)
-def update_rule(rule_id: int, body: RulePatch, db: DB) -> RuleOut:
+def update_rule(rule_id: int, body: RulePatch, db: DB, request: Request) -> RuleOut:
     rule = _get(db, MerchantRule, rule_id, "Rule")
     changes = body.model_dump(exclude_unset=True)
     _check_rule(
@@ -191,7 +194,18 @@ def update_rule(rule_id: int, body: RulePatch, db: DB) -> RuleOut:
     for field, value in changes.items():
         setattr(rule, field, value)
     _commit(db, "Could not save the rule.")
-    return _rule_out(rule, _paths(db))
+    return _rule_out(rule, _paths(db), _apply(db, rule, request))
+
+
+def _apply(db: Session, rule: MerchantRule, request: Request) -> int:
+    """A saved rule reaches every uncategorized line it matches: loaded ones and those in
+    statements waiting for approval. Lines already categorized are never changed."""
+    if not rule.is_active:
+        return 0
+    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    count = classify.apply_rule(db, rule, user) + classify.classify_waiting(db, rule=rule)
+    db.commit()
+    return count
 
 
 @router.delete("/merchant-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)

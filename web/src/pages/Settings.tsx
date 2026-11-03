@@ -649,18 +649,20 @@ function CategoryForm(props: {
 }
 
 // ---------------- merchant rules ----------------
+export function appliedNote(r: Pick<Rule, "applied">): string {
+  const n = r.applied ?? 0;
+  return n ? ` It categorized ${n} ${n === 1 ? "line" : "lines"} that needed a category.` : "";
+}
 
 function RulesTab({ notify }: { notify: Notify }) {
   const rules = useQuery({ queryKey: ["rules"], queryFn: fetchRules });
   const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
-  const create = useSave(createRule, [["rules"]], notify);
-  const update = useSave(
-    (a: { id: number; body: Partial<Rule> }) => updateRule(a.id, a.body),
-    [["rules"]],
-    notify,
-  );
+  // A saved rule also categorizes loaded and waiting lines, so those views refresh too.
+  const reach = [["rules"], ["review"], ["transactions"], ["batch"]];
+  const create = useSave(createRule, reach, notify);
+  const update = useSave((a: { id: number; body: Partial<Rule> }) => updateRule(a.id, a.body), reach, notify);
   const remove = useSave(deleteRule, [["rules"]], notify);
 
   if (!rules.data || !cats.data) return <Loading what="merchant rules" error={rules.error ?? cats.error} />;
@@ -698,7 +700,7 @@ function RulesTab({ notify }: { notify: Notify }) {
               create.mutate(body, {
                 onSuccess: (r) => {
                   setAdding(false);
-                  notify(`Rule added: ${r.pattern} → ${r.category_path}.`);
+                  notify(`Rule added: ${r.pattern} → ${r.category_path}.${appliedNote(r)}`);
                 },
               })
             }
@@ -746,7 +748,9 @@ function RulesTab({ notify }: { notify: Notify }) {
                         { id: r.rule_id, body: { is_active: e.target.checked } },
                         {
                           onSuccess: (saved) =>
-                            notify(`Rule ${saved.is_active ? "turned on" : "turned off"}: ${saved.pattern}.`),
+                            notify(
+                              `Rule ${saved.is_active ? "turned on" : "turned off"}: ${saved.pattern}.${appliedNote(saved)}`,
+                            ),
                         },
                       )
                     }
