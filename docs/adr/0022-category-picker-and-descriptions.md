@@ -50,8 +50,6 @@ them; the picker can create subcategories only, while a new group is a deliberat
 - Descriptions are data, not code: Hernan's edits survive later migrations, since seed v5 only
   fills empty ones.
 - The picker loads the category list once (React Query cache) and reuses it on every page.
-- Next (F23 part 3): Settings → Categories with search, counts and moving a subcategory to
-  another group.
 
 ## Part 2 (0.28.0): categorize before approving, accept suggestions in one click
 
@@ -71,3 +69,17 @@ them; the picker can create subcategories only, while a new group is a deliberat
   the same word the cards show) and saves a rule for each. The rest wait for a person.
 - The cards and the two Claude buttons are one shared component (`MerchantReview`) on both
   pages.
+
+## Part 3 (0.29.0): Settings → Categories
+
+- **Find a category:** search by name or description, accents ignored, with the same folding as
+  the picker. A match in a subcategory shows its group with only the matching subcategories; a
+  matching group shows all of them.
+- **Groups start collapsed** ("▸ 4 subcategories"), with Expand all / Collapse all. While
+  searching, every shown group is open.
+- **Usage:** each category shows "120 lines · 2 rules", and a group counts its subcategories'
+  lines. "Not used yet" marks the ones worth hiding.
+- **Move a subcategory** to another group from its edit form (`PATCH /api/categories/{id}` with
+  `parent_id`). Only to a group, never under a subcategory, and only one of the same kind: moving
+  spending under income would change what its lines mean. Groups don't move. Lines and rules
+  point at the category, so they move with it.

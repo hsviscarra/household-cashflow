@@ -71,6 +71,8 @@ class CategoryPatch(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     description: str | None = Field(default=None, max_length=400)
+    # Move a subcategory to another group of the same kind (F23). Its lines and rules follow.
+    parent_id: int | None = None
 
 
 class CategoryOut(_Out):

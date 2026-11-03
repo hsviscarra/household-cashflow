@@ -73,3 +73,57 @@ def test_lines_are_counted_once_loaded(client: TestClient) -> None:
     assert used and sum(c["lines"] for c in used) == sum(
         1 for ln in b["lines"] if ln["category_id"] and not ln["is_duplicate"]
     )
+
+
+def test_move_a_subcategory_to_another_group(client: TestClient, db: Session) -> None:
+    groups = client.get("/api/categories").json()
+    supermarket = _find(groups, "Groceries/Supermarket")
+    dining = _find(groups, "Dining")
+    rules_before = supermarket["rules"]
+    moved = client.patch(
+        f"/api/categories/{supermarket['category_id']}", json={"parent_id": dining["category_id"]}
+    ).json()
+    assert moved["parent_id"] == dining["category_id"]
+    after = client.get("/api/categories").json()
+    assert _find(after, "Dining/Supermarket")["rules"] == rules_before  # its rules follow
+    assert "Supermarket" not in {c["name"] for c in _find(after, "Groceries")["children"]}
+    rule = client.get("/api/merchant-rules").json()
+    assert any(r["category_path"] == "Dining / Supermarket" for r in rule)
+    # Same group again: nothing changes.
+    same = client.patch(
+        f"/api/categories/{supermarket['category_id']}", json={"parent_id": dining["category_id"]}
+    )
+    assert same.status_code == 200
+
+
+def test_moves_that_are_refused(client: TestClient) -> None:
+    groups = client.get("/api/categories").json()
+    rideshare = _find(groups, "Transport/Rideshare")["category_id"]
+    patch = lambda cid, body: client.patch(f"/api/categories/{cid}", json=body)  # noqa: E731
+    # A group can't move, a subcategory can't become a group or go under a subcategory.
+    assert (
+        patch(
+            _find(groups, "Travel")["category_id"],
+            {"parent_id": _find(groups, "Dining")["category_id"]},
+        ).status_code
+        == 422
+    )
+    assert "stays inside a group" in patch(rideshare, {"parent_id": None}).json()["detail"]
+    under_sub = patch(
+        rideshare, {"parent_id": _find(groups, "Dining/Food Delivery")["category_id"]}
+    )
+    assert (
+        under_sub.status_code == 422 and "not to another subcategory" in under_sub.json()["detail"]
+    )
+    # Spending can't move under income: its lines would change meaning.
+    kind = patch(rideshare, {"parent_id": _find(groups, "Salary")["category_id"]})
+    assert kind.status_code == 422 and "same kind" in kind.json()["detail"]
+    assert patch(rideshare, {"parent_id": 99999}).status_code == 404
+    # A name already used in the target group.
+    dup = client.post(
+        "/api/categories",
+        json={"name": "Rideshare", "parent_id": _find(groups, "Travel")["category_id"]},
+    )
+    assert dup.status_code == 201
+    clash = patch(rideshare, {"parent_id": _find(groups, "Travel")["category_id"]})
+    assert clash.status_code == 409

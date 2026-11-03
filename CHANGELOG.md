@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.29.0] — F23 Organizing categories in Settings
+
+### Added
+- **Find a category** in Settings → Categories, by name or by what goes in it.
+- **Groups start collapsed**, with "▸ N subcategories" and Expand all / Collapse all.
+- **How much each category is used:** "120 lines · 2 rules", or "Not used yet".
+- **Move a subcategory to another group** (of the same kind) from its edit form; its lines and
+  rules move with it.
+
 ## [0.28.0] — F23 Categorize before approving; Claude's suggestions in one click
 
 ### Added

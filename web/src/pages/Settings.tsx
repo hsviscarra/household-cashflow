@@ -23,7 +23,7 @@ import {
   type Rule,
   type RuleInput,
 } from "../api";
-import CategoryPicker from "../components/CategoryPicker";
+import CategoryPicker, { fold } from "../components/CategoryPicker";
 import { money } from "../money";
 
 const TABS = [
@@ -370,20 +370,64 @@ function AccountForm(props: {
 function CategoriesTab({ notify }: { notify: Notify }) {
   const { data, error } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<Set<number>>(new Set());
   const create = useSave(createCategory, [["categories"]], notify);
 
   if (!data) return <Loading what="categories" error={error} />;
   const kinds = Object.keys(KIND_LABEL) as CategoryKind[];
+  const words = fold(query.trim()).split(/\s+/).filter(Boolean);
+  const hit = (c: Category) => words.every((w) => fold(`${c.name} ${c.description ?? ""}`).includes(w));
+  // A group shows when it or one of its subcategories matches; a matching group shows them all.
+  const shown = data
+    .map((g) => ({ g, children: !words.length || hit(g) ? g.children : g.children.filter(hit) }))
+    .filter(({ g, children }) => !words.length || hit(g) || children.length > 0);
+  const toggle = (id: number) =>
+    setOpen((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-end">
-        {!adding && (
-          <button className="btn btn-primary" onClick={() => setAdding(true)}>
-            Add group
-          </button>
-        )}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="min-w-56 flex-1 md:max-w-sm">
+          <span className="label">Find a category</span>
+          <input
+            className="field"
+            type="search"
+            placeholder="Name or what goes in it"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {!words.length && (
+            <button
+              className="btn btn-quiet"
+              onClick={() =>
+                setOpen(open.size === data.length ? new Set() : new Set(data.map((g) => g.category_id)))
+              }
+            >
+              {open.size === data.length ? "Collapse all" : "Expand all"}
+            </button>
+          )}
+          {!adding && (
+            <button className="btn btn-primary" onClick={() => setAdding(true)}>
+              Add group
+            </button>
+          )}
+        </div>
       </div>
+      {words.length > 0 && (
+        <p aria-live="polite" className="text-muted">
+          {shown.length
+            ? `${shown.length} ${shown.length === 1 ? "group matches" : "groups match"} “${query.trim()}”.`
+            : `Nothing matches “${query.trim()}”.`}
+        </p>
+      )}
       {adding && (
         <Panel>
           <GroupForm
@@ -401,15 +445,22 @@ function CategoriesTab({ notify }: { notify: Notify }) {
         </Panel>
       )}
       {kinds.map((kind) => {
-        const groups = data.filter((g) => g.kind === kind);
+        const groups = shown.filter(({ g }) => g.kind === kind);
         if (!groups.length) return null;
         return (
           <div key={kind}>
             <h2 className="font-display text-2xl font-bold">{KIND_LABEL[kind]}</h2>
             <ul className="mt-3 space-y-3">
-              {groups.map((g) => (
+              {groups.map(({ g, children }) => (
                 <li key={g.category_id}>
-                  <GroupCard group={g} notify={notify} />
+                  <GroupCard
+                    group={g}
+                    subs={children}
+                    open={words.length > 0 || open.has(g.category_id)}
+                    onToggle={() => toggle(g.category_id)}
+                    sameKind={data.filter((x) => x.kind === g.kind)}
+                    notify={notify}
+                  />
                 </li>
               ))}
             </ul>
@@ -472,9 +523,22 @@ function GroupForm(props: {
   );
 }
 
-function GroupCard({ group: g, notify }: { group: CategoryGroup; notify: Notify }) {
+function GroupCard({
+  group: g,
+  subs,
+  open,
+  onToggle,
+  sameKind,
+  notify,
+}: {
+  group: CategoryGroup;
+  subs: Category[]; // the subcategories to show (search may hide some)
+  open: boolean;
+  onToggle: () => void;
+  sameKind: CategoryGroup[]; // where a subcategory can move
+  notify: Notify;
+}) {
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [newChild, setNewChild] = useState("");
   const update = useSave(
     (a: { id: number; body: Partial<Category> }) => updateCategory(a.id, a.body),
     [["categories"], ["rules"]],
@@ -488,10 +552,17 @@ function GroupCard({ group: g, notify }: { group: CategoryGroup; notify: Notify 
       {
         onSuccess: () => {
           setEditingId(null);
-          notify(`Category saved: ${body.name ?? c.name}.`);
+          const to = sameKind.find((x) => x.category_id === body.parent_id);
+          notify(
+            to && body.parent_id !== c.parent_id
+              ? `Moved ${body.name ?? c.name} to ${to.name}; its lines and rules moved with it.`
+              : `Category saved: ${body.name ?? c.name}.`,
+          );
         },
       },
     );
+  const lines = (g.lines ?? 0) + g.children.reduce((n, c) => n + (c.lines ?? 0), 0);
+  const listId = `subcategories-${g.category_id}`;
 
   return (
     <Panel>
@@ -504,60 +575,99 @@ function GroupCard({ group: g, notify }: { group: CategoryGroup; notify: Notify 
           onSubmit={(body) => saveEdit(g, body)}
         />
       ) : (
-        <CategoryLine category={g} heading onEdit={() => setEditingId(g.category_id)} />
+        <CategoryLine category={g} heading total={lines} onEdit={() => setEditingId(g.category_id)} />
       )}
-      <ul className="mt-3 divide-y divide-line border-t border-line">
-        {g.children.map((c) => (
-          <li key={c.category_id} className="py-2 pl-6">
-            {editingId === c.category_id ? (
-              <CategoryForm
-                category={c}
-                busy={update.isPending}
-                onCancel={() => setEditingId(null)}
-                onSubmit={(body) => saveEdit(c, body)}
-              />
-            ) : (
-              <CategoryLine category={c} onEdit={() => setEditingId(c.category_id)} />
-            )}
-          </li>
-        ))}
-      </ul>
-      <form
-        className="mt-3 flex flex-wrap items-end gap-2 pl-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const name = newChild.trim();
-          if (!name) return;
-          create.mutate(
-            { name, parent_id: g.category_id },
-            {
-              onSuccess: () => {
-                setNewChild("");
-                notify(`Subcategory added: ${g.name} / ${name}.`);
-              },
-            },
-          );
-        }}
+      <button
+        type="button"
+        className="mt-2 text-sm font-semibold text-primary underline-offset-2 hover:underline"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={onToggle}
       >
-        <label className="min-w-48 flex-1">
-          <span className="sr-only">New subcategory in {g.name}</span>
-          <input
-            className="field"
-            placeholder={`New subcategory in ${g.name}`}
-            maxLength={100}
-            value={newChild}
-            onChange={(e) => setNewChild(e.target.value)}
-          />
-        </label>
-        <button type="submit" className="btn btn-secondary" disabled={create.isPending}>
-          Add subcategory
-        </button>
-      </form>
+        {open ? "▾" : "▸"} {g.children.length} {g.children.length === 1 ? "subcategory" : "subcategories"}
+        <span className="sr-only"> in {g.name}</span>
+      </button>
+      {open && (
+        <div id={listId}>
+          <ul className="mt-3 divide-y divide-line border-t border-line">
+            {subs.map((c) => (
+              <li key={c.category_id} className="py-2 pl-6">
+                {editingId === c.category_id ? (
+                  <CategoryForm
+                    category={c}
+                    groups={sameKind}
+                    busy={update.isPending}
+                    onCancel={() => setEditingId(null)}
+                    onSubmit={(body) => saveEdit(c, body)}
+                  />
+                ) : (
+                  <CategoryLine category={c} onEdit={() => setEditingId(c.category_id)} />
+                )}
+              </li>
+            ))}
+          </ul>
+          <SubcategoryAdd group={g} busy={create.isPending} create={create.mutate} notify={notify} />
+        </div>
+      )}
     </Panel>
   );
 }
 
-function CategoryLine(props: { category: Category; heading?: boolean; onEdit: () => void }) {
+function SubcategoryAdd({
+  group: g,
+  busy,
+  create,
+  notify,
+}: {
+  group: CategoryGroup;
+  busy: boolean;
+  create: (b: { name: string; parent_id: number }, o: { onSuccess: () => void }) => void;
+  notify: Notify;
+}) {
+  const [newChild, setNewChild] = useState("");
+  return (
+    <form
+      className="mt-3 flex flex-wrap items-end gap-2 pl-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const name = newChild.trim();
+        if (!name) return;
+        create(
+          { name, parent_id: g.category_id },
+          {
+            onSuccess: () => {
+              setNewChild("");
+              notify(`Subcategory added: ${g.name} / ${name}.`);
+            },
+          },
+        );
+      }}
+    >
+      <label className="min-w-48 flex-1">
+        <span className="sr-only">New subcategory in {g.name}</span>
+        <input
+          className="field"
+          placeholder={`New subcategory in ${g.name}`}
+          maxLength={100}
+          value={newChild}
+          onChange={(e) => setNewChild(e.target.value)}
+        />
+      </label>
+      <button type="submit" className="btn btn-secondary" disabled={busy}>
+        Add subcategory
+      </button>
+    </form>
+  );
+}
+
+/** "120 lines · 2 rules", or "Not used yet" (a candidate to hide). */
+export function usage(lines: number, rules: number): string {
+  if (!lines && !rules) return "Not used yet";
+  const part = (n: number, one: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : `${one}s`}`;
+  return [lines && part(lines, "line"), rules && part(rules, "rule")].filter(Boolean).join(" · ");
+}
+
+function CategoryLine(props: { category: Category; heading?: boolean; total?: number; onEdit: () => void }) {
   const c = props.category;
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -567,6 +677,7 @@ function CategoryLine(props: { category: Category; heading?: boolean; onEdit: ()
           <span className={props.heading ? "text-lg font-semibold" : ""}>{c.name}</span>
           {c.is_fixed && <span className="pill bg-info-bg text-ink">Fixed</span>}
           {!c.is_active && <span className="pill pill-muted">Hidden</span>}
+          <span className="text-sm text-muted">{usage(props.total ?? c.lines ?? 0, c.rules ?? 0)}</span>
         </div>
         <p className={`text-sm ${c.description ? "text-muted" : "italic text-muted"}`}>
           {c.description || "No description yet: Edit to say what goes here."}
@@ -581,6 +692,7 @@ function CategoryLine(props: { category: Category; heading?: boolean; onEdit: ()
 
 function CategoryForm(props: {
   category: Category;
+  groups?: CategoryGroup[]; // a subcategory can move to one of these (same kind)
   withColor?: boolean;
   busy: boolean;
   onCancel: () => void;
@@ -592,6 +704,7 @@ function CategoryForm(props: {
   const [fixed, setFixed] = useState(c.is_fixed);
   const [active, setActive] = useState(c.is_active);
   const [about, setAbout] = useState(c.description ?? "");
+  const [parent, setParent] = useState(c.parent_id);
   return (
     <form
       className="flex flex-wrap items-end gap-3"
@@ -602,6 +715,7 @@ function CategoryForm(props: {
           is_fixed: fixed,
           is_active: active,
           description: about.trim() || null,
+          ...(props.groups && parent !== c.parent_id ? { parent_id: parent } : {}),
           ...(props.withColor ? { color: color.toUpperCase() } : {}),
         });
       }}
@@ -616,6 +730,18 @@ function CategoryForm(props: {
           onChange={(e) => setName(e.target.value)}
         />
       </label>
+      {props.groups && (
+        <label className="min-w-48">
+          <span className="label">In the group</span>
+          <select className="field" value={parent ?? ""} onChange={(e) => setParent(Number(e.target.value))}>
+            {props.groups.map((g) => (
+              <option key={g.category_id} value={g.category_id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="w-full">
         <span className="label">What goes here</span>
         <textarea
