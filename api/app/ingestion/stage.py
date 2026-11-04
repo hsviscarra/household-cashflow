@@ -103,6 +103,19 @@ def _classify(
     return _Classified(type_, hit.category_id, hit.rule_id, patterns[hit.rule_id].strip(" *"))
 
 
+def _account_at_bank(db: Session, sf: StatementFile, last4: str) -> Account | None:
+    from app.ingestion.upload import INSTITUTIONS  # upload imports parsers; avoid a cycle
+
+    institution = INSTITUTIONS.get(sf.source)
+    return db.scalar(
+        select(Account).where(
+            Account.institution == institution,
+            Account.last4 == last4,
+            Account.is_active == True,  # noqa: E712 (SQL Server needs = 1)
+        )
+    )
+
+
 def _balances(header: StatementHeader) -> dict[str, tuple[Decimal, Decimal]]:
     raw = json.loads(header.totals_json).get("balances", {})
     return {k: (Decimal(v[0]), Decimal(v[1])) for k, v in raw.items()}
@@ -193,11 +206,19 @@ def parse_statement(
         by_last4 = {a.last4: a for a in sf.accounts if a.last4}
         for last4 in parsed.balances:
             if last4 not in by_last4:
-                raise StageError(
-                    f"The statement covers account •••• {last4}, which is not linked to it. "
-                    "Set its last four digits in Settings, then upload again.",
-                    422,
-                )
+                # Linked only to some of its accounts when uploaded (BofA checking without its
+                # savings): link the bank's active account with those digits now. Uploading again
+                # can't do it, since the same file is refused as a duplicate.
+                found = _account_at_bank(db, sf, last4)
+                if found is None:
+                    raise StageError(
+                        f"The statement covers account •••• {last4}, which no active account has "
+                        "as its last four digits. Set them in Settings → Accounts, then read the "
+                        "statement again.",
+                        422,
+                    )
+                sf.accounts.append(found)
+                by_last4[last4] = found
             accounts[last4] = by_last4[last4]
     elif len(sf.accounts) == 1:
         accounts[None] = sf.accounts[0]
