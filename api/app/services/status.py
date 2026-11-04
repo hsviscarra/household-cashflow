@@ -160,6 +160,29 @@ def approved_statements(db: Session) -> list[_Stmt]:
     return sorted(out, key=lambda s: (s.account_id, s.start, s.file_id))
 
 
+def not_loaded(db: Session) -> dict[int, list[tuple[date, date, str]]]:
+    """Per account, statements uploaded but not approved yet: (start, end, where it stands).
+    A month without an approved statement says so instead of "no statement" (Hernan uploaded a
+    batch and saw every month unchanged: only approved statements count)."""
+    latest: dict[int, str] = {}
+    for b in db.scalars(select(ImportBatch).order_by(ImportBatch.batch_id)):
+        latest[b.statement_file_id] = b.status
+    out: dict[int, list[tuple[date, date, str]]] = defaultdict(list)
+    rows = db.execute(
+        select(StatementFile, StatementFileAccount.account_id).join(
+            StatementFileAccount,
+            StatementFileAccount.statement_file_id == StatementFile.statement_file_id,
+        )
+    )
+    for sf, account_id in rows:
+        state = latest.get(sf.statement_file_id)
+        if state == "approved" or sf.period_start is None or sf.period_end is None:
+            continue
+        where = "waiting for approval" if state == "preview" else "uploaded, not read yet"
+        out[account_id].append((sf.period_start, sf.period_end, where))
+    return out
+
+
 def _gaps(periods: list[tuple[date, date]], start: date, end: date) -> list[tuple[date, date]]:
     """The day ranges of start..end that no period covers."""
     gaps, cursor = [], start
@@ -183,6 +206,7 @@ def month_status(db: Session, today: date | None = None) -> Status:
     excel_through = excel[-1] if excel else None
     accounts = list(db.scalars(select(Account).where(Account.is_active).order_by(Account.name)))
     stmts = approved_statements(db)
+    waiting = not_loaded(db)
     by_account: dict[int, list[_Stmt]] = defaultdict(list)
     for s in stmts:
         by_account[s.account_id].append(s)
@@ -227,6 +251,16 @@ def month_status(db: Session, today: date | None = None) -> Status:
                 )
             if a_end < end:  # closed this month
                 text += f" (until it closed on {a_end:%b} {a_end.day})"
+            here = sorted(
+                {
+                    w
+                    for w_start, w_end, w in waiting[a.account_id]
+                    for g_start, g_end in open_gaps
+                    if w_start <= g_end and w_end >= g_start
+                }
+            )
+            if here:  # on the Import page already: say where it stands
+                text += f": on Import, {' / '.join(here)}"
             ms.items.append(Item("statement", text, "/import"))
         _pending_imports(db, ms)
         _lines(db, ms)

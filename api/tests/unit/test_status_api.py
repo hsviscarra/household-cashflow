@@ -226,3 +226,24 @@ def test_a_closed_account_is_expected_only_until_it_closed(client: TestClient, d
     client.patch(f"/api/accounts/{keep.account_id}", json={"closed_on": None})
     aug = _month(_status(client, "2026-08-20"), "2026-08-01")
     assert "Produbanco Ahorros Hernan: no statement for August" in _texts(aug)
+
+
+def test_a_missing_statement_already_on_import_says_where_it_stands(
+    client: TestClient, db: Session
+) -> None:
+    _only_produbanco(db)
+    # Only approved statements count; one on the Import page says where it stands.
+    up = client.post(
+        "/api/statements",
+        files=[("files", ("jul.pdf", s.produbanco_full(period=JULY), PDF))],
+        headers=USER,
+    ).json()[0]["statement"]
+    jul = _month(_status(client, "2026-07-31"), "2026-07-01")
+    assert _texts(jul) == [
+        "Produbanco Ahorros Hernan: no statement for July: on Import, uploaded, not read yet"
+    ]
+    client.post(f"/api/statements/{up['statement_file_id']}/read")
+    jul = _month(_status(client, "2026-07-31"), "2026-07-01")
+    assert _texts(jul)[0] == (
+        "Produbanco Ahorros Hernan: no statement for July: on Import, waiting for approval"
+    )

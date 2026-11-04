@@ -82,3 +82,28 @@ def test_wrong_layout_raises() -> None:
         capitalone.parse(["Sep 04, 2026 - Oct 03, 2026"])
     with pytest.raises(ValueError):
         capitalone._year_for("Mar 1", date(2026, 9, 4), date(2026, 10, 3))
+
+
+def test_other_credits_with_a_minus_and_refunds_are_not_payments() -> None:
+    """June 2026 printed "Other Credits - $14.76" (an Amazon refund): the summary wasn't found.
+    The refund sits under "Payments, Credits and Adjustments" but isn't a card payment."""
+    p = capitalone.parse(read_pages(capitalone_full(credit="14.76")))
+    assert p.tieout_ok, [c for c in p.checks if not c.ok]
+    assert p.totals["other_credits"] == Decimal("14.76")
+    by = {ln.description: ln for ln in p.lines}
+    refund = by["TIENDA EN LINEA PMTSStore.com"]
+    assert (refund.section, refund.amount, refund.cardholder) == (
+        "credit",
+        Decimal("14.76"),
+        "4162",
+    )
+    assert by["CAPITAL ONE MOBILE PYMT"].section == "payment"
+
+
+def test_a_refund_is_money_back_not_a_card_payment(client) -> None:  # type: ignore[no-untyped-def]
+    files = [("files", ("co.pdf", capitalone_full(credit="14.76"), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    assert b["tieout_ok"], b["checks"]
+    refund = next(ln for ln in b["lines"] if ln["description"].startswith("TIENDA EN LINEA"))
+    assert refund["type"] == "refund" and refund["category_path"] != "Transfers / Card Payment"

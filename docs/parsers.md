@@ -28,6 +28,9 @@ real layout (`api/tests/fixtures/statements.py`); real statements are checked lo
   statement is loaded, its closing balance = this opening balance.
 - **Checked on the real Sep 4 – Oct 3, 2026 statement:** 76 lines (74 purchases, 1 payment,
   1 interest), ties out to 3,932.84.
+- **Other Credits (0.32.1):** "Other Credits $0.00", or "Other Credits - $14.76" in a month with a
+  credit (June 2026). Refunds are listed under "Payments, Credits and Adjustments" with the card
+  payments; a line without PYMT, PAYMENT or AUTOPAY there is a credit (money back), not a payment.
 
 ## Bank of America (combined statement, `bofa`) — F5
 

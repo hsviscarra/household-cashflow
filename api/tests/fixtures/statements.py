@@ -124,7 +124,9 @@ def capitalone_full(
     printed_total_delta: str = "0.00",
     extra_lines: list[str] | None = None,
     payment_dates: str = "Sep 27 Sep 28",
+    credit: str = "0.00",
 ) -> bytes:
+    """credit: a refund in Hernan's "Payments, Credits and Adjustments" ("Other Credits - $…")."""
     from decimal import Decimal
 
     lauren = CO_LAUREN if lauren is None else lauren
@@ -139,7 +141,8 @@ def capitalone_full(
     lt = sum((amt(x[3]) for x in lauren), Decimal(0))
     ht = sum((amt(x[3]) for x in hernan), Decimal(0))
     total = lt + ht
-    new = Decimal(previous) - Decimal(payment) + total + Decimal(interest)
+    new = Decimal(previous) - Decimal(payment) - Decimal(credit) + total + Decimal(interest)
+    other = f"- ${Decimal(credit):,.2f}" if Decimal(credit) else "$0.00"
     head = [
         "Venture Credit Card | Visa Signature ending in 4003",
         f"{period[0]} - {period[1]} | 30 days in Billing Cycle",
@@ -149,7 +152,7 @@ def capitalone_full(
         *head,
         f"Payment Information Account Summary Previous Balance ${Decimal(previous):,.2f}",
         f"Payments - ${Decimal(payment):,.2f}",
-        "Other Credits $0.00",
+        f"Other Credits {other}",
         f"Transactions + ${total + Decimal(printed_total_delta):,.2f}",
         "Cash Advances + $0.00",
         "Fees Charged + $0.00",
@@ -176,6 +179,7 @@ def capitalone_full(
         "Transactions (Continued)",
         "TEST HERNAN HOLDER #4162: Payments, Credits and Adjustments",
         "Trans Date Post Date Description Amount",
+        *([f"Sep 15 Sep 16 TIENDA EN LINEA PMTSStore.com {other}"] if Decimal(credit) else []),
         "TEST HERNAN HOLDER #4162: Transactions",
         "Trans Date Post Date Description Amount",
         *[f"{a} {b} {c} {fmt(d)}" for a, b, c, d in hernan],
