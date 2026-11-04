@@ -610,6 +610,25 @@ export type DataStatus = {
   accounts: { account_id: number; name: string; kind: string; owner: string }[];
   months: MonthStatus[];
   loads: { loaded_at: string; source: string; file_name: string | null; rows: number; loaded_by: string }[];
+  statements?: AccountTimeline[];
+};
+export type TimelineStatement = {
+  statement_file_id: number;
+  file_name: string;
+  start: string;
+  end: string;
+  state: "loaded" | "waiting" | "problems" | "not_read";
+  batch_id: number | null;
+};
+// due: the current cycle, whose statement the bank issues around that day (not missing).
+export type StatementGap = { start: string; end: string; due: string | null };
+export type AccountTimeline = {
+  account_id: number;
+  name: string;
+  closed_on: string | null;
+  start_day: number | null;
+  statements: TimelineStatement[];
+  gaps: StatementGap[];
 };
 export const fetchStatus = () => send<DataStatus>("GET", "/api/status");
 

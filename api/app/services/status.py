@@ -13,7 +13,7 @@ to the current month, a month is complete when nothing below is open:
 
 import itertools
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -94,12 +94,41 @@ class Load:
 
 
 @dataclass
+class TimelineStatement:
+    file_id: int
+    file_name: str
+    start: date
+    end: date
+    state: str  # loaded, waiting, problems (read, doesn't tie out), not_read
+    batch_id: int | None
+
+
+@dataclass
+class Gap:
+    start: date
+    end: date
+    # Set when the gap is the current cycle, whose statement the bank hasn't issued yet.
+    due: date | None = None
+
+
+@dataclass
+class AccountTimeline:
+    account_id: int
+    name: str
+    closed_on: date | None
+    start_day: int | None  # the day of the month its statements usually start
+    statements: list[TimelineStatement]
+    gaps: list[Gap]
+
+
+@dataclass
 class Status:
     today: date
     excel_through: date | None
     accounts: list[Account]
     months: list[MonthStatus]
     loads: list[Load]
+    timeline: list[AccountTimeline] = field(default_factory=list)
 
 
 @dataclass
@@ -183,6 +212,90 @@ def not_loaded(db: Session) -> dict[int, list[tuple[date, date, str]]]:
     return out
 
 
+def next_cycle_end(end: date) -> date:
+    """The same day a month later (clamped): when the statement after one ending on `end` ends."""
+    m = recurring.add_months(end.replace(day=1), 1)
+    last = (recurring.add_months(m, 1) - timedelta(days=1)).day
+    if end == month_end(end):  # month-end statements (Produbanco): the next month's last day
+        return m.replace(day=last)
+    return m.replace(day=min(end.day, last))
+
+
+def statement_files(db: Session) -> dict[int, list[TimelineStatement]]:
+    """Every uploaded statement with a period, per linked account, and where it stands."""
+    latest: dict[int, ImportBatch] = {}
+    for b in db.scalars(select(ImportBatch).order_by(ImportBatch.batch_id)):
+        latest[b.statement_file_id] = b
+    out: dict[int, list[TimelineStatement]] = defaultdict(list)
+    rows = db.execute(
+        select(StatementFile, StatementFileAccount.account_id).join(
+            StatementFileAccount,
+            StatementFileAccount.statement_file_id == StatementFile.statement_file_id,
+        )
+    )
+    for sf, account_id in rows:
+        if sf.period_start is None or sf.period_end is None:
+            continue
+        batch = latest.get(sf.statement_file_id)
+        state = _standing(batch)
+        out[account_id].append(
+            TimelineStatement(
+                sf.statement_file_id,
+                sf.file_name,
+                sf.period_start,
+                sf.period_end,
+                state,
+                batch.batch_id if batch is not None and batch.status != "rejected" else None,
+            )
+        )
+    for items in out.values():
+        items.sort(key=lambda t: (t.start, t.end, t.file_id))
+    return out
+
+
+def _standing(batch: ImportBatch | None) -> str:
+    if batch is None or batch.status == "rejected":
+        return "not_read"
+    if batch.status == "approved":
+        return "loaded"
+    return "waiting" if batch.tieout_ok else "problems"
+
+
+def timeline(
+    accounts: list[Account],
+    files: dict[int, list[TimelineStatement]],
+    expected_from: date,
+    today: date,
+) -> list[AccountTimeline]:
+    """Per account: its statements in order and the days no statement covers, from the first
+    month Data Status checks up to today (or the day it closed). The last gap is the current
+    cycle, not missing, while the bank hasn't issued its statement yet."""
+    out = []
+    for a in accounts:
+        stmts = files.get(a.account_id, [])
+        horizon = min(today, a.closed_on) if a.closed_on else today
+        gaps = [
+            Gap(s, e) for s, e in _gaps([(t.start, t.end) for t in stmts], expected_from, horizon)
+        ]
+        if stmts and gaps and gaps[-1].start > max(t.end for t in stmts):
+            last_end = max(t.end for t in stmts)
+            due = next_cycle_end(last_end)
+            if due > horizon and not (a.closed_on and a.closed_on <= today):
+                gaps[-1].due = due
+        days = Counter(t.start.day for t in stmts)
+        out.append(
+            AccountTimeline(
+                a.account_id,
+                a.name,
+                a.closed_on,
+                days.most_common(1)[0][0] if days else None,
+                stmts,
+                gaps,
+            )
+        )
+    return out
+
+
 def _gaps(periods: list[tuple[date, date]], start: date, end: date) -> list[tuple[date, date]]:
     """The day ranges of start..end that no period covers."""
     gaps, cursor = [], start
@@ -207,6 +320,7 @@ def month_status(db: Session, today: date | None = None) -> Status:
     accounts = list(db.scalars(select(Account).where(Account.is_active).order_by(Account.name)))
     stmts = approved_statements(db)
     waiting = not_loaded(db)
+    files = statement_files(db)
     by_account: dict[int, list[_Stmt]] = defaultdict(list)
     for s in stmts:
         by_account[s.account_id].append(s)
@@ -261,19 +375,41 @@ def month_status(db: Session, today: date | None = None) -> Status:
             )
             if here:  # on the Import page already: say where it stands
                 text += f": on Import, {' / '.join(here)}"
+            elif (due := _not_issued(files.get(a.account_id, []), open_gaps, today)) is not None:
+                text += f" (the bank issues it around {due:%b} {due.day})"
             ms.items.append(Item("statement", text, "/import"))
         _pending_imports(db, ms)
         _lines(db, ms)
         _recurring(db, ms)
         out.append(ms)
     _balance_breaks(db, by_account, {a.account_id: a for a in accounts}, out)
+    checked_from = first if months else current
 
     if excel_through is not None:
         for m in reversed(excel):
             if m >= recurring.add_months(current, -36):
                 out.append(MonthStatus(m, "excel"))
     out.sort(key=lambda s: s.month, reverse=True)
-    return Status(today, excel_through, accounts, out, loads(db))
+    return Status(
+        today,
+        excel_through,
+        accounts,
+        out,
+        loads(db),
+        timeline(accounts, files, checked_from, today),
+    )
+
+
+def _not_issued(
+    stmts: list[TimelineStatement], gaps: list[tuple[date, date]], today: date
+) -> date | None:
+    """When every missing day comes after the account's last statement and the next one isn't
+    due yet, the day it's due (the item says the bank hasn't issued it, not that it's missing)."""
+    if not stmts or not gaps:
+        return None
+    last_end = max(t.end for t in stmts)
+    due = next_cycle_end(last_end)
+    return due if all(g_start > last_end for g_start, _ in gaps) and due > today else None
 
 
 def _pending_imports(db: Session, ms: MonthStatus) -> None:

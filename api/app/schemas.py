@@ -691,12 +691,38 @@ class LoadOut(BaseModel):
     loaded_by: str
 
 
+class TimelineStatementOut(BaseModel):
+    statement_file_id: int
+    file_name: str
+    start: date
+    end: date
+    state: Literal["loaded", "waiting", "problems", "not_read"]
+    batch_id: int | None
+
+
+class GapOut(BaseModel):
+    start: date
+    end: date
+    due: date | None  # the current cycle: the bank issues its statement around this day
+
+
+class AccountTimelineOut(BaseModel):
+    account_id: int
+    name: str
+    closed_on: date | None
+    start_day: int | None  # its statements usually start on this day of the month
+    statements: list[TimelineStatementOut]
+    gaps: list[GapOut]
+
+
 class StatusOut(BaseModel):
     today: date
     excel_through: date | None
     accounts: list[StatusAccountOut]
     months: list[MonthStatusOut]
     loads: list[LoadOut]
+    # Each account's statements in order and the days none covers (from the first month checked).
+    statements: list[AccountTimelineOut] = []
 
 
 # ---------------- F13: spending analytics ----------------

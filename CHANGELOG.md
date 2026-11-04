@@ -5,6 +5,22 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.33.0] — Statement periods on Data Status
+
+### Added
+- **Statement periods** on Data Status: per account, every statement in order with its exact
+  dates and where it stands (Loaded, Waiting for approval, Doesn't tie out, Not read yet, each
+  linking to it), the day its statements usually start, and the exact days no statement covers
+  ("No statement: upload it"). Accounts with gaps open first.
+- **The current cycle isn't "missing":** days after an account's last statement, before the bank
+  issues the next one, show "Current cycle: the bank issues it around Nov 22", and the month's
+  item says "(the bank issues it around Nov 22)". A Bank of America statement ending Oct 22
+  leaves Oct 23–31 waiting for the November statement, so October can't be complete before then.
+  Month-end statements (Produbanco) are due on the next month's last day.
+
+### Changed
+- The month-by-account table on Data Status is titled "Coverage by month".
+
 ## [0.32.2] — A statement linked to only some of its accounts
 
 ### Fixes

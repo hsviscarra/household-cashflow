@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DataStatus, MonthStatus } from "../api";
-import StatusPage, { summary } from "./Status";
+import StatusPage, { missingGaps, summary } from "./Status";
 
 const ACCOUNTS = [
   { account_id: 1, name: "Checking", kind: "checking", owner: "Joint" },
@@ -148,5 +148,87 @@ describe("Data Status", () => {
     unmount();
     renderWith({ detail: "boom" }, 500);
     expect(await screen.findByText("Could not load the data status: boom")).toBeInTheDocument();
+  });
+});
+
+describe("Data Status: statement periods", () => {
+  const TIMELINE = [
+    {
+      account_id: 2,
+      name: "Card",
+      closed_on: null,
+      start_day: 4,
+      statements: [
+        {
+          statement_file_id: 1,
+          file_name: "may.pdf",
+          start: "2026-05-04",
+          end: "2026-06-03",
+          state: "loaded" as const,
+          batch_id: 10,
+        },
+        {
+          statement_file_id: 3,
+          file_name: "jul.pdf",
+          start: "2026-07-04",
+          end: "2026-08-03",
+          state: "waiting" as const,
+          batch_id: 12,
+        },
+      ],
+      gaps: [
+        { start: "2026-06-04", end: "2026-07-03", due: null },
+        { start: "2026-08-04", end: "2026-08-10", due: "2026-09-03" },
+      ],
+    },
+    {
+      account_id: 1,
+      name: "Checking",
+      closed_on: "2026-09-15",
+      start_day: 1,
+      statements: [
+        {
+          statement_file_id: 4,
+          file_name: "aug.pdf",
+          start: "2026-08-01",
+          end: "2026-08-31",
+          state: "not_read" as const,
+          batch_id: null,
+        },
+      ],
+      gaps: [],
+    },
+  ];
+
+  it("lists each account's statements and the exact days to download", async () => {
+    renderWith({ ...STATUS, statements: TIMELINE });
+    const list = await screen.findByRole("list", { name: "Statement periods by account" });
+    const card = within(list).getByRole("listitem", { name: "Card" });
+    expect(card).toHaveTextContent("statements start on the 4th");
+    expect(card).toHaveTextContent("1 gap to fill");
+    expect(card.querySelector("details")?.open).toBe(true);
+    const rows = within(card)
+      .getAllByRole("listitem")
+      .map((r) => r.textContent);
+    expect(rows).toEqual([
+      expect.stringContaining("May 4, 2026 – Jun 3, 2026"),
+      expect.stringContaining("Jun 4, 2026 – Jul 3, 2026No statement: upload it"),
+      expect.stringContaining("Jul 4, 2026 – Aug 3, 2026"),
+      "Aug 4, 2026 – Aug 10, 2026Current cycle: the bank issues it around Sep 3, 2026",
+    ]);
+    expect(within(card).getByRole("link", { name: "Waiting for approval" })).toHaveAttribute(
+      "href",
+      "/import/batches/12",
+    );
+    const checking = within(list).getByRole("listitem", { name: "Checking" });
+    expect(checking).toHaveTextContent("closed Sep 15, 2026");
+    expect(checking).toHaveTextContent("No gaps");
+    expect(checking.querySelector("details")?.open).toBe(false);
+    expect(within(checking).getByRole("link", { name: "Not read yet" })).toHaveAttribute("href", "/import");
+    expect(screen.getByRole("heading", { name: "Coverage by month" })).toBeInTheDocument();
+  });
+
+  it("finds the gaps that need a download", () => {
+    expect(missingGaps(TIMELINE[0])).toEqual([{ start: "2026-06-04", end: "2026-07-03", due: null }]);
   });
 });

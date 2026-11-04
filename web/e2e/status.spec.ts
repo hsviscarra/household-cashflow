@@ -13,6 +13,9 @@ test("data status: each month is complete or says what is missing", async ({ pag
     page.getByText(/^Through [A-Z][a-z]+ \d{4}: complete, from the Cash Flow sheet\.$/),
   ).toBeVisible();
   await expect(page.getByRole("table", { name: "Statement coverage by account and month" })).toBeVisible();
+  // Each account's statements with their exact dates (0.33.0).
+  const periods = page.getByRole("list", { name: "Statement periods by account" });
+  await expect(periods.getByText(/\w{3} \d{1,2}, \d{4} – \w{3} \d{1,2}, \d{4}/).first()).toBeAttached();
   await expect(page.getByRole("table", { name: "Latest loads" })).toContainText("Statement");
 
   // The latest month is open; a missing statement links to the Import page.
