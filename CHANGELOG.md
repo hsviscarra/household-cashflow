@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.32.2] — A statement linked to only some of its accounts
+
+### Fixes
+- **Bank of America statements failed with "covers account •••• 1862, which is not linked to
+  it… upload again"**: these copies had been linked to the checking account only, and uploading
+  the same file again is refused as a duplicate, so there was no way out. Reading a statement now
+  links the bank's active account with those last four digits. When none has them, the message
+  says to set them in Settings and read the statement again.
+
 ## [0.32.1] — Capital One credits; Data Status says what's on Import
 
 ### Fixes
