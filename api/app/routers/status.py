@@ -10,13 +10,16 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session
 from app.ops.backup import BackupStore
 from app.schemas import (
+    AccountTimelineOut,
     BackupStatusOut,
     CoverageOut,
+    GapOut,
     LoadOut,
     MonthStatusOut,
     StatusAccountOut,
     StatusItemOut,
     StatusOut,
+    TimelineStatementOut,
 )
 from app.services import backups
 from app.services import status as month_status
@@ -58,6 +61,27 @@ def get_status(
             for m in s.months
         ],
         loads=[LoadOut(**vars(x)) for x in s.loads],
+        statements=[
+            AccountTimelineOut(
+                account_id=t.account_id,
+                name=t.name,
+                closed_on=t.closed_on,
+                start_day=t.start_day,
+                statements=[
+                    TimelineStatementOut(
+                        statement_file_id=x.file_id,
+                        file_name=x.file_name,
+                        start=x.start,
+                        end=x.end,
+                        state=x.state,  # type: ignore[arg-type]
+                        batch_id=x.batch_id,
+                    )
+                    for x in t.statements
+                ],
+                gaps=[GapOut(start=g.start, end=g.end, due=g.due) for g in t.gaps],
+            )
+            for t in s.timeline
+        ],
     )
 
 

@@ -101,9 +101,11 @@ def test_a_covered_month_with_everything_categorized_is_complete(
         "covered_days": 30,
         "days": 30,
     }
-    # July: no statement yet, checked up to the 10th.
+    # July: no statement yet, checked up to the 10th; the bank issues it at the month's end.
     july = _month(_status(client, "2026-07-10"), "2026-07-01")
-    assert _texts(july) == ["Produbanco Ahorros Hernan: no statement for July"]
+    assert _texts(july) == [
+        "Produbanco Ahorros Hernan: no statement for July (the bank issues it around Jul 31)"
+    ]
     loads = _status(client, "2026-07-10")["loads"]
     assert (loads[0]["source"], loads[0]["file_name"], loads[0]["rows"]) == (
         "statement",
@@ -187,7 +189,7 @@ def test_partial_coverage_and_balance_breaks(client: TestClient, db: Session) ->
     assert _texts(june) == ["Produbanco Ahorros Hernan: no statement for Jun 1\u20139"]
     assert june["coverage"][0]["state"] == "partial" and june["coverage"][0]["covered_days"] == 21
     assert _texts(_month(st, "2026-08-01")) == [
-        "Produbanco Ahorros Hernan: no statement for August"
+        "Produbanco Ahorros Hernan: no statement for August (the bank issues it around Aug 31)"
     ]
 
 
@@ -247,3 +249,30 @@ def test_a_missing_statement_already_on_import_says_where_it_stands(
     assert _texts(jul)[0] == (
         "Produbanco Ahorros Hernan: no statement for July: on Import, waiting for approval"
     )
+
+
+def test_statements_by_account_show_each_period_and_the_gaps(
+    client: TestClient, db: Session
+) -> None:
+    _only_produbanco(db)
+    _upload(client, "jun.pdf", s.produbanco_full(period=JUNE, lines=PHONE))  # loaded
+    aug = "Del 01 Ago 2026 Al 31 Ago 2026"
+    _upload(client, "aug.pdf", s.produbanco_full(period=aug, opening="900.00"), approve=False)
+    [acc] = _status(client, "2026-09-10")["statements"]
+    assert acc["name"] == "Produbanco Ahorros Hernan" and acc["start_day"] == 1
+    assert [(x["file_name"], x["start"], x["end"], x["state"]) for x in acc["statements"]] == [
+        ("jun.pdf", "2026-06-01", "2026-06-30", "loaded"),
+        ("aug.pdf", "2026-08-01", "2026-08-31", "waiting"),
+    ]
+    # July is missing; September is the current cycle, issued around Sep 30.
+    assert acc["gaps"] == [
+        {"start": "2026-07-01", "end": "2026-07-31", "due": None},
+        {"start": "2026-09-01", "end": "2026-09-10", "due": "2026-09-30"},
+    ]
+
+
+def test_next_cycle_end() -> None:
+    assert status.next_cycle_end(date(2026, 1, 22)) == date(2026, 2, 22)
+    assert status.next_cycle_end(date(2026, 1, 31)) == date(2026, 2, 28)  # month end stays one
+    assert status.next_cycle_end(date(2026, 6, 30)) == date(2026, 7, 31)
+    assert status.next_cycle_end(date(2026, 12, 3)) == date(2027, 1, 3)
