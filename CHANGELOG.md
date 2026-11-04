@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.34.0] — Which statement to download
+
+### Added
+- **Data Status names the statement to download**, not only the missing days: "Capital One
+  Venture: no statement for Oct 4–31 · download the statement closing Nov 3
+  (Statement_112026_4003.pdf)". Worked out from the account's cycle: each statement closes the
+  day before the next one starts, a month apart; only statements already issued are listed.
+- **Statement periods:** each gap says "Download the statement closing Jul 3, 2026" with the file
+  name, for banks that put the date in it (Capital One `Statement_MMYYYY_last4.pdf` by the month
+  it closes, Bank of America `eStmt_YYYY-MM-DD.pdf`, Pacificard `ESTADOCUENTAYYYYMM.pdf`).
+
+### Changed
+- **"Already uploaded" says which statement it is**: "Already uploaded: Capital One, Sep 4, 2026 –
+  Oct 3, 2026 (as Statement_102026_4003.pdf on …)", so a download of the wrong month is obvious.
+
 ## [0.33.0] — Statement periods on Data Status
 
 ### Added

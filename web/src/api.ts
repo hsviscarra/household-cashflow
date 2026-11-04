@@ -621,7 +621,13 @@ export type TimelineStatement = {
   batch_id: number | null;
 };
 // due: the current cycle, whose statement the bank issues around that day (not missing).
-export type StatementGap = { start: string; end: string; due: string | null };
+export type StatementGap = {
+  start: string;
+  end: string;
+  due: string | null;
+  closes?: string[]; // the statements that fill it, by closing day
+  files?: string[]; // their usual file names, for banks that date them
+};
 export type AccountTimeline = {
   account_id: number;
   name: string;

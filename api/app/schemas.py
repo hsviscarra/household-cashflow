@@ -704,6 +704,8 @@ class GapOut(BaseModel):
     start: date
     end: date
     due: date | None  # the current cycle: the bank issues its statement around this day
+    closes: list[date] = []  # the statements that fill it, by closing day
+    files: list[str] = []  # their usual file names, for banks that date them
 
 
 class AccountTimelineOut(BaseModel):

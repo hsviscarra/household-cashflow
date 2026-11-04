@@ -209,6 +209,14 @@ const STMT: Record<"loaded" | "waiting" | "problems" | "not_read", { label: stri
   not_read: { label: "Not read yet", look: "pill-muted" },
 };
 
+/** "Download the statement closing Jul 3, 2026", or a plain upload prompt when the cycle isn't
+ * known yet (no statement next to the gap). */
+export function downloadText(g: { closes?: string[] }): string {
+  const closes = g.closes ?? [];
+  if (!closes.length) return "No statement: upload it";
+  return `Download the ${closes.length === 1 ? "statement" : "statements"} closing ${closes.map(day).join(" and ")}`;
+}
+
 /** "Missing" gaps (not the current cycle): what to download from the bank. */
 export function missingGaps(a: AccountTimeline) {
   return a.gaps.filter((g) => !g.due);
@@ -301,9 +309,14 @@ function StatementPeriods({ accounts }: { accounts: AccountTimeline[] }) {
                         className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-attention-bg px-2 py-1.5 text-attention-ink"
                       >
                         <span className="num font-semibold">{range(it.g.start, it.g.end)}</span>
-                        <Link to="/import" className="font-semibold underline-offset-2 hover:underline">
-                          No statement: upload it
-                        </Link>
+                        <span className="text-right">
+                          <Link to="/import" className="font-semibold underline-offset-2 hover:underline">
+                            {downloadText(it.g)}
+                          </Link>
+                          {(it.g.files?.length ?? 0) > 0 && (
+                            <span className="block font-mono text-xs">{it.g.files!.join(", ")}</span>
+                          )}
+                        </span>
                       </li>
                     ),
                   )}

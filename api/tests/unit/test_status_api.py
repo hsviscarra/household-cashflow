@@ -186,7 +186,10 @@ def test_partial_coverage_and_balance_breaks(client: TestClient, db: Session) ->
     ]
     assert july["items"][0]["kind"] == "balance"
     june = _month(st, "2026-06-01")
-    assert _texts(june) == ["Produbanco Ahorros Hernan: no statement for Jun 1\u20139"]
+    assert _texts(june) == [
+        "Produbanco Ahorros Hernan: no statement for Jun 1\u20139"
+        " \u00b7 download the statement closing Jun 9"
+    ]
     assert june["coverage"][0]["state"] == "partial" and june["coverage"][0]["covered_days"] == 21
     assert _texts(_month(st, "2026-08-01")) == [
         "Produbanco Ahorros Hernan: no statement for August (the bank issues it around Aug 31)"
@@ -220,6 +223,7 @@ def test_a_closed_account_is_expected_only_until_it_closed(client: TestClient, d
     jul = _month(st, "2026-07-01")
     assert _texts(jul) == [
         "Produbanco Ahorros Hernan: no statement for July (until it closed on Jul 10)"
+        " \u00b7 download the statement closing Jul 31"
     ]
     assert jul["coverage"][0]["days"] == 10
     aug = _month(st, "2026-08-01")
@@ -266,8 +270,21 @@ def test_statements_by_account_show_each_period_and_the_gaps(
     ]
     # July is missing; September is the current cycle, issued around Sep 30.
     assert acc["gaps"] == [
-        {"start": "2026-07-01", "end": "2026-07-31", "due": None},
-        {"start": "2026-09-01", "end": "2026-09-10", "due": "2026-09-30"},
+        # Filled by the statement closing Jul 31 (Produbanco names don't carry the date).
+        {
+            "start": "2026-07-01",
+            "end": "2026-07-31",
+            "due": None,
+            "closes": ["2026-07-31"],
+            "files": [],
+        },
+        {
+            "start": "2026-09-01",
+            "end": "2026-09-10",
+            "due": "2026-09-30",
+            "closes": [],
+            "files": [],
+        },
     ]
 
 
@@ -276,3 +293,38 @@ def test_next_cycle_end() -> None:
     assert status.next_cycle_end(date(2026, 1, 31)) == date(2026, 2, 28)  # month end stays one
     assert status.next_cycle_end(date(2026, 6, 30)) == date(2026, 7, 31)
     assert status.next_cycle_end(date(2026, 12, 3)) == date(2027, 1, 3)
+
+
+def test_which_statements_fill_a_gap() -> None:
+    # A month missing between two Capital One statements: the one closing Jul 3.
+    assert status.statement_closes(
+        date(2026, 6, 4), date(2026, 7, 3), date(2026, 6, 3), date(2026, 7, 4), date(2026, 11, 4)
+    ) == [date(2026, 7, 3)]
+    # Two months missing before a statement: both, oldest first.
+    assert status.statement_closes(
+        date(2026, 5, 4), date(2026, 7, 3), None, date(2026, 7, 4), date(2026, 11, 4)
+    ) == [date(2026, 6, 3), date(2026, 7, 3)]
+    # After the last statement: only those already issued (Nov 3 yes, Dec 3 not yet).
+    assert status.statement_closes(
+        date(2026, 10, 4), date(2026, 11, 4), date(2026, 10, 3), None, date(2026, 11, 4)
+    ) == [date(2026, 11, 3)]
+    assert (
+        status.statement_closes(date(2026, 1, 1), date(2026, 1, 31), None, None, date(2026, 2, 5))
+        == []
+    )
+    assert status.prev_cycle_end(date(2026, 3, 31)) == date(2026, 2, 28)
+    assert status.prev_cycle_end(date(2026, 1, 22)) == date(2025, 12, 22)
+
+
+def test_file_names_by_bank() -> None:
+    from types import SimpleNamespace
+
+    nov3 = [date(2026, 11, 3)]
+    co = SimpleNamespace(institution="Capital One", last4="4003")
+    assert status._file_names(co, nov3) == ["Statement_112026_4003.pdf"]  # type: ignore[arg-type]
+    bofa = SimpleNamespace(institution="Bank of America", last4="8872")
+    assert status._file_names(bofa, [date(2026, 11, 22)]) == ["eStmt_2026-11-22.pdf"]  # type: ignore[arg-type]
+    pc = SimpleNamespace(institution="Pacificard", last4=None)
+    assert status._file_names(pc, [date(2026, 10, 23)]) == ["ESTADOCUENTA202610.pdf"]  # type: ignore[arg-type]
+    other = SimpleNamespace(institution="Diners Club", last4=None)
+    assert status._file_names(other, nov3) == []  # type: ignore[arg-type]

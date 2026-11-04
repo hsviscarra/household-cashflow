@@ -109,6 +109,10 @@ class Gap:
     end: date
     # Set when the gap is the current cycle, whose statement the bank hasn't issued yet.
     due: date | None = None
+    # The statements that fill it, by the day each closes, and their usual file names where the
+    # bank puts the date in them ("Statement_112026_4003.pdf" closes in November 2026).
+    closes: list[date] = field(default_factory=list)
+    files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -261,6 +265,50 @@ def _standing(batch: ImportBatch | None) -> str:
     return "waiting" if batch.tieout_ok else "problems"
 
 
+def prev_cycle_end(end: date) -> date:
+    """The same day a month earlier (clamped; month ends stay month ends)."""
+    m = recurring.add_months(end.replace(day=1), -1)
+    last = (end.replace(day=1) - timedelta(days=1)).day
+    if end == month_end(end):
+        return m.replace(day=last)
+    return m.replace(day=min(end.day, last))
+
+
+def statement_closes(
+    gap_start: date, gap_end: date, before: date | None, after: date | None, issued_by: date
+) -> list[date]:
+    """The closing days of the statements that would fill a gap, from the statement right after
+    it (each one closes the day before the next starts, a month apart) or the one right before
+    it; only those already issued."""
+    out: list[date] = []
+    if after is not None:
+        c = gap_end
+        while c >= gap_start:
+            out.append(c)
+            c = prev_cycle_end(c)
+    elif before is not None:
+        c = next_cycle_end(before)
+        while c <= issued_by:
+            out.append(c)
+            if c >= gap_end:
+                break
+            c = next_cycle_end(c)
+    return sorted(out)
+
+
+# How each bank names its statement file, where the name carries the closing date.
+FILE_NAMES = {
+    "Capital One": lambda close, last4: f"Statement_{close:%m%Y}_{last4}.pdf",
+    "Bank of America": lambda close, last4: f"eStmt_{close:%Y-%m-%d}.pdf",
+    "Pacificard": lambda close, last4: f"ESTADOCUENTA{close:%Y%m}.pdf",
+}
+
+
+def _file_names(a: Account, closes: list[date]) -> list[str]:
+    name = FILE_NAMES.get(a.institution)
+    return [name(c, a.last4 or "") for c in closes] if name else []
+
+
 def timeline(
     accounts: list[Account],
     files: dict[int, list[TimelineStatement]],
@@ -282,6 +330,13 @@ def timeline(
             due = next_cycle_end(last_end)
             if due > horizon and not (a.closed_on and a.closed_on <= today):
                 gaps[-1].due = due
+        for g in gaps:
+            if g.due:
+                continue
+            before = next((t.end for t in stmts if t.end == g.start - timedelta(days=1)), None)
+            after = next((t.start for t in stmts if t.start == g.end + timedelta(days=1)), None)
+            g.closes = statement_closes(g.start, g.end, before, after, today)
+            g.files = _file_names(a, g.closes)
         days = Counter(t.start.day for t in stmts)
         out.append(
             AccountTimeline(
@@ -332,6 +387,8 @@ def month_status(db: Session, today: date | None = None) -> Status:
     else:
         first = current
     months = [m for m in recurring.months(first, current)] if first <= current else []
+    checked_from = first if months else current
+    lines = {t.account_id: t for t in timeline(accounts, files, checked_from, today)}
 
     out: list[MonthStatus] = []
     for m in months:
@@ -377,13 +434,14 @@ def month_status(db: Session, today: date | None = None) -> Status:
                 text += f": on Import, {' / '.join(here)}"
             elif (due := _not_issued(files.get(a.account_id, []), open_gaps, today)) is not None:
                 text += f" (the bank issues it around {due:%b} {due.day})"
+            else:
+                text += _which(lines[a.account_id], open_gaps)
             ms.items.append(Item("statement", text, "/import"))
         _pending_imports(db, ms)
         _lines(db, ms)
         _recurring(db, ms)
         out.append(ms)
     _balance_breaks(db, by_account, {a.account_id: a for a in accounts}, out)
-    checked_from = first if months else current
 
     if excel_through is not None:
         for m in reversed(excel):
@@ -396,8 +454,25 @@ def month_status(db: Session, today: date | None = None) -> Status:
         accounts,
         out,
         loads(db),
-        timeline(accounts, files, checked_from, today),
+        list(lines.values()),
     )
+
+
+def _which(line: AccountTimeline, open_gaps: list[tuple[date, date]]) -> str:
+    """ " · download the statement closing Nov 3 (Statement_112026_4003.pdf)" for the statements
+    that cover a month's missing days."""
+    found: list[tuple[date, str | None]] = []
+    for g in line.gaps:
+        for i, c in enumerate(g.closes):
+            starts = prev_cycle_end(c) + timedelta(days=1)
+            if any(starts <= g_end and c >= g_start for g_start, g_end in open_gaps):
+                found.append((c, g.files[i] if i < len(g.files) else None))
+    if not found:
+        return ""
+    days = " and ".join(f"{c:%b} {c.day}" for c, _ in found)
+    names = [f for _, f in found if f]
+    word = "statement" if len(found) == 1 else "statements"
+    return f" · download the {word} closing {days}" + (f" ({', '.join(names)})" if names else "")
 
 
 def _not_issued(

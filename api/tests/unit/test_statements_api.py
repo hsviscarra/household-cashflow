@@ -58,7 +58,11 @@ def test_reupload_is_rejected_as_duplicate(client: TestClient) -> None:
     assert first.json()[0]["outcome"] == "stored"
     again = _post(client, ("renamed.pdf", s.capitalone()), ("b.pdf", s.capitalone()))
     assert [r["outcome"] for r in again.json()] == ["duplicate", "duplicate"]
-    assert "Already uploaded as a.pdf" in again.json()[0]["message"]
+    # Which statement it is, so a re-download of the wrong month is obvious.
+    msg = again.json()[0]["message"]
+    assert msg.startswith(
+        "Already uploaded: Capital One, Sep 4, 2026 \u2013 Oct 3, 2026 (as a.pdf on "
+    )
     assert len(client.get("/api/statements").json()) == 1
 
 
