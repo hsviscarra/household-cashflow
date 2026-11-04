@@ -112,6 +112,9 @@ class Account(Timestamps, Base):
     # Last four digits only; full account and card numbers are never stored.
     last4: Mapped[str | None] = mapped_column(Unicode(4))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Closed or suspended on this day (a card cancelled in September): month status stops
+    # expecting statements after it, while its earlier statements still load.
+    closed_on: Mapped[date | None] = mapped_column(Date)
 
 
 class Category(Timestamps, Base):

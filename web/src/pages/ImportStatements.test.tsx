@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Statement } from "../api";
-import { StatementsCard } from "./ImportStatements";
+import { filterStatements, standing, StatementsCard } from "./ImportStatements";
 
 const base: Statement = {
   statement_file_id: 1,
@@ -230,5 +230,55 @@ describe("Import: statements", () => {
     fireEvent.dragOver(zone);
     fireEvent.drop(zone, { dataTransfer: { files: [new File(["x"], "a.pdf")] } });
     expect(screen.getByText(/1 file chosen: a.pdf/)).toBeInTheDocument();
+  });
+});
+
+describe("Import: filtering the statements", () => {
+  const PICH = { account_id: 3, name: "Pichincha Mastercard Black", last4: "2829" };
+  const stmt = (id: number, over: Partial<Statement>): Statement => ({
+    ...base,
+    statement_file_id: id,
+    file_name: `s${id}.pdf`,
+    can_read: true,
+    ...over,
+  });
+  const ALL = [
+    stmt(10, { file_name: "ESTADOCUENTA202610.pdf" }), // not read
+    stmt(11, { accounts: [PICH], batch: { batch_id: 1, status: "preview", tieout_ok: true } }),
+    stmt(12, { accounts: [PICH], batch: { batch_id: 2, status: "preview", tieout_ok: false } }),
+    stmt(13, { accounts: [PICH], batch: { batch_id: 3, status: "approved", tieout_ok: true } }),
+    stmt(14, { ...DINERS, statement_file_id: 14, file_name: "diners.pdf" }),
+    stmt(15, { batch: { batch_id: 4, status: "rejected", tieout_ok: false } }), // discarded: read again
+  ];
+
+  it("knows where each statement stands", () => {
+    expect(ALL.map(standing)).toEqual(["to_read", "waiting", "problems", "loaded", "attention", "to_read"]);
+    expect(standing({ ...base, can_read: false })).toBe("attention");
+    const f = (o: Partial<Parameters<typeof filterStatements>[1]>) =>
+      filterStatements(ALL, { account: "", standing: "", text: "", ...o }).map((s) => s.statement_file_id);
+    expect(f({ account: "3" })).toEqual([11, 12, 13]);
+    expect(f({ account: "none" })).toEqual([14]);
+    expect(f({ account: "3", standing: "problems" })).toEqual([12]);
+    expect(f({ text: "202610" })).toEqual([10]);
+    expect(f({ text: "diners" })).toEqual([14]); // the bank's name too
+  });
+
+  it("filters the list by account, status and name", async () => {
+    listed = ALL;
+    renderCard();
+    expect(await screen.findByText("6 statements.")).toBeInTheDocument();
+    const table = () => screen.getByRole("table", { name: "Uploaded statements" });
+    fireEvent.change(screen.getByLabelText("Account"), { target: { value: "3" } });
+    expect(screen.getByText("Showing 3 of 6 statements.")).toBeInTheDocument();
+    const status = screen.getByLabelText("Status");
+    expect(within(status).getByRole("option", { name: "Doesn’t tie out (1)" })).toBeInTheDocument();
+    fireEvent.change(status, { target: { value: "loaded" } });
+    expect(within(table()).getAllByRole("row")).toHaveLength(2); // header + s13
+    expect(table()).toHaveTextContent("s13.pdf");
+    fireEvent.change(screen.getByLabelText("File name"), { target: { value: "zzz" } });
+    expect(screen.getByText("No statement matches these filters.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("6 statements.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Account")).toHaveValue("");
   });
 });

@@ -67,6 +67,7 @@ export type Account = {
   country: Country;
   last4: string | null;
   is_active: boolean;
+  closed_on?: string | null; // closed or suspended: no statements expected after this day
 };
 export type AccountInput = Omit<Account, "account_id">;
 

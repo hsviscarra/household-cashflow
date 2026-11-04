@@ -273,7 +273,44 @@ function UploadResults({ results }: { results: UploadResult[] }) {
   );
 }
 
+/** Where a statement stands, for the list's filter. */
+export type Standing = "to_read" | "waiting" | "problems" | "attention" | "loaded";
+export const STANDING: Record<Standing, string> = {
+  to_read: "Not read yet",
+  waiting: "Waiting for approval",
+  problems: "Doesn’t tie out",
+  attention: "Needs you (account or format)",
+  loaded: "Loaded",
+};
+export function standing(s: Statement): Standing {
+  if (s.status !== "detected") return "attention";
+  if (s.batch?.status === "approved") return "loaded";
+  if (s.batch?.status === "preview") return s.batch.tieout_ok ? "waiting" : "problems";
+  return s.can_read ? "to_read" : "attention";
+}
+const NO_ACCOUNT = "none";
+
+/** The statements a filter keeps: by account ("none" for not matched yet), standing and file name. */
+export function filterStatements(
+  statements: Statement[],
+  f: { account: string; standing: Standing | ""; text: string },
+): Statement[] {
+  const text = f.text.trim().toLowerCase();
+  return statements.filter(
+    (s) =>
+      (!f.account ||
+        (f.account === NO_ACCOUNT
+          ? s.accounts.length === 0
+          : s.accounts.some((a) => String(a.account_id) === f.account))) &&
+      (!f.standing || standing(s) === f.standing) &&
+      (!text || s.file_name.toLowerCase().includes(text) || s.source_label.toLowerCase().includes(text)),
+  );
+}
+
 function StatementList({ statements, error }: { statements: Statement[] | undefined; error: Error | null }) {
+  const [account, setAccount] = useState("");
+  const [only, setOnly] = useState<Standing | "">("");
+  const [text, setText] = useState("");
   if (error)
     return (
       <p className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
@@ -283,84 +320,154 @@ function StatementList({ statements, error }: { statements: Statement[] | undefi
   if (!statements) return <p className="mt-6 text-muted">Loading statements…</p>;
   if (!statements.length) return <p className="mt-6 text-muted">No statements uploaded yet.</p>;
 
+  const accounts = new Map<string, string>();
+  statements.forEach((s) => s.accounts.forEach((a) => accounts.set(String(a.account_id), a.name)));
+  const counts = new Map<Standing, number>();
+  statements.forEach((s) => counts.set(standing(s), (counts.get(standing(s)) ?? 0) + 1));
+  const shown = filterStatements(statements, { account, standing: only, text });
+  const filtered = account !== "" || only !== "" || text.trim() !== "";
+
   return (
-    <div className="mt-6 overflow-x-auto rounded-2xl border border-line bg-ground">
-      <table className="w-full text-sm">
-        <caption className="sr-only">Uploaded statements</caption>
-        <thead className="text-muted max-md:sr-only">
-          <tr>
-            <th scope="col" className="px-4 py-3 text-left font-semibold">
-              File
-            </th>
-            <th scope="col" className="px-4 py-3 text-left font-semibold">
-              Account
-            </th>
-            <th scope="col" className="px-4 py-3 text-left font-semibold">
-              Period
-            </th>
-            <th scope="col" className="px-4 py-3 text-left font-semibold">
-              Uploaded
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {statements.map((s) => (
-            // On a phone each row stacks into a small card.
-            <tr key={s.statement_file_id} className="max-md:flex max-md:flex-col max-md:gap-1 max-md:py-3">
-              <td className="px-4 py-2 align-top max-md:py-0">
-                <a
-                  href={statementFileUrl(s.statement_file_id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold text-primary underline-offset-2 hover:underline"
+    <>
+      <div className="mt-6 flex flex-wrap items-end gap-3" role="search" aria-label="Filter statements">
+        <label className="min-w-48 flex-1 md:max-w-xs">
+          <span className="label">Account</span>
+          <select className="field" value={account} onChange={(e) => setAccount(e.target.value)}>
+            <option value="">All accounts</option>
+            {[...accounts.entries()]
+              .sort(([, a], [, b]) => a.localeCompare(b))
+              .map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            {statements.some((s) => !s.accounts.length) && <option value={NO_ACCOUNT}>No account yet</option>}
+          </select>
+        </label>
+        <label className="min-w-48 flex-1 md:max-w-xs">
+          <span className="label">Status</span>
+          <select className="field" value={only} onChange={(e) => setOnly(e.target.value as Standing | "")}>
+            <option value="">Any status</option>
+            {(Object.keys(STANDING) as Standing[]).map((k) => (
+              <option key={k} value={k}>
+                {STANDING[k]} ({counts.get(k) ?? 0})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="min-w-48 flex-1 md:max-w-xs">
+          <span className="label">File name</span>
+          <input
+            className="field"
+            type="search"
+            placeholder="e.g. 202610 or Diners"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </label>
+        {filtered && (
+          <button
+            className="btn btn-quiet"
+            onClick={() => {
+              setAccount("");
+              setOnly("");
+              setText("");
+            }}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-sm text-muted" aria-live="polite">
+        {filtered
+          ? `Showing ${shown.length} of ${statements.length} statements.`
+          : `${statements.length} statements.`}
+      </p>
+      {shown.length === 0 ? (
+        <p className="mt-4 text-muted">No statement matches these filters.</p>
+      ) : (
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-line bg-ground">
+          <table className="w-full text-sm">
+            <caption className="sr-only">Uploaded statements</caption>
+            <thead className="text-muted max-md:sr-only">
+              <tr>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  File
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  Account
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  Period
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  Uploaded
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {shown.map((s) => (
+                // On a phone each row stacks into a small card.
+                <tr
+                  key={s.statement_file_id}
+                  className="max-md:flex max-md:flex-col max-md:gap-1 max-md:py-3"
                 >
-                  {s.file_name}
-                </a>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-muted">
-                  {s.source !== "unknown" && <span>{s.source_label}</span>}
-                  <StatementAction statement={s} />
-                </div>
-              </td>
-              <td className="px-4 py-2 align-top max-md:py-0">
-                {s.status === "needs_account" ? (
-                  <AccountPicker statement={s} />
-                ) : (
-                  <>
-                    {s.accounts.map((a) => (
-                      <div key={a.account_id}>
-                        {a.name}
-                        {a.last4 && <span className="num text-muted"> •••• {a.last4}</span>}
-                      </div>
-                    ))}
-                    {s.account_match === "by_bank" && (
-                      <div className="text-muted">
-                        Matched by bank
-                        {s.last4_found.length ? ` (file shows •••• ${s.last4_found.join(", ")})` : ""}
-                      </div>
+                  <td className="px-4 py-2 align-top max-md:py-0">
+                    <a
+                      href={statementFileUrl(s.statement_file_id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-primary underline-offset-2 hover:underline"
+                    >
+                      {s.file_name}
+                    </a>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-muted">
+                      {s.source !== "unknown" && <span>{s.source_label}</span>}
+                      <StatementAction statement={s} />
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 align-top max-md:py-0">
+                    {s.status === "needs_account" ? (
+                      <AccountPicker statement={s} />
+                    ) : (
+                      <>
+                        {s.accounts.map((a) => (
+                          <div key={a.account_id}>
+                            {a.name}
+                            {a.last4 && <span className="num text-muted"> •••• {a.last4}</span>}
+                          </div>
+                        ))}
+                        {s.account_match === "by_bank" && (
+                          <div className="text-muted">
+                            Matched by bank
+                            {s.last4_found.length ? ` (file shows •••• ${s.last4_found.join(", ")})` : ""}
+                          </div>
+                        )}
+                        {s.account_match === "owner" && (
+                          <div className="text-muted">Matched by the cardholder’s name</div>
+                        )}
+                      </>
                     )}
-                    {s.account_match === "owner" && (
-                      <div className="text-muted">Matched by the cardholder’s name</div>
+                  </td>
+                  <td className="num px-4 py-2 align-top max-md:py-0">
+                    {s.period_start && s.period_end ? (
+                      `${shortDate(s.period_start)} – ${shortDate(s.period_end)}`
+                    ) : (
+                      <span className="text-muted">Period not read yet</span>
                     )}
-                  </>
-                )}
-              </td>
-              <td className="num px-4 py-2 align-top max-md:py-0">
-                {s.period_start && s.period_end ? (
-                  `${shortDate(s.period_start)} – ${shortDate(s.period_end)}`
-                ) : (
-                  <span className="text-muted">Period not read yet</span>
-                )}
-              </td>
-              <td className="px-4 py-2 align-top text-muted max-md:py-0">
-                {s.page_count} page{s.page_count === 1 ? "" : "s"} ·{" "}
-                {new Date(s.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} ·{" "}
-                {s.uploaded_by}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  </td>
+                  <td className="px-4 py-2 align-top text-muted max-md:py-0">
+                    {s.page_count} page{s.page_count === 1 ? "" : "s"} ·{" "}
+                    {new Date(s.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
+                    · {s.uploaded_by}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 

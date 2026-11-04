@@ -239,6 +239,18 @@ describe("Settings: accounts", () => {
     expect(await screen.findByText("Inactive")).toBeInTheDocument();
     expect(calls.find((c) => c.method === "PATCH")?.url).toBe("/api/accounts/1");
   });
+
+  it("records the day a card was suspended", async () => {
+    renderSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Capital One Venture" }));
+    fireEvent.change(screen.getByLabelText("Closed or suspended on (optional)"), {
+      target: { value: "2026-09-15" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save account" }));
+    expect(await screen.findByText("Closed Sep 15, 2026")).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "PATCH")?.body as Record<string, unknown>;
+    expect(sent.closed_on).toBe("2026-09-15");
+  });
 });
 
 describe("Settings: categories", () => {

@@ -154,7 +154,15 @@ const EMPTY_ACCOUNT: AccountInput = {
   country: "US",
   last4: null,
   is_active: true,
+  closed_on: null,
 };
+
+const closedLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
 function AccountsTab({ notify }: { notify: Notify }) {
   const { data, error } = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
@@ -229,6 +237,7 @@ function AccountRow({ account: a, onEdit }: { account: Account; onEdit: () => vo
         <div className="font-semibold">
           {a.name}
           {!a.is_active && <span className="pill pill-muted ml-2">Inactive</span>}
+          {a.closed_on && <span className="pill pill-muted ml-2">Closed {closedLabel(a.closed_on)}</span>}
         </div>
         <div className="text-sm text-muted">
           {a.institution} · {ACCOUNT_KIND_LABEL[a.kind]} · {a.owner} · {a.country}
@@ -257,7 +266,7 @@ function AccountForm(props: {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (last4Bad) return;
-    const { name, institution, kind, owner, country, last4, is_active } = v;
+    const { name, institution, kind, owner, country, last4, is_active, closed_on } = v;
     props.onSubmit({
       name: name.trim(),
       institution: institution.trim(),
@@ -266,6 +275,7 @@ function AccountForm(props: {
       country,
       last4: last4 || null,
       is_active,
+      closed_on: closed_on || null,
     });
   };
 
@@ -345,6 +355,21 @@ function AccountForm(props: {
           </span>
         )}
       </label>
+      <div className="md:col-span-3 md:max-w-xs">
+        <label>
+          <span className="label">Closed or suspended on (optional)</span>
+          <input
+            className="field"
+            type="date"
+            value={v.closed_on ?? ""}
+            onChange={(e) => set("closed_on", e.target.value || null)}
+            aria-describedby="closed-help"
+          />
+        </label>
+        <span id="closed-help" className="mt-1 block text-sm text-muted">
+          Data Status stops expecting statements after this day; earlier ones still load.
+        </span>
+      </div>
       <label className="flex items-center gap-2 md:col-span-3">
         <input
           type="checkbox"

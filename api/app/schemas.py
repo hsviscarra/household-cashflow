@@ -31,6 +31,8 @@ class AccountIn(BaseModel):
     country: Country
     last4: str | None = Field(default=None, pattern=r"^\d{4}$")
     is_active: bool = True
+    # Closed or suspended on this day: no statements are expected after it (old ones still load).
+    closed_on: date | None = None
 
 
 class AccountPatch(BaseModel):
@@ -41,6 +43,7 @@ class AccountPatch(BaseModel):
     country: Country | None = None
     last4: str | None = Field(default=None, pattern=r"^\d{4}$")
     is_active: bool | None = None
+    closed_on: date | None = None
 
 
 class AccountOut(_Out):
@@ -52,6 +55,7 @@ class AccountOut(_Out):
     country: Country
     last4: str | None
     is_active: bool
+    closed_on: date | None = None
 
 
 # ---------- categories ----------
