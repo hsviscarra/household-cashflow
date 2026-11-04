@@ -198,7 +198,10 @@ export default function CategoryPicker(props: {
         <input
           ref={input}
           id={`${base}-input`}
-          className={`field pr-9 ${selected && !open ? "pl-8" : ""}`}
+          className="field"
+          // Inline: .field is plain CSS and outranks Tailwind's padding utilities (v4 layers), so
+          // the color dot and the arrow need room set here.
+          style={{ paddingLeft: selected && !open ? "2rem" : undefined, paddingRight: "2.25rem" }}
           role="combobox"
           aria-expanded={open && mode === "list"}
           aria-controls={listId}

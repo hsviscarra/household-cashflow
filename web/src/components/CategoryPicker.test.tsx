@@ -98,6 +98,8 @@ describe("CategoryPicker", () => {
     fireEvent.keyDown(box(), { key: "Enter" });
     expect(value()).toBe("3");
     expect(box()).toHaveValue("Dining / Restaurants & Cafés");
+    // Room for the color dot before the text (it overlapped it).
+    expect(box().style.paddingLeft).toBe("2rem");
     // Closed, it shows the chosen category's description under the field.
     expect(screen.getByText("Restaurants and cafés in person.")).toBeInTheDocument();
   });

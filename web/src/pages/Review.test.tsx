@@ -261,6 +261,44 @@ describe("Review: one click for Claude's suggestions", () => {
   });
 });
 
+describe("Review: one merchant, two categories", () => {
+  it("categorizes only the ticked lines, without a rule", async () => {
+    renderAt("/review?month=2026-07");
+    const visa = await screen.findByRole("listitem", { name: "DEBITO VISA" });
+    expect(visa).toHaveTextContent("Untick the ones that don't go with this one.");
+    expect(within(visa).getByLabelText("Use for this merchant from now on (save a rule)")).toBeChecked();
+    fireEvent.click(within(visa).getByRole("checkbox", { name: "Include Jul 15, 12.00" }));
+    expect(visa).toHaveTextContent("1 of 2 chosen.");
+    // A rule would catch both lines: it turns off.
+    expect(within(visa).getByLabelText("Use for this merchant from now on (save a rule)")).not.toBeChecked();
+    pickCategory(
+      within(visa).getByRole("combobox", { name: /^Category for/ }),
+      "super",
+      "Groceries / Supermarket",
+    );
+    fireEvent.click(within(visa).getByRole("button", { name: "Categorize 1 of 2 lines" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/review/resolve")).toBe(true));
+    const sent = calls.find((c) => c.url === "/api/review/resolve")?.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ transaction_ids: [2], save_rule: false, pattern: null });
+  });
+
+  it("can't save with no line ticked; ticking all goes back to the whole merchant", async () => {
+    renderAt("/review?month=2026-07");
+    const visa = await screen.findByRole("listitem", { name: "DEBITO VISA" });
+    fireEvent.click(within(visa).getByRole("checkbox", { name: "Include Jul 3, 40.24" }));
+    fireEvent.click(within(visa).getByRole("checkbox", { name: "Include Jul 15, 12.00" }));
+    pickCategory(
+      within(visa).getByRole("combobox", { name: /^Category for/ }),
+      "super",
+      "Groceries / Supermarket",
+    );
+    expect(within(visa).getByRole("button", { name: "Categorize 0 of 2 lines" })).toBeDisabled();
+    fireEvent.click(within(visa).getByRole("checkbox", { name: "Include Jul 3, 40.24" }));
+    fireEvent.click(within(visa).getByRole("checkbox", { name: "Include Jul 15, 12.00" }));
+    expect(within(visa).getByRole("button", { name: "Categorize 2 lines" })).toBeEnabled();
+  });
+});
+
 describe("Review", () => {
   it("labels confidence with a word and a number", () => {
     expect(confidenceLabel("0.850")).toBe("likely, 85%");

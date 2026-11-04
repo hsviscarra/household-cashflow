@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.30.0] — One merchant, two categories
+
+### Added
+- **Untick lines on a merchant card** (Review and a statement's page) to categorize only some of
+  them; the others stay for another category. With only some lines chosen, "save a rule" turns
+  off, since a rule would catch every line of the merchant (Rule details → amounts can still tell
+  two bills apart).
+
+### Fixes
+- The category picker's color dot overlapped the chosen category's name: `.field` is plain CSS
+  and outranked Tailwind's padding utilities, so the padding is now set inline (the ▾ arrow had
+  the same problem).
+
 ## [0.29.0] — F23 Organizing categories in Settings
 
 ### Added

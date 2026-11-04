@@ -268,6 +268,7 @@ def batch_resolve(batch_id: int, body: ResolveIn, db: DB, request: Request) -> R
             body.merchant_key,
             body.category_id,
             _user(request),
+            stg_ids=body.transaction_ids,  # on a statement's page, the staged lines' ids
             save_rule=body.save_rule,
             pattern=body.pattern,
             match_type=body.match_type,

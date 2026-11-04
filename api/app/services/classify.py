@@ -291,6 +291,7 @@ def resolve_staged(
     category_id: int,
     user: str,
     *,
+    stg_ids: list[int] | None = None,
     save_rule: bool = False,
     pattern: str | None = None,
     match_type: str = "contains",
@@ -298,7 +299,8 @@ def resolve_staged(
     amount_max: Decimal | None = None,
     from_suggestion: bool = False,
 ) -> Resolved:
-    """Categorize a merchant's lines in a statement waiting for approval (F23). With save_rule,
+    """Categorize a merchant's lines in a statement waiting for approval (F23), all of them or
+    only `stg_ids` (one merchant can mean two categories). With save_rule,
     the rule also reaches loaded lines and the other waiting statements, as in Review."""
     category = db.get(Category, category_id)
     if category is None:
@@ -309,6 +311,8 @@ def resolve_staged(
     if batch.status != "preview":
         raise ClassifyError(f"This statement is already {batch.status}.", 409)
     rows = [s for s in staged_uncategorized(db, batch_id) if merchant_key(s.description_raw) == key]
+    if stg_ids is not None:
+        rows = [s for s in rows if s.stg_id in set(stg_ids)]
     if not rows:
         raise ClassifyError("Those lines are already categorized or no longer exist.", 409)
     rule = (
