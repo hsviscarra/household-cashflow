@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.31.0] — Produbanco Visa
+
+### Added
+- **Produbanco Visa (card ending 5997)**: a new account (seed v6, migration 0025) and a reader
+  for its statements ("Periodo : 07/01/2026 - 07/31/2026", lines ending in CONS. / N/D(*) / PAGO
+  with a + or − sign). It ties out to TOTAL MONTO UTILIZADO, TOTAL CARGOS, TOTAL PAGOS Y
+  CRÉDITOS, the summary and PAGO TOTAL. Same source as the savings statements: detection tells
+  the card apart ("TARJETA No.:"), and the card's "CUENTA: … No. CC" is no longer read as an
+  account number.
+- **The Gmail script collects it**: `bancaenlinea@produbanco.com`, subject "Estado de Cuenta".
+- A rule for Megadatos (Netlife) → Utilities / Phone/Internet.
+
 ## [0.30.0] — One merchant, two categories
 
 ### Added

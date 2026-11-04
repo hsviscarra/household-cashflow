@@ -43,6 +43,13 @@ const SOURCES = [
     query: 'from:info@efacturacioninterdin.com subject:"estado de cuenta"',
     files: PDF,
   },
+  {
+    bank: 'Produbanco',
+    // The Visa ending 5997 ("Estado de Cuenta Produbanco - Grupo Promerica"); the same sender
+    // emails transfer and payment notices, which have no statement attached.
+    query: 'from:bancaenlinea@produbanco.com subject:"estado de cuenta"',
+    files: PDF,
+  },
   // Electronic invoices from any vendor: the XML attachment (the PDF next to it is only a copy).
   { bank: 'Invoices', query: 'filename:xml', files: XML },
 ];

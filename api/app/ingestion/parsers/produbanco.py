@@ -12,6 +12,7 @@ import re
 from datetime import date
 from decimal import Decimal
 
+from app.ingestion.parsers import produbanco_card
 from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError, Reject
 
 NAME = "produbanco"
@@ -102,6 +103,8 @@ def _chain(
 
 def parse(pages: list[str]) -> ParsedStatement:
     text = "\n".join(pages)
+    if produbanco_card.is_card_statement(text):  # the Visa card, not the savings account
+        return produbanco_card.parse(pages)
     p = PERIOD.search(text)
     if not p:
         raise ParseError("Period (Fecha Corte: Del … Al …) not found.")
