@@ -20,13 +20,15 @@ PERIOD = re.compile(rf"(({MONTHS}) \d{{2}}, \d{{4}}) - (({MONTHS}) \d{{2}}, \d{{
 SUMMARY = {
     "previous_balance": re.compile(rf"Previous Balance ({AMT})"),
     "payments": re.compile(rf"Payments - ({AMT})"),
-    "other_credits": re.compile(rf"Other Credits ({AMT})"),
+    # "Other Credits $0.00", or with a minus like Payments when there is one: "- $14.76".
+    "other_credits": re.compile(rf"Other Credits (?:- )?({AMT})"),
     "transactions": re.compile(rf"Transactions \+ ({AMT})"),
     "cash_advances": re.compile(rf"Cash Advances \+ ({AMT})"),
     "fees": re.compile(rf"Fees Charged \+ ({AMT})"),
     "interest": re.compile(rf"Interest Charged \+ ({AMT})"),
     "new_balance": re.compile(rf"New Balance = ({AMT})"),
 }
+PAYMENT = re.compile(r"\b(?:PYMT|PAYMENT|AUTOPAY)\b", re.I)  # "CAPITAL ONE MOBILE PYMT"
 CARDHOLDER = re.compile(r"^(?P<name>[A-Z][A-Z .'-]+) #(?P<card>\d{4}): (?P<what>.+)$")
 LINE = re.compile(
     rf"^(?P<td>(?:{MONTHS}) \d{{1,2}}) (?P<pd>(?:{MONTHS}) \d{{1,2}}) (?P<desc>.+?) "
@@ -144,16 +146,20 @@ def parse(pages: list[str]) -> ParsedStatement:
                 continue
             amount = money(t.group("amt"))
             signed = amount if t.group("neg") else -amount  # charges reduce money; credits add
+            desc = t.group("desc").strip()
+            # "Payments, Credits and Adjustments" also lists refunds ("AMAZON MKTPLACE PMTS…"):
+            # only a payment to the card is a payment (a transfer); the rest is money back.
+            kind = "credit" if section == "payment" and not PAYMENT.search(desc) else section
             out.lines.append(
                 Line(
                     page_no,
                     line_no,
-                    section,
+                    kind,
                     line,
                     td,
                     pd,
                     signed,
-                    t.group("desc").strip(),
+                    desc,
                     card,
                     person if section != "fee" else "Joint",
                 )
@@ -184,7 +190,11 @@ def _tie_out(out: ParsedStatement, card_totals: dict[str, Decimal]) -> None:
         Check(
             "Total transactions for the period", t.get("period_transactions", purchases), purchases
         ),
-        Check("Payments and credits", t["payments"] + t["other_credits"], total("payment")),
+        Check(
+            "Payments and credits",
+            t["payments"] + t["other_credits"],
+            total("payment") + total("credit"),
+        ),
         Check("Fees", t["fees"], -total("fee")),
         Check("Interest", t["interest"], -total("interest")),
         Check(

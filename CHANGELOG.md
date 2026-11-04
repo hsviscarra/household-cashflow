@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.32.1] — Capital One credits; Data Status says what's on Import
+
+### Fixes
+- **Capital One April and June 2026 couldn't be read** ("Account summary line 'other_credits' not
+  found"): with a credit in the month, the summary prints "Other Credits - $14.76", with a minus
+  like Payments. Both forms are read now.
+- **A refund on Capital One counted as a card payment:** "Payments, Credits and Adjustments" also
+  lists refunds (an Amazon return), and every line there went to Transfers / Card Payment. Only a
+  payment to the card (PYMT, PAYMENT, AUTOPAY) is one now; the rest is money back, categorized by
+  the rules (Amazon → Shopping / Amazon, as a refund).
+- **Data Status looked frozen after uploading:** only approved statements count, so a month kept
+  saying "no statement". When the statement is already on the Import page it now says so: "…: on
+  Import, uploaded, not read yet" or "…: on Import, waiting for approval".
+
 ## [0.32.0] — Filtering statements; closed accounts
 
 ### Added
