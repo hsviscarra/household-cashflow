@@ -199,26 +199,34 @@ def month_status(db: Session, today: date | None = None) -> Status:
     for m in months:
         ms = MonthStatus(m, "statements")
         end = month_end(m)
-        last = min(end, today)  # the current month is checked up to today
         for a in accounts:
+            if a.closed_on is not None and a.closed_on < m:
+                continue  # closed before this month: nothing expected
+            # Closed during the month: expected only up to the closing day.
+            a_end = min(end, a.closed_on) if a.closed_on else end
             periods = [(s.start, s.end) for s in by_account[a.account_id]]
-            gaps = _gaps(periods, m, end)
+            gaps = _gaps(periods, m, a_end)
             uncovered = sum((g_end - g_start).days + 1 for g_start, g_end in gaps)
-            days = (end - m).days + 1
+            days = (a_end - m).days + 1
             ms.coverage.append(Coverage(a.account_id, days - uncovered, days))
-            open_gaps = [(g_start, min(g_end, last)) for g_start, g_end in gaps if g_start <= last]
+            a_last = min(a_end, today)  # the current month is checked up to today
+            open_gaps = [
+                (g_start, min(g_end, a_last)) for g_start, g_end in gaps if g_start <= a_last
+            ]
             if not open_gaps:
                 continue
             if (
                 len(open_gaps) == 1
-                and open_gaps[0] == (m, last)
-                and not any(p_start <= end and p_end >= m for p_start, p_end in periods)
+                and open_gaps[0] == (m, a_last)
+                and not any(p_start <= a_end and p_end >= m for p_start, p_end in periods)
             ):
                 text = f"{a.name}: no statement for {m:%B}"
             else:
                 text = f"{a.name}: no statement for " + ", ".join(
                     _days(g_start, g_end) for g_start, g_end in open_gaps
                 )
+            if a_end < end:  # closed this month
+                text += f" (until it closed on {a_end:%b} {a_end.day})"
             ms.items.append(Item("statement", text, "/import"))
         _pending_imports(db, ms)
         _lines(db, ms)

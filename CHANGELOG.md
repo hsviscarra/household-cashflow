@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.32.0] — Filtering statements; closed accounts
+
+### Added
+- **Filter the Import list** by account (or "No account yet"), status (Not read yet, Waiting for
+  approval, Doesn't tie out, Needs you, Loaded; each with its count) and file or bank name, with
+  "Showing N of M" and Clear filters.
+- **Closed or suspended on** for an account (Settings → Accounts; migration 0026 adds
+  `core.account.closed_on`). Data Status stops expecting statements after that day: a month after
+  it isn't checked for that account, and the month it closed is checked up to the closing day
+  ("… (until it closed on Sep 15)"). Earlier statements still upload and load, unlike making the
+  account inactive.
+
 ## [0.31.0] — Produbanco Visa
 
 ### Added

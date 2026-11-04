@@ -206,3 +206,23 @@ def test_gaps_and_day_ranges() -> None:
     assert status._days(d(2026, 6, 5), d(2026, 6, 5)) == "Jun 5"
     assert status._days(d(2026, 9, 28), d(2026, 10, 3)) == "Sep 28\u2013Oct 3"
     assert status.month_end(d(2026, 2, 1)) == d(2026, 2, 28)
+
+
+def test_a_closed_account_is_expected_only_until_it_closed(client: TestClient, db: Session) -> None:
+    keep = _only_produbanco(db)
+    _upload(client, "jun.pdf", s.produbanco_full(period=JUNE, lines=PHONE))
+    # Suspended on July 10: July is expected up to the 10th only, August not at all.
+    resp = client.patch(f"/api/accounts/{keep.account_id}", json={"closed_on": "2026-07-10"})
+    assert resp.json()["closed_on"] == "2026-07-10"
+    st = _status(client, "2026-08-20")
+    jul = _month(st, "2026-07-01")
+    assert _texts(jul) == [
+        "Produbanco Ahorros Hernan: no statement for July (until it closed on Jul 10)"
+    ]
+    assert jul["coverage"][0]["days"] == 10
+    aug = _month(st, "2026-08-01")
+    assert not [t for t in _texts(aug) if "Produbanco" in t] and aug["coverage"] == []
+    # Its earlier statements still load, and reopening it expects August again.
+    client.patch(f"/api/accounts/{keep.account_id}", json={"closed_on": None})
+    aug = _month(_status(client, "2026-08-20"), "2026-08-01")
+    assert "Produbanco Ahorros Hernan: no statement for August" in _texts(aug)
