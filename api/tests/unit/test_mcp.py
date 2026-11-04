@@ -136,6 +136,7 @@ def test_the_protocol_over_http(
             "balance_sheet",
             "loans",
             "monthly_report",
+            "data_status",
             "save_portfolio",
             "purchases",
         }
@@ -274,3 +275,28 @@ def test_balance_sheet_loans_and_report(household: Engine, client: TestClient) -
     saved = mcp_server.monthly_report("2026-10")
     assert saved["written_by"] == "rules" and 3 <= len(saved["findings"]) <= 5
     assert saved["facts"]["month"] == "2026-10"
+
+
+def test_data_status(household: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The monthly reminder's source: the Data Status items without the load history, which the
+    read-only login can't read."""
+    from app.services import status
+
+    def no_loads(*_: Any, **__: Any) -> None:
+        raise AssertionError("audit.load_log isn't granted to the reader")
+
+    monkeypatch.setattr(status, "loads", no_loads)
+    got = mcp_server.data_status(months=2)
+    assert got["today"] == date.today().isoformat()
+    assert 1 <= len(got["months"]) <= 2
+    newest = got["months"][0]
+    assert newest["month"] == date.today().isoformat()[:7]
+    # No statements are loaded: every active account is missing them.
+    assert not newest["complete"]
+    assert any(i["kind"] == "statement" for i in newest["items"])
+    assert {c["state"] for c in newest["coverage"]} <= {"partial", "none"}
+    assert all(
+        {"account", "start", "end", "closes", "files"} <= g.keys()
+        for g in got["missing_statements"]
+    )
+    assert mcp_server.data_status(months=0)["months"] == got["months"][:1]

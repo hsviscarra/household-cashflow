@@ -367,7 +367,9 @@ def _gaps(periods: list[tuple[date, date]], start: date, end: date) -> list[tupl
     return gaps
 
 
-def month_status(db: Session, today: date | None = None) -> Status:
+def month_status(db: Session, today: date | None = None, with_loads: bool = True) -> Status:
+    """with_loads=False skips the load history (audit.load_log), which the read-only MCP login
+    can't read."""
     today = today or date.today()
     current = recurring.first(today)
     excel = sorted(recurring.excel_months(db))
@@ -453,7 +455,7 @@ def month_status(db: Session, today: date | None = None) -> Status:
         excel_through,
         accounts,
         out,
-        loads(db),
+        loads(db) if with_loads else [],
         list(lines.values()),
     )
 

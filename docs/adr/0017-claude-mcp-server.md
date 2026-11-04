@@ -70,3 +70,10 @@ value and positions Claude read through Hernan's IBKR connector, and nothing els
 app's own login because `cashflow_reader` stays read-only: every other tool still reads through
 it, and the integration test that refuses its writes is unchanged. The tool refuses a day whose
 positions plus cash don't tie out to the total, and every save is in `audit.load_log`.
+
+## Amendment (0.35.0): Data Status for the monthly reminder
+
+`data_status` runs the Data Status service through the read-only login, so a monthly scheduled
+task can say which statements are missing. It skips the load history, because `audit.load_log`
+stays closed to `mart_reader`; every other table it reads was already granted in 0020. No new
+grants.

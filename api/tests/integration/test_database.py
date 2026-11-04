@@ -773,6 +773,7 @@ def test_mcp_reader_is_read_only_on_sql_server(
         assert "net_worth" in mcp_server.balance_sheet()  # the app's own code, read-only login
         assert isinstance(mcp_server.loans(), list)
         assert mcp_server.monthly_report(last)["month"] == last
+        assert "missing_statements" in mcp_server.data_status()  # no audit.load_log needed
         ro.dispose()
 
         _alembic("downgrade", "0019")

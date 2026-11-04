@@ -35,6 +35,7 @@ from app.models import (
 from app.services import ibkr, invoices, networth
 from app.services import loans as loan_service
 from app.services import report as report_service
+from app.services import status as status_service
 from app.services.classify import merchant_key
 
 CENT = Decimal("0.01")
@@ -415,6 +416,48 @@ def monthly_report(month: str) -> dict[str, Any]:
         "generated_at": r.generated_at.isoformat() if r.generated_at else None,
         "findings": [{"title": f.title, "text": f.text, "tone": f.tone} for f in r.findings],
         "facts": r.facts,
+    }
+
+
+@mcp.tool()
+def data_status(months: int = 3) -> dict[str, Any]:
+    """What is missing for the books to be complete, as the app's Data Status page shows it:
+    for each of the last `months` months (newest first), the open items (statements not
+    uploaded, imports waiting for approval or not tying out, lines needing a category,
+    transfers missing the other side, recurring items not paid, balance breaks), and per
+    account the statement periods not loaded yet with the statement that fills each one
+    (closing day and usual file name; `due` is set when the bank hasn't issued it yet)."""
+    with _session() as db:
+        st = status_service.month_status(db, with_loads=False)
+    names = {a.account_id: a.name for a in st.accounts}
+    shown = [m for m in st.months if m.source == "statements"][: max(months, 1)]
+    return {
+        "today": st.today.isoformat(),
+        "months": [
+            {
+                "month": _month(m.month),
+                "complete": m.complete,
+                "items": [{"kind": i.kind, "text": i.text, "count": i.count} for i in m.items],
+                "coverage": [
+                    {"account": names.get(c.account_id), "state": c.state}
+                    for c in m.coverage
+                    if c.state != "full"
+                ],
+            }
+            for m in shown
+        ],
+        "missing_statements": [
+            {
+                "account": t.name,
+                "start": g.start.isoformat(),
+                "end": g.end.isoformat(),
+                "due": g.due.isoformat() if g.due else None,
+                "closes": [c.isoformat() for c in g.closes],
+                "files": g.files,
+            }
+            for t in st.timeline
+            for g in t.gaps
+        ],
     }
 
 
