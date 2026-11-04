@@ -2,6 +2,7 @@
 
 import hashlib
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import select, true
 from sqlalchemy.orm import Session
@@ -22,6 +23,19 @@ INSTITUTIONS = {
     "diners": "Diners Club",
     "pacificard": "Pacificard",
 }
+
+
+def _day(d: date) -> str:
+    return f"{d:%b} {d.day}, {d.year}"
+
+
+def _already(sf: StatementFile) -> str:
+    """Which statement it is, not only when: the same file is often downloaded again for the
+    wrong month (Capital One names a file by the month it closes)."""
+    what = SOURCES.get(sf.source, sf.source)
+    if sf.period_start and sf.period_end:
+        what += f", {_day(sf.period_start)} \u2013 {_day(sf.period_end)}"
+    return f"Already uploaded: {what} (as {sf.file_name} on {sf.uploaded_at:%Y-%m-%d})."
 
 
 @dataclass
@@ -98,7 +112,7 @@ def store_statement(
         return UploadResultOut(
             file_name=name,
             outcome="duplicate",
-            message=f"Already uploaded as {existing.file_name} on {existing.uploaded_at:%Y-%m-%d}.",
+            message=_already(existing),
             statement=to_out(existing),
         )
 

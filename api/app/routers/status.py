@@ -78,7 +78,10 @@ def get_status(
                     )
                     for x in t.statements
                 ],
-                gaps=[GapOut(start=g.start, end=g.end, due=g.due) for g in t.gaps],
+                gaps=[
+                    GapOut(start=g.start, end=g.end, due=g.due, closes=g.closes, files=g.files)
+                    for g in t.gaps
+                ],
             )
             for t in s.timeline
         ],

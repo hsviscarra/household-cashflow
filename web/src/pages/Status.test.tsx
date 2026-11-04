@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DataStatus, MonthStatus } from "../api";
-import StatusPage, { missingGaps, summary } from "./Status";
+import StatusPage, { downloadText, missingGaps, summary } from "./Status";
 
 const ACCOUNTS = [
   { account_id: 1, name: "Checking", kind: "checking", owner: "Joint" },
@@ -177,7 +177,13 @@ describe("Data Status: statement periods", () => {
         },
       ],
       gaps: [
-        { start: "2026-06-04", end: "2026-07-03", due: null },
+        {
+          start: "2026-06-04",
+          end: "2026-07-03",
+          due: null,
+          closes: ["2026-07-03"],
+          files: ["Statement_072026_4003.pdf"],
+        },
         { start: "2026-08-04", end: "2026-08-10", due: "2026-09-03" },
       ],
     },
@@ -212,7 +218,9 @@ describe("Data Status: statement periods", () => {
       .map((r) => r.textContent);
     expect(rows).toEqual([
       expect.stringContaining("May 4, 2026 – Jun 3, 2026"),
-      expect.stringContaining("Jun 4, 2026 – Jul 3, 2026No statement: upload it"),
+      expect.stringContaining(
+        "Jun 4, 2026 – Jul 3, 2026Download the statement closing Jul 3, 2026Statement_072026_4003.pdf",
+      ),
       expect.stringContaining("Jul 4, 2026 – Aug 3, 2026"),
       "Aug 4, 2026 – Aug 10, 2026Current cycle: the bank issues it around Sep 3, 2026",
     ]);
@@ -229,6 +237,10 @@ describe("Data Status: statement periods", () => {
   });
 
   it("finds the gaps that need a download", () => {
-    expect(missingGaps(TIMELINE[0])).toEqual([{ start: "2026-06-04", end: "2026-07-03", due: null }]);
+    expect(missingGaps(TIMELINE[0]).map((g) => g.start)).toEqual(["2026-06-04"]);
+    expect(downloadText({ closes: [] })).toBe("No statement: upload it");
+    expect(downloadText({ closes: ["2026-06-03", "2026-07-03"] })).toBe(
+      "Download the statements closing Jun 3, 2026 and Jul 3, 2026",
+    );
   });
 });
