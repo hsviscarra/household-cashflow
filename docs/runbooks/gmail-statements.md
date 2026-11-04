@@ -9,6 +9,7 @@ sent each one as `gmail (<sender>)`.
 | Banco Pichincha | documentoselectronicos@pichincha.com | Savings account and credit card (invoices are skipped) |
 | PacifiCard | estadodecuenta@pacificard.ec | Mastercard Black |
 | Diners Club | info@efacturacioninterdin.com | Diners Club |
+| Produbanco | bancaenlinea@produbanco.com | Visa ending 5997 (the savings account isn't emailed) |
 
 Bank of America and Capital One come next (issue #60).
 
@@ -71,6 +72,7 @@ From the 2026 emails, roughly once a month each:
 | Banco Pichincha card | 15th or 16th |
 | Banco Pichincha account | 13th to 22nd, varies |
 | PacifiCard | 24th to 26th |
+| Produbanco Visa | 1st to 3rd (cut-off on the last day of the month) |
 
 Some months have no email at all: Pichincha's card in July, September and October, and its
 account in January, April and July. Those months need a manual upload; the month-status page

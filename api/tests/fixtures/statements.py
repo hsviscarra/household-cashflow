@@ -752,3 +752,44 @@ def pichincha_account_full(*, opening: str = "40.00", credit_count: int = 2) -> 
             ),
         ],
     )
+
+
+PRODU_CARD_LINES = [
+    "4009XXXXXXX997 TITULAR HERNAN PRUEBA",
+    "07/01/2026 100001 PROVEEDOR DE INTERNET EC 840 CONS. 40.24 +",
+    "07/12/2026 100002 TIENDA EN LINEA US 840 CONS. 25.00 1.0000 25.00 +",
+    "07/15/2026 100003 DEVOLUCION TIENDA EN LINEA CONS. 5.00 -",
+    "SUBTOTAL TITULAR 60.24",
+    "TOTAL MONTO UTILIZADO 60.24",
+    "07/28/2026 100004 PROGRAMA DE PREMIOS N/D(*) 62.10 +",
+    "07/28/2026 100005 TARIFA PRESTACIONES EN EL EXTERIOR N/D(*) 27.60 +",
+    "TOTAL CARGOS 89.70",
+    "07/03/2026 599574 *** SU PAGO - MUCHAS GRACIAS *** PAGO 40.24 -",
+    "TOTAL PAGOS Y CRÉDITOS 40.24 -",
+]
+
+
+def produbanco_card_full(*, previous: str = "40.24", lines: list[str] | None = None) -> bytes:
+    """Synthetic Produbanco Visa statement (made-up values) in the real layout."""
+    prev = Decimal(previous)
+    total = prev - Decimal("40.24") + Decimal("60.24") + Decimal("89.70")
+    return pdf(
+        [
+            "Estado de cuenta Firma Digital",
+            "TITULAR HERNAN PRUEBA",
+            "CUENTA: 9999999999 No. CC: 9999999999 / TELF.: 0/0",
+            "TARJETA No.:400929XXXXXX5997",
+            "Fecha De Emisión : 07/31/2026 Fecha Máx. de Pago : 08/17/2026",
+            "Periodo : 07/01/2026 - 07/31/2026 Rotativo 10,000.00 129.94 9,870.06",
+            "Resumen de movimientos",
+            "Saldo anterior Pagos/Créditos Consumos/Débitos Total a Pagar",
+            f"US$ {prev:,.2f} US$ 40.24 US$ 149.94 US$ {total:,.2f}",
+            "Detalle de movimientos del período",
+            "Fecha Referencia Descripción / Proveedor Tipo/Oper. Valor M.E. Tipo Cambio Valor M.L.",
+            f"06/30/2026 SALDO ANTERIOR {prev:,.2f}",
+            *(PRODU_CARD_LINES if lines is None else lines),
+            f"PAGO TOTAL {total:,.2f}",
+            "MÍNIMO A PAGAR 90.37",
+            "produbanco.com",
+        ]
+    )

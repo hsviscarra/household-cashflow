@@ -44,7 +44,7 @@ def test_migrations_upgrade_and_downgrade() -> None:
 
 
 def test_reference_tables_seeded() -> None:
-    from app.seeds import v1, v2, v3, v4
+    from app.seeds import v1, v2, v3, v4, v6
 
     _alembic("upgrade", "head")
     with get_engine().connect() as conn:
@@ -57,9 +57,12 @@ def test_reference_tables_seeded() -> None:
         len(g[3]) for g in v2.CATEGORIES
     )
     assert counts == {
-        "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS),
+        "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS) + len(v6.ACCOUNTS),
         "category": groups + children,
-        "merchant_rule": len(v1.MERCHANT_RULES) + len(v3.MERCHANT_RULES) + len(v4.MERCHANT_RULES),
+        "merchant_rule": sum(
+            len(r)
+            for r in (v1.MERCHANT_RULES, v3.MERCHANT_RULES, v4.MERCHANT_RULES, v6.MERCHANT_RULES)
+        ),
     }
 
 

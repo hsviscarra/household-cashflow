@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Table, delete, func, insert, select, update
 
-from app.seeds import v1, v2, v3, v4, v5
+from app.seeds import v1, v2, v3, v4, v5, v6
 
 
 def load_v1(
@@ -188,3 +188,32 @@ def load_v5(conn: Connection, category: Table) -> int:
         )
         count += done.rowcount or 0
     return count
+
+
+def load_v6(conn: Connection, account: Table, category: Table, merchant_rule: Table) -> None:
+    """Add the Produbanco Visa and its rule, unless Hernan already added them in Settings."""
+    for a in v6.ACCOUNTS:
+        taken = conn.execute(
+            select(account.c.account_id).where(
+                account.c.institution == a["institution"], account.c.last4 == a["last4"]
+            )
+        ).first()
+        if taken is None:
+            conn.execute(insert(account), [dict(a)])
+    ids = _category_ids(conn, category)
+    for p, m, path, prio in v6.MERCHANT_RULES:
+        if conn.execute(
+            select(merchant_rule.c.rule_id).where(merchant_rule.c.pattern == p)
+        ).first():
+            continue
+        conn.execute(
+            insert(merchant_rule),
+            [{"pattern": p, "match_type": m, "category_id": ids[path], "priority": prio}],
+        )
+
+
+def unload_v6(conn: Connection, account: Table, merchant_rule: Table) -> None:
+    conn.execute(
+        delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v6.MERCHANT_RULES]))
+    )
+    conn.execute(delete(account).where(account.c.name.in_([a["name"] for a in v6.ACCOUNTS])))

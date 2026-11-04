@@ -139,6 +139,27 @@ digits after `CUENTA:`, or Produbanco's only account without digits on file (Lau
   If no order fits every balance, a line is missing or misread and the gaps check fails (0.26.6).
 - **Period months** can be English ("Del 01 Aug 2026 Al 31 Aug 2026"); lines stay Spanish.
 
+## Produbanco Visa (`produbanco`, card) — 0.31.0
+
+- **Emailed** monthly from `bancaenlinea@produbanco.com` ("Estado de Cuenta Produbanco - Grupo
+  Promerica") as `4009XXXXXXXX5997.pdf`, text PDF, no password. Cut-off on the last day of the
+  month.
+- **Detection:** same source as the savings statements. `kind` is "card" when the text has
+  "TARJETA No.:" and "Resumen de movimientos"; last four from "TARJETA No.:400929XXXXXX5997". The
+  card's "CUENTA: … No. CC" line is skipped (it isn't a savings account).
+- **Period:** "Periodo : 07/01/2026 - 07/31/2026", month first.
+- **Summary:** "US$ 40.24 US$ 40.24 US$ 129.94 US$ 129.94" (saldo anterior, pagos/créditos,
+  consumos/débitos, total a pagar).
+- **Lines:** "07/01/2026 123 MEGADATOS S A EC 840 CONS. 40.24 +": date, voucher, merchant,
+  country and currency code (dropped), operation (CONS., N/D(*), N/C, PAGO, DIF., INT.), dollar
+  amount, sign ("+" adds to the debt). A foreign purchase prints its foreign amount and rate
+  before the dollar amount; the last amount is used. A holder line ("4009XXXXXXX997 NAME")
+  gives the person.
+- **Checks:** TOTAL MONTO UTILIZADO (purchases), TOTAL CARGOS (N/D, e.g. PROGRAMA DE PREMIOS and
+  TARIFA PRESTACIONES EN EL EXTERIOR: yearly fees, taxed with IVA), TOTAL PAGOS Y CRÉDITOS, the
+  summary's debits and credits, previous − payments + debits = total due, and PAGO TOTAL.
+- **Checked on the real July 2026 statement:** 4 lines, every check passes.
+
 ## Diners Club (`diners`) — F8
 
 Hernan's and Lauren's statements share one layout. Neither account has card digits on file, so the

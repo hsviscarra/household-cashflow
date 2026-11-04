@@ -133,6 +133,21 @@ def fold_accents(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
 
 
+def _produbanco_kind(text: str) -> str:
+    return "card" if "TARJETA No.:" in text and "Resumen de movimientos" in text else "bank"
+
+
+def _produbanco_period(text: str) -> tuple[date | None, date | None]:
+    """The savings account's "Del 01 Jul 2026 Al 31 Jul 2026" or the card's
+    "Periodo : 07/01/2026 - 07/31/2026" (month first)."""
+    start, end = _period(text, r"Del (\d{1,2} \w{3} \d{4}) Al (\d{1,2} \w{3} \d{4})", _es)
+    if start:
+        return start, end
+    return _period(
+        text, r"Periodo\s*:\s*(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}/\d{2}/\d{4})", _en("%m/%d/%Y")
+    )
+
+
 def _pichincha_kind(text: str) -> str:
     return "bank" if "CHEQUES / DEBITOS" in fold_accents(text).upper() else "card"
 
@@ -204,8 +219,11 @@ FINGERPRINTS = (
     Fingerprint(
         "produbanco",
         ("produbanco.com", "banco de la producción", "banco de la produccion"),
-        r"CUENTA:\s*\d*(\d{4})\b",
-        lambda t: _period(t, r"Del (\d{1,2} \w{3} \d{4}) Al (\d{1,2} \w{3} \d{4})", _es),
+        # The savings account "CUENTA: 99999993721 / C.I." or the card
+        # "TARJETA No.:400929XXXXXX5997" (its "CUENTA: … No. CC" is skipped: not a savings account).
+        r"(?:TARJETA No\.:\s*\d{4,6}X{4,8}|CUENTA:\s*\d*)(\d{4})\b(?! No\. CC)",
+        _produbanco_period,
+        kind=_produbanco_kind,
     ),
     Fingerprint(
         "diners",
