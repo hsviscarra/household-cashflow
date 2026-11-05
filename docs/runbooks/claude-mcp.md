@@ -26,6 +26,10 @@ October compare to September?" (F18, ADR-017).
   computed from, still with SELECT only.
 - `purchases` (0.26.0) reads the electronic invoices: spending by product group, top products and
   vendors.
+- `data_status` (0.35.0) returns what Data Status shows for the last few months: open items per
+  month and, per account, the statement periods not loaded with the statement that fills each
+  (closing day, usual file name, `due` when the bank hasn't issued it yet). A monthly scheduled
+  task calls it around the 10th and lists the statements to download.
 
 ## Turn it on (once)
 

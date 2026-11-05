@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.35.0] — Data Status for Claude
+
+### Added
+- **`data_status` MCP tool:** Claude reads what Data Status shows (missing statements with the
+  file to download, imports waiting, lines needing a category, unmatched transfers, unpaid
+  recurring items) through the read-only login. It feeds a monthly reminder of the statements to
+  upload. No new database grants: the load history is left out.
+
 ## [0.34.0] — Which statement to download
 
 ### Added
