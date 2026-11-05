@@ -112,3 +112,20 @@ def test_held_for_others_is_not_missing_its_other_side(db: Session) -> None:
     db.commit()
     got = sorted(t.description_raw for t in transfers.unmatched(db, date(2026, 7, 1)))
     assert got == ["card", "no category", "to savings"]
+
+
+def test_downgrade_refuses_only_while_in_use(db: Session) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[2] / "migrations/versions/0027_category_tree_v7.py"
+    spec = importlib.util.spec_from_file_location("m0027", path)
+    assert spec is not None and spec.loader is not None
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    conn = db.connection()
+    assert m.in_use(conn) is False  # fresh seeds: moved rules and categories don't count
+    ids = _ids(db)
+    db.add(Category(name="Padel", parent_id=ids["Entertainment & Leisure"], kind="expense"))
+    db.flush()
+    assert m.in_use(conn) is True
