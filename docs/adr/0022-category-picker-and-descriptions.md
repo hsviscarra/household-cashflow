@@ -92,3 +92,23 @@ lines stay on the card for another category (`transaction_ids` in the resolve re
 lines on Review, staged lines on a statement's page). With only some lines chosen, "save a rule"
 turns off, because a rule matches every line of the merchant. Amount ranges in Rule details are
 the way to keep two categories apart for good.
+
+## Update (0.36.0): the fuller tree (seed v7)
+
+Drafted from the July to October 2026 statements and the workbook rows, approved by Hernan on
+Nov 5, 2026. New groups: Insurance, Entertainment & Leisure, Education & Career, Personal Care,
+Gifts & Celebrations, Family Support, Taxes. Travel becomes Travel & Vacations with Lodging,
+Flights, Trip Transport and Trip Activities & Food. Health's two insurance categories move to
+Insurance (renamed Health Insurance and Dad's Health Insurance); their lines and rules follow,
+because they point at the category id. New subcategories in Health, Transport, Pets, Shopping,
+Other Income and Transfers.
+
+- **Hernan's edits win.** Every step skips a category he already renamed, moved or added in
+  Settings, keeps descriptions he wrote and never adds a rule for a pattern that already has one.
+  After the migration, everything stays editable in Settings: add, rename, describe, move.
+- **Money that isn't ours** goes to Transfers / Held for Others (also Loans to Others and Loan
+  Repaid to Me). Being transfers, none of it counts as income or spending. Data Status asks for
+  "the other side" only for card payments, moves between own accounts and uncategorized transfer
+  lines; those three have no leg in another household account.
+- **Downgrade** puts the tree back and refuses while any line, rule, recurring item, budget or new
+  subcategory uses a category v7 added.

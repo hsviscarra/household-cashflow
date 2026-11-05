@@ -5,13 +5,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Category
-from app.seeds import _category_ids, load_v5, v5
+from app.seeds import _category_ids, load_v5, v5, v7
 
 
 def test_every_seeded_category_is_described(db: Session) -> None:
     ids = _category_ids(db.connection(), Category.__table__)
-    assert set(v5.DESCRIPTIONS) == set(ids), set(v5.DESCRIPTIONS) ^ set(ids)
-    assert all(0 < len(text) <= 400 for text in v5.DESCRIPTIONS.values())
+    # v5 describes the first tree; v7 renames and moves a few of its categories and describes
+    # everything it adds.
+    renamed = {p: f"{g}/{n}" for p, g, n in v7.MOVES} | dict(v7.RENAMES)
+    described = {renamed.get(p, p) for p in v5.DESCRIPTIONS} | set(v7.DESCRIPTIONS)
+    assert described == set(ids), described ^ set(ids)
+    texts = [*v5.DESCRIPTIONS.values(), *v7.DESCRIPTIONS.values()]
+    assert all(0 < len(text) <= 400 for text in texts)
     assert all(c.description for c in db.scalars(select(Category)))
 
 
@@ -103,7 +108,7 @@ def test_moves_that_are_refused(client: TestClient) -> None:
     # A group can't move, a subcategory can't become a group or go under a subcategory.
     assert (
         patch(
-            _find(groups, "Travel")["category_id"],
+            _find(groups, "Travel & Vacations")["category_id"],
             {"parent_id": _find(groups, "Dining")["category_id"]},
         ).status_code
         == 422
@@ -122,8 +127,8 @@ def test_moves_that_are_refused(client: TestClient) -> None:
     # A name already used in the target group.
     dup = client.post(
         "/api/categories",
-        json={"name": "Rideshare", "parent_id": _find(groups, "Travel")["category_id"]},
+        json={"name": "Rideshare", "parent_id": _find(groups, "Travel & Vacations")["category_id"]},
     )
     assert dup.status_code == 201
-    clash = patch(rideshare, {"parent_id": _find(groups, "Travel")["category_id"]})
+    clash = patch(rideshare, {"parent_id": _find(groups, "Travel & Vacations")["category_id"]})
     assert clash.status_code == 409

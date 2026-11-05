@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Table, delete, func, insert, select, update
 
-from app.seeds import v1, v2, v3, v4, v5, v6
+from app.seeds import v1, v2, v3, v4, v5, v6, v7
 
 
 def load_v1(
@@ -217,3 +217,148 @@ def unload_v6(conn: Connection, account: Table, merchant_rule: Table) -> None:
         delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v6.MERCHANT_RULES]))
     )
     conn.execute(delete(account).where(account.c.name.in_([a["name"] for a in v6.ACCOUNTS])))
+
+
+def _group_id(conn: Connection, category: Table, name: str) -> int | None:
+    return conn.execute(
+        select(category.c.category_id).where(
+            category.c.parent_id.is_(None), category.c.name == name
+        )
+    ).scalar_one_or_none()
+
+
+def _child_count(conn: Connection, category: Table, parent_id: int | None) -> int:
+    where = (
+        category.c.parent_id.is_(None) if parent_id is None else category.c.parent_id == parent_id
+    )
+    return int(conn.execute(select(func.count()).select_from(category).where(where)).scalar_one())
+
+
+def _add_subs(
+    conn: Connection, category: Table, gid: int, kind: str, subs: list[tuple[str, bool]]
+) -> None:
+    taken = set(conn.scalars(select(category.c.name).where(category.c.parent_id == gid)))
+    start = _child_count(conn, category, gid)
+    rows = [
+        {
+            "parent_id": gid,
+            "name": name,
+            "kind": kind,
+            "color": None,
+            "is_fixed": fixed,
+            "sort_order": start + i,
+        }
+        for i, (name, fixed) in enumerate(n for n in subs if n[0] not in taken)
+    ]
+    if rows:
+        conn.execute(insert(category), rows)
+
+
+def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:
+    """The fuller tree (seed v7). Anything Hernan already renamed, moved or added is left alone."""
+    for path, new in v7.RENAMES:
+        cid = _category_ids(conn, category).get(path)
+        if cid is not None and new not in _category_ids(conn, category):
+            conn.execute(update(category).where(category.c.category_id == cid).values(name=new))
+    for group, kind, color, subs in v7.NEW_GROUPS:
+        gid = _group_id(conn, category, group)
+        if gid is None:
+            gid = conn.execute(
+                insert(category).returning(category.c.category_id),
+                {
+                    "parent_id": None,
+                    "name": group,
+                    "kind": kind,
+                    "color": color,
+                    "is_fixed": False,
+                    "sort_order": _child_count(conn, category, None),
+                },
+            ).scalar_one()
+        _add_subs(conn, category, gid, kind, subs)
+    for path, group, new in v7.MOVES:
+        ids = _category_ids(conn, category)
+        gid = _group_id(conn, category, group)
+        if path not in ids or gid is None or f"{group}/{new}" in ids:
+            continue
+        conn.execute(
+            update(category)
+            .where(category.c.category_id == ids[path])
+            .values(parent_id=gid, name=new, sort_order=_child_count(conn, category, gid))
+        )
+    for group, subs in v7.NEW_SUBS:
+        row = conn.execute(
+            select(category.c.category_id, category.c.kind).where(
+                category.c.parent_id.is_(None), category.c.name == group
+            )
+        ).first()
+        if row is not None:
+            _add_subs(conn, category, row.category_id, row.kind, subs)
+    ids = _category_ids(conn, category)
+    for path, text in v7.DESCRIPTIONS.items():
+        if path in ids:
+            conn.execute(
+                update(category)
+                .where(category.c.category_id == ids[path], category.c.description.is_(None))
+                .values(description=text)
+            )
+    for pattern, old, new in v7.RULE_MOVES:
+        if old in ids and new in ids:
+            conn.execute(
+                update(merchant_rule)
+                .where(merchant_rule.c.pattern == pattern, merchant_rule.c.category_id == ids[old])
+                .values(category_id=ids[new])
+            )
+    taken = set(conn.scalars(select(merchant_rule.c.pattern)))
+    rows = [
+        {"pattern": p, "match_type": m, "category_id": ids[path], "priority": prio}
+        for p, m, path, prio in v7.MERCHANT_RULES
+        if p not in taken and path in ids
+    ]
+    if rows:
+        conn.execute(insert(merchant_rule), rows)
+
+
+def v7_added(conn: Connection, category: Table) -> list[int]:
+    """The ids of the subcategories and groups seed v7 created that still carry their names."""
+    ids = _category_ids(conn, category)
+    paths = [f"{g}/{n}" for g, _k, _c, subs in v7.NEW_GROUPS for n, _ in subs]
+    paths += [f"{g}/{n}" for g, subs in v7.NEW_SUBS for n, _ in subs]
+    paths += [g for g, *_ in v7.NEW_GROUPS]
+    return [ids[p] for p in paths if p in ids]
+
+
+def unload_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:
+    """Undo load_v7. The migration checks first that nothing uses the categories it removes."""
+    ids = _category_ids(conn, category)
+    conn.execute(
+        delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v7.MERCHANT_RULES]))
+    )
+    for pattern, old, new in v7.RULE_MOVES:
+        if old in ids and new in ids:
+            conn.execute(
+                update(merchant_rule)
+                .where(merchant_rule.c.pattern == pattern, merchant_rule.c.category_id == ids[new])
+                .values(category_id=ids[old])
+            )
+    for path, group, new in v7.MOVES:
+        old_group, old_name = path.split("/", 1)
+        gid = _group_id(conn, category, old_group)
+        cid = ids.get(f"{group}/{new}")
+        if gid is not None and cid is not None:
+            conn.execute(
+                update(category)
+                .where(category.c.category_id == cid)
+                .values(parent_id=gid, name=old_name)
+            )
+    added = v7_added(conn, category)
+    groups = set(conn.scalars(select(category.c.category_id).where(category.c.parent_id.is_(None))))
+    subs = [c for c in added if c not in groups]
+    if subs:
+        conn.execute(delete(category).where(category.c.category_id.in_(subs)))
+    tops = [c for c in added if c in groups]
+    if tops:
+        conn.execute(delete(category).where(category.c.category_id.in_(tops)))
+    for path, new in v7.RENAMES:
+        cid = _category_ids(conn, category).get(new)
+        if cid is not None:
+            conn.execute(update(category).where(category.c.category_id == cid).values(name=path))

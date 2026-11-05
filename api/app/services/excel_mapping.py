@@ -89,10 +89,10 @@ _EXPENSE: dict[str, Mapping] = {
     "prodo blck": _m("debt_payment", CARD, "Joint", "EC"),  # Produbanco Black card
     "laverix cc": _m("debt_payment", CARD, "Joint", "EC"),  # Banco del Pacifico card
     # Health
-    "ecuasanitas": _m("expense", "Health/Insurance", "Hernan", "EC"),
+    "ecuasanitas": _m("expense", "Insurance/Health Insurance", "Hernan", "EC"),
     # Hernan's father's insurance, paid by transfer to him in Ecuador.
-    "h&c seguro": _m("expense", "Health/Dad's Insurance", "Joint", "EC"),
-    "bmi": _m("expense", "Health/Insurance", "Joint", "EC"),
+    "h&c seguro": _m("expense", "Insurance/Dad's Health Insurance", "Joint", "EC"),
+    "bmi": _m("expense", "Insurance/Health Insurance", "Joint", "EC"),
     "doula": _m("expense", "Health/Doctors", "Lauren", "EC"),
     # Household, childcare, pets
     "empleada": _m("expense", "Household Staff/Empleada Salary", "Joint", "EC"),
@@ -115,7 +115,7 @@ _EXPENSE: dict[str, Mapping] = {
     "amt": _m("expense", "Transport/Vehicle", "Joint", "EC"),
     "matricula vehiculo": _m("expense", "Transport/Vehicle", "Joint", "EC"),
     "matricula": _m("expense", "Transport/Vehicle", "Joint", "EC"),
-    "travel": _m("expense", "Travel", "Joint"),
+    "travel": _m("expense", "Travel & Vacations", "Joint"),
     "others": _m("expense", "Other Expenses", "Joint"),
     # Savings
     "interactive brokers": _m("savings", "Savings & Debt/Investing", "Hernan", "US"),
