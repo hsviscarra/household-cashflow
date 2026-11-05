@@ -300,6 +300,10 @@ export type StgLine = {
   account_name?: string | null;
   pay_reference?: string | null;
   is_duplicate: boolean;
+  hint_source?: "note" | "person" | null;
+  hint_person?: string | null;
+  hint_text?: string | null;
+  hint_share?: Money | null;
 };
 export type Batch = {
   batch_id: number;

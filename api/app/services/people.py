@@ -21,6 +21,7 @@ them raises it, money paid out for them lowers it).
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import case, exists, func, select
 from sqlalchemy.orm import Session, aliased
@@ -32,6 +33,7 @@ from app.models import (
     Category,
     Counterparty,
     Holding,
+    StgTransaction,
     Transaction,
     TransferNote,
 )
@@ -474,3 +476,75 @@ def note_from_email(
     return EmailResult(
         "noted", f"Noted ({who}); it will be matched when the statement is read.", note.note_id
     )
+
+
+# ---------------------------------------------------------------- the import preview
+@dataclass
+class Hint:
+    """What a note or a person will do to a waiting statement line once it's approved."""
+
+    source: Literal["note", "person"]
+    person: str | None
+    category_id: int | None
+    text: str | None  # the other party and the description, as they'll reach the line's notes
+    share: Decimal | None
+    note_id: int | None = None
+
+
+def preview(db: Session, rows: list[StgTransaction]) -> dict[int, Hint]:
+    """The same matching approval will do, on a statement still waiting: open notes first (same
+    amount, the note's account, 5 days, closest), then people's texts. Keyed by stg_id."""
+    people_by_id = {p.counterparty_id: p for p in db.scalars(select(Counterparty))}
+    free = [r for r in rows if not r.is_duplicate]
+    hints: dict[int, Hint] = {}
+    notes = db.scalars(
+        select(TransferNote)
+        .where(TransferNote.transaction_id.is_(None))
+        .order_by(TransferNote.txn_date, TransferNote.note_id)
+    )
+    for note in notes:
+        candidates = [
+            r
+            for r in free
+            if r.stg_id not in hints
+            and r.amount == note.amount
+            and abs((r.txn_date - note.txn_date).days) <= WINDOW.days
+            and (note.account_id is None or r.account_id == note.account_id)
+        ]
+        if not candidates:
+            continue
+        row = min(candidates, key=lambda r: (abs((r.txn_date - note.txn_date).days), r.stg_id))
+        person = people_by_id.get(note.counterparty_id) if note.counterparty_id else None
+        text = " · ".join(x for x in (note.other_party, note.description) if x) or None
+        hints[row.stg_id] = Hint(
+            "note",
+            person.name if person else None,
+            note.category_id or (person.category_id if person else None),
+            text,
+            note.share if person and person.category_id else None,
+            note.note_id,
+        )
+    texts = [(p, t) for p in people_by_id.values() if p.is_active for t in patterns(p)]
+    for r in free:
+        if r.stg_id in hints:
+            continue
+        upper = r.description_raw.upper()
+        hit = next((p for p, t in texts if t in upper), None)
+        if hit is not None:
+            hints[r.stg_id] = Hint("person", hit.name, hit.category_id, None, None)
+    return hints
+
+
+def apply_preview(db: Session, rows: list[StgTransaction]) -> None:
+    """Give waiting lines the category their note or person will give them, so the preview's
+    totals show it. A shared payment keeps its own category until it's split at approval."""
+    accounts = {a.account_id: a for a in db.scalars(select(Account))}
+    cats = {c.category_id: c for c in db.scalars(select(Category))}
+    for stg_id, hint in preview(db, rows).items():
+        row = next(r for r in rows if r.stg_id == stg_id)
+        cat = cats.get(hint.category_id) if hint.category_id else None
+        if cat is None or hint.share is not None:
+            continue
+        row.category_id, row.rule_id = cat.category_id, None
+        row.category_source = hint.source
+        row.type = classify.rule_type(cat.kind, accounts[row.account_id], row.amount)

@@ -422,3 +422,92 @@ def test_a_shared_payment_is_split(client: TestClient, db: Session) -> None:
     ]
     for b in bad:
         assert client.post("/api/transfer-notes", json=b).status_code == 422, b
+
+
+def test_the_preview_shows_what_notes_and_people_will_do(client: TestClient, db: Session) -> None:
+    held = _cat(db, "Transfers", "Held for Others")
+    consulting = _cat(db, "Other Income", "Consulting & Freelance")
+    ruben = client.post(
+        "/api/people", json={"name": "Rubén", "patterns": "NAPOLES", "category_id": held}
+    ).json()
+    produ = _acct(db, "Produbanco Ahorros Hernan")
+    client.post(
+        "/api/transfer-notes",
+        json={
+            "txn_date": "2026-06-14",
+            "direction": "received",
+            "amount": "561.89",
+            "account_id": produ,
+            "counterparty_id": ruben["counterparty_id"],
+            "description": "pago obra",
+        },
+    )
+    client.post(
+        "/api/transfer-notes",
+        json={
+            "txn_date": "2026-06-20",
+            "direction": "received",
+            "amount": "1065.00",
+            "counterparty_id": ruben["counterparty_id"],
+            "category_id": consulting,
+            "share": "852",
+        },
+    )
+    resp = client.post(
+        "/api/statements",
+        files=[
+            (
+                "files",
+                (
+                    "p.pdf",
+                    s.produbanco_full(
+                        period="Del 01 Jun 2026 Al 30 Jun 2026",
+                        opening="2000.00",
+                        lines=[
+                            ("Jun 15", "2", "TRANSFERENCIA", "561.89"),
+                            ("Jun 18", "3", "PAGO NAPOLES TRANSPORT", "-150.00"),
+                            ("Jun 21", "4", "TRANSFERENCIA", "1065.00"),
+                            ("Jun 22", "5", "TRANSFERENCIA", "-9.00"),
+                        ],
+                    ),
+                    PDF,
+                ),
+            )
+        ],
+        headers=USER,
+    )
+    st = resp.json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    lines = {line["txn_date"]: line for line in b["lines"]}
+    note = lines["2026-06-15"]
+    assert (note["hint_source"], note["hint_person"], note["hint_text"]) == (
+        "note",
+        "Rubén",
+        "pago obra",
+    )
+    assert note["category_path"] == "Transfers / Held for Others" and note["type"] == "transfer"
+    person = lines["2026-06-18"]
+    assert (person["hint_source"], person["hint_person"]) == ("person", "Rubén")
+    assert person["category_path"] == "Transfers / Held for Others"
+    shared = lines["2026-06-21"]
+    assert shared["hint_source"] == "note" and Decimal(shared["hint_share"]) == 852
+    assert shared["category_path"] != "Transfers / Held for Others"  # split at approval
+    assert lines["2026-06-22"]["hint_source"] is None
+    paths = {c["category_path"] for c in b["by_category"]}
+    assert "Transfers / Held for Others" in paths
+
+    client.post(f"/api/batches/{b['batch_id']}/approve", headers=USER)
+    db.expire_all()
+    rows = {
+        t.txn_date: t
+        for t in db.scalars(select(Transaction).where(Transaction.parent_transaction_id.is_(None)))
+    }
+    assert rows[date(2026, 6, 15)].category_source == "note"
+    assert rows[date(2026, 6, 15)].counterparty_id == ruben["counterparty_id"]
+    assert rows[date(2026, 6, 18)].counterparty_id == ruben["counterparty_id"]
+    parts = db.scalars(
+        select(Transaction).where(
+            Transaction.parent_transaction_id == rows[date(2026, 6, 21)].transaction_id
+        )
+    ).all()
+    assert sorted(p.amount for p in parts) == [Decimal("213.0000"), Decimal("852.0000")]

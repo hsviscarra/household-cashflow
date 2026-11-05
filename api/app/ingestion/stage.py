@@ -342,6 +342,9 @@ def parse_statement(
     for s in staged:
         s.is_duplicate = s.natural_key in existing
     db.add_all(staged)
+    db.flush()
+    # Transfer notes and people's texts: the category they'll give, shown in the preview.
+    people.apply_preview(db, staged)
     db.commit()
     db.refresh(batch)
     return batch

@@ -42,6 +42,22 @@ const TYPE_LABEL: Record<string, string> = {
   savings: "Savings",
 };
 
+/** What a transfer note or a person will do to the line when it's approved (ADR-023). */
+function NoteHint({ ln }: { ln: StgLine }) {
+  if (!ln.hint_source) return null;
+  const who = ln.hint_person ?? "a transfer note";
+  const label =
+    ln.hint_source === "note"
+      ? `Your note${ln.hint_person ? ` · ${ln.hint_person}` : ""}${ln.hint_text ? ` · ${ln.hint_text}` : ""}`
+      : `${who} (found in the description)`;
+  return (
+    <span className="mt-1 block text-xs text-primary">
+      {label}
+      {ln.hint_share && ` · split: ${who}'s share ${money(ln.hint_share)}, the rest yours`}
+    </span>
+  );
+}
+
 export default function BatchPage() {
   const { batchId } = useParams();
   const id = Number(batchId);
@@ -285,6 +301,7 @@ function Lines({ lines, multi }: { lines: StgLine[]; multi: boolean }) {
               )}
               {ln.is_duplicate && <span className="pill pill-muted">Already loaded</span>}
             </div>
+            <NoteHint ln={ln} />
           </li>
         ))}
       </ul>
@@ -320,6 +337,7 @@ function Lines({ lines, multi }: { lines: StgLine[]; multi: boolean }) {
                     <span className="text-muted"> ({referenceLabel(ln.pay_reference)})</span>
                   )}
                   {ln.is_duplicate && <span className="pill pill-muted ml-2">Already loaded</span>}
+                  <NoteHint ln={ln} />
                 </td>
                 <td className="px-4 py-2">
                   {multi && ln.account_name ? (
