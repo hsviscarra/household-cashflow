@@ -48,6 +48,16 @@ function renderCard(statements: Statement[], fail: string[] = []) {
       if (url === "/api/statements" && init?.method === "POST") return Promise.resolve(new Response("[]"));
       if (url === "/api/statements" && (init?.method ?? "GET") === "GET")
         return Promise.resolve(new Response(JSON.stringify(statements)));
+      if (url === "/api/batches/approve-ready")
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              approved: 2,
+              loaded: 41,
+              waiting: [{ batch_id: 40, file_name: "s4.pdf", reason: "It doesn't tie out." }],
+            }),
+          ),
+        );
       if (fail.some((f) => url.includes(f)))
         return Promise.resolve(new Response(JSON.stringify({ detail: "doesn't tie out" }), { status: 422 }));
       return Promise.resolve(new Response(JSON.stringify({ batch_id: 1, loaded: 1, skipped_duplicates: 0 })));
@@ -92,6 +102,15 @@ describe("backlog", () => {
     fireEvent.click(within(months).getAllByRole("button", { name: "Approve 1" })[0]);
     expect(await within(section).findByText("Approved 1 of 1.")).toBeInTheDocument();
     expect(calls).toContain("POST /api/batches/30/approve");
+  });
+
+  it("approves everything that ties out in one click and lists the rest", async () => {
+    const calls = renderCard(LIST);
+    const section = await screen.findByRole("region", { name: "Backlog" });
+    fireEvent.click(within(section).getByRole("button", { name: "Approve all that tie out" }));
+    expect(await within(section).findByText("Approved 2 statements (41 lines).")).toBeInTheDocument();
+    expect(within(section).getByText("s4.pdf: It doesn't tie out.")).toBeInTheDocument();
+    expect(calls).toContain("POST /api/batches/approve-ready");
   });
 
   it("lists what failed and hides with nothing to do", async () => {

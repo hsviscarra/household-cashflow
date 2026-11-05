@@ -66,7 +66,7 @@ def test_a_statement_is_read_and_waits_for_approval(
 ) -> None:
     out = post(client, s.capitalone_full(), "Statement_102026_4003.pdf")
     assert (out["outcome"], out["status"]) == ("stored", "read")
-    assert out["message"] == "Stored; reading it now. It will wait on the Import page for approval."
+    assert out["message"].startswith("Stored; reading it now. Approved on its own if it ties out")
     # Read right after the answer (TestClient runs the background task before returning).
     batch = db.scalars(
         select(ImportBatch).where(ImportBatch.statement_file_id == out["statement_id"])
@@ -132,10 +132,10 @@ def test_stored_but_not_read(
 def test_read_statement_gone(engine: Engine, store: object) -> None:
     from sqlalchemy.orm import sessionmaker
 
-    from app.routers import inbox as inbox_router
+    from app.ingestion import stage
 
     # Deleted before the task ran: nothing to do.
-    inbox_router.read_statement(sessionmaker(bind=engine), store, 999, "gmail")  # type: ignore[arg-type]
+    stage.read_and_approve(sessionmaker(bind=engine), store, 999, "gmail")  # type: ignore[arg-type]
 
 
 def test_refused_files(inbox: None, client: TestClient) -> None:

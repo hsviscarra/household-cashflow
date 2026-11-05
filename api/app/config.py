@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Statements by email (F20): the Gmail script posts PDFs to /api/inbox with this bearer token;
     # empty = the endpoint is off.
     inbox_token: str = ""
+    # Statements that tie out (totals, continuity) with no unreadable lines are approved as soon
+    # as they're read, and uploads are read right away; the rest wait on the Import page.
+    auto_approve: bool = True
     # Password of the read-only database login the MCP endpoint queries with (SELECT on mart
     # views only). Created or updated at start-up; empty = the endpoint uses the app's login
     # (local development and tests only).

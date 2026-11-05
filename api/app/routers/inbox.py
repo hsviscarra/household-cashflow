@@ -125,29 +125,13 @@ async def receive(
             else "Stored, but its format isn't recognized; open the Import page."
         )
         return out
-    later.add_task(read_statement, sessions, store, sf.statement_file_id, user)
+    later.add_task(stage.read_and_approve, sessions, store, sf.statement_file_id, user)
     out.status = "read"
-    out.message = "Stored; reading it now. It will wait on the Import page for approval."
+    out.message = (
+        "Stored; reading it now. Approved on its own if it ties out, else it waits on the "
+        "Import page."
+    )
     return out
-
-
-def read_statement(
-    sessions: Callable[[], Session], store: StatementStore, statement_id: int, user: str
-) -> None:
-    """After the answer: read the stored statement into a batch. If it can't be read, it stays
-    on the Import page, where Read shows why."""
-    with sessions() as db:
-        sf = db.get(StatementFile, statement_id)
-        if sf is None:
-            return
-        try:
-            stage.parse_statement(db, store, sf, user)
-        except stage.StageError as exc:
-            db.rollback()
-            log.warning("Emailed statement %s not read: %s", statement_id, exc)
-        except Exception:  # a background task has nobody to answer: log it, keep the app up
-            db.rollback()
-            log.exception("Emailed statement %s failed while reading", statement_id)
 
 
 # ---------------------------------------------------------------- transfer notices (ADR-023)
