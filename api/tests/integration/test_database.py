@@ -243,7 +243,7 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     review = client.get("/api/review", params={"month": "2026-10-01"}).json()
     group = next(g for g in review["groups"] if g["merchant_key"].startswith("NEW MERCHANT"))
     cats = client.get("/api/categories").json()
-    travel = next(c["category_id"] for c in cats if c["name"] == "Travel")
+    travel = next(c["category_id"] for c in cats if c["name"] == "Travel & Vacations")
     done = client.post(
         "/api/review/resolve",
         json={"merchant_key": group["merchant_key"], "category_id": travel, "save_rule": True},

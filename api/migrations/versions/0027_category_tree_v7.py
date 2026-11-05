@@ -3,7 +3,8 @@ Career, Personal Care, Gifts & Celebrations, Family Support, Taxes), Travel rena
 Vacations with subcategories, health and dad's insurance moved to Insurance, new subcategories in
 Health, Transport, Pets, Shopping, Other Income and Transfers (Held for Others, Loans to Others,
 Loan Repaid to Me), descriptions and rules for merchants seen in July to October 2026. No schema
-change; lines keep their category ids, so moved categories keep their lines.
+change; lines keep their category ids, so moved categories keep their lines. The read-only login
+(mart_reader) may now read core.category.
 
 Revision ID: 0027
 Revises: 0026
@@ -35,7 +36,13 @@ depends_on: str | Sequence[str] | None = None
 USERS = (Transaction, RecurringTemplate, Budget, Holding, StgTransaction)
 
 
+GRANT = "GRANT SELECT ON [core].[category] TO [mart_reader];"
+
+
 def upgrade() -> None:
+    # Data Status (and Claude's data_status tool, read-only login) tells transfers that need an
+    # other side from money held for others by their category: the reader needs the names.
+    op.execute(GRANT)
     if context.is_offline_mode():
         op.execute("-- seed v7 (category tree) is loaded only in online mode")
         return
@@ -73,6 +80,7 @@ def in_use(conn: sa.Connection) -> bool:
 def downgrade() -> None:
     if context.is_offline_mode():
         op.execute("-- seed v7 (category tree) is unloaded only in online mode")
+        op.execute(GRANT.replace("GRANT", "REVOKE").replace(" TO ", " FROM "))
         return
     conn = op.get_bind()
     if in_use(conn):
@@ -81,3 +89,4 @@ def downgrade() -> None:
             "subcategories): move them to other categories before downgrading."
         )
     unload_v7(conn, Category.__table__, MerchantRule.__table__)
+    op.execute(GRANT.replace("GRANT", "REVOKE").replace(" TO ", " FROM "))
