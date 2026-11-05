@@ -29,7 +29,8 @@ az containerapp secret set -g "$RG" -n "$APP" --secrets "inbox-token=$TOKEN" -o 
 az containerapp update -g "$RG" -n "$APP" --set-env-vars INBOX_TOKEN=secretref:inbox-token -o none
 
 echo "2/3 Letting /api/inbox past the sign-in (it checks the token instead)..."
-EXCLUDED="/api/health,/api/inbox"
+# Each token path is listed: the sign-in matches paths exactly (/api/inbox/transfer: ADR-023).
+EXCLUDED="/api/health,/api/inbox,/api/inbox/transfer"
 if [ -n "$(secret mcp-token)" ]; then EXCLUDED="$EXCLUDED,/mcp"; fi
 az containerapp auth update -g "$RG" -n "$APP" --excluded-paths "$EXCLUDED" -o none
 

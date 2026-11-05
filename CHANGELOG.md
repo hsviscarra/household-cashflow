@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.38.1] — Transfer notices past the sign-in
+
+### Fixed
+- `/api/inbox/transfer` answered 401: Container Apps sign-in matches excluded paths exactly, so
+  the transfer path is now listed next to `/api/inbox` (Bicep and both setup scripts).
+
 ## [0.38.0] — Transfer notes from the banks' emails
 
 ### Added

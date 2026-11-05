@@ -212,7 +212,7 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableA
       redirectToProvider: 'azureactivedirectory'
       // /mcp is Claude's endpoint (F18) and /api/inbox the Gmail script's (F20): each checks its
       // own bearer token instead of a sign-in.
-      excludedPaths: [ '/api/health', '/mcp', '/api/inbox' ]
+      excludedPaths: [ '/api/health', '/mcp', '/api/inbox', '/api/inbox/transfer' ]
     }
     identityProviders: {
       azureActiveDirectory: {

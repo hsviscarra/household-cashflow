@@ -105,6 +105,10 @@ page); the email text isn't stored. Notices for accounts that aren't the househo
 for a relative's account) and transfers between the household's own accounts are skipped. Each
 notice is labeled `cashflow-imported` once the app has answered.
 
+The sign-in must let `/api/inbox/transfer` through too (`setup-inbox.sh` does it; on an older
+setup run it again, or `az containerapp auth update -g rg-cashflow -n cashflow-app
+--excluded-paths "/api/health,/mcp,/api/inbox,/api/inbox/transfer"`).
+
 To turn it on, paste the new `infra/gmail/Code.gs` over the script's code and save; the daily
 trigger stays. To bring in older notices, run `backfill()` (it reads from `BACKFILL_FROM`).
 
