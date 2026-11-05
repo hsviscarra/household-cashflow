@@ -5,26 +5,35 @@
  * Utilities read these variables, so the dark block below re-themes the whole app.
  */
 @theme {
-  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
+  /* Page background; cards, inputs and buttons sit on it in `ground` (white). */
+  --color-canvas: #f6f7f9;
   --color-ground: #ffffff;
-  --color-surface: #f3f2f8;
-  --color-line: #e4e2ee;
-  --color-ink: #241f45;
-  --color-muted: #5d5880;
+  --color-surface: #ebeef3;
+  --color-line: #e3e6ec;
+  --color-ink: #101828;
+  --color-muted: #5b6474;
 
-  --color-primary: #2f5bea;
-  --color-primary-hover: #1e3fb0;
+  --color-primary: #2b4acb;
+  --color-primary-hover: #1c3399;
   --color-on-primary: #ffffff;
 
-  --color-attention-bg: #fff4da;
-  --color-attention-ink: #6b4a00;
-  --color-good-bg: #e9f6f3;
-  --color-good-ink: #00695c;
-  --color-danger-bg: #fce8e4;
-  --color-danger-ink: #a3301b;
+  --color-attention-bg: #fef3c7;
+  --color-attention-ink: #5a3b00;
+  --color-good-bg: #e7f6f3;
+  --color-good-ink: #0b6b5e;
+  --color-danger-bg: #fde7df;
+  --color-danger-ink: #9a3412;
   --color-info-bg: #eef2ff;
+
+  /* The sidebar (ADR-025) */
+  --color-nav: #0f1b2d;
+  --color-nav-ink: #c9d2e0;
+  --color-nav-muted: #8e9ab0;
+  --color-nav-active: #22324d;
+  --color-nav-strong: #ffffff;
 
   /* Category colors, in the order of docs/design-system.md */
   --color-cat-fixed: #6b6788;
@@ -38,38 +47,42 @@
   --color-cat-kids: #e57ba9;
   --color-cat-transport: #3aa7d9;
 
-  /* Money in / out in charts (validated pair: CVD and contrast checks pass on both surfaces) */
-  --color-flow-in: #00897b;
-  --color-flow-out: #7b4bd6;
+  /* Money in / out in charts */
+  --color-flow-in: #0e8f7e;
+  --color-flow-out: #7a5af0;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-ground: #17152b;
-    --color-surface: #221f3d;
-    --color-line: #34305a;
-    --color-ink: #eeedf7;
-    --color-muted: #aca8c8;
+    --color-canvas: #0b1220;
+    --color-ground: #121b2c;
+    --color-surface: #1a2539;
+    --color-line: #2a3650;
+    --color-ink: #e6eaf2;
+    --color-muted: #a3aec2;
 
     --color-primary: #8aa4ff;
     --color-primary-hover: #b0c2ff;
-    --color-on-primary: #10163a;
+    --color-on-primary: #0b1430;
 
-    --color-attention-bg: #3a3014;
+    --color-attention-bg: #3a2f10;
     --color-attention-ink: #f5d58a;
-    --color-good-bg: #12332e;
+    --color-good-bg: #10302b;
     --color-good-ink: #7fd8c8;
-    --color-danger-bg: #3b1c17;
+    --color-danger-bg: #3b1d14;
     --color-danger-ink: #f4a898;
-    --color-info-bg: #232a52;
+    --color-info-bg: #1c2650;
 
-    --color-flow-in: #1e9e8f;
-    --color-flow-out: #8f6be8;
+    --color-nav: #070d18;
+    --color-nav-active: #1a2539;
+
+    --color-flow-in: #2bb39f;
+    --color-flow-out: #9b84f5;
   }
 }
 
 body {
-  @apply bg-ground font-sans text-ink antialiased;
+  @apply bg-canvas font-sans text-ink antialiased;
   accent-color: var(--color-primary);
 }
 
@@ -119,4 +132,15 @@ body {
 }
 .label {
   @apply mb-1 block text-sm font-semibold text-muted;
+}
+
+/* Cards and KPI tiles (docs/design-system.md) */
+.card {
+  @apply rounded-2xl border border-line bg-ground p-5;
+}
+.kpi-label {
+  @apply text-xs font-semibold tracking-wider text-muted uppercase;
+}
+.kpi-value {
+  @apply mt-1 font-display text-3xl font-semibold;
 }

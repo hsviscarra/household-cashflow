@@ -43,7 +43,7 @@ test("transfers: both sides are matched, and the cash view counts card payments"
 
   // The card payment's other side (the Capital One statement) may not be loaded: Review lists it.
   await page.goto("/review?month=2026-08");
-  await expect(page.getByRole("heading", { level: 1, name: "Review" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
 
   await page.goto("/");
   await page.getByRole("button", { name: "Cash view" }).click();

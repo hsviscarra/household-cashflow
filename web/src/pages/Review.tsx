@@ -31,7 +31,7 @@ export default function ReviewPage() {
 
   return (
     <section>
-      <h1 className="font-display text-4xl font-bold leading-tight">Review</h1>
+      <h1 className="font-display text-4xl font-bold leading-tight">Inbox</h1>
       <p className="mt-2 text-lg text-muted">
         Lines no rule could categorize, grouped by merchant. Choose a category once; saving a rule categorizes
         this merchant from now on.

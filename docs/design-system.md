@@ -1,35 +1,50 @@
-# Design system: Mercado
+# Design system: Ledger
 
-Chosen 2026-10-19 from three explored directions (canvas "Cash Flow App — UX directions").
-Bright and friendly: a white ground, one color per spending category, rounded pill controls,
-headlines that state the month in a sentence. Tokens live in `web/src/index.css`; use the
-Tailwind utilities they generate (`bg-surface`, `text-muted`, `bg-primary`, `font-display`…),
-never raw hex in components.
+Chosen 2026-11-05 (ADR-025) to replace Mercado, from the redesign canvas "Household Cashflow
+redesign". Calm and dense: a dark sidebar, a light grey canvas with white cards, KPI tiles at the
+top of every page, one color per spending category, rounded pill controls. Tokens live in
+`web/src/index.css`; use the Tailwind utilities they generate (`bg-canvas`, `bg-ground`,
+`text-muted`, `bg-primary`, `font-display`…), never raw hex in components.
 
 ## Type
 
 | Role | Family | Use |
 |---|---|---|
-| Display | Bricolage Grotesque 500/700 | Page titles, month headline, section titles |
-| Interface | Figtree 400/500/600 | Everything else |
-| Numbers | Figtree with `.num` (tabular figures) | Every amount, so columns line up |
+| Display | Space Grotesk 500/600/700 | Page titles, section titles, KPI numbers |
+| Interface | Inter 400/500/600/700 | Everything else |
+| Numbers | Inter with `.num` (tabular figures) | Every amount, so columns line up |
 
 ## Color
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| ground | #FFFFFF | #17152B | Page background |
-| surface | #F3F2F8 | #221F3D | Nav track, inputs, quiet panels |
-| line | #E4E2EE | #34305A | Borders, dividers |
-| ink | #241F45 | #EEEDF7 | Text |
-| muted | #5D5880 | #ACA8C8 | Secondary text |
-| primary | #2F5BEA | #8AA4FF | The one main button per screen, links |
-| attention-bg / ink | #FFF4DA / #6B4A00 | #3A3014 / #F5D58A | Needs action: review, shortfall, interest |
-| good-bg / ink | #E9F6F3 / #00695C | #12332E / #7FD8C8 | Confirmations, healthy status |
-| danger-bg / ink | #FCE8E4 / #A3301B | #3B1C17 / #F4A898 | Discard, delete, failed checks |
-| info-bg | #EEF2FF | #232A52 | Neutral highlight panels |
+| canvas | #F6F7F9 | #0B1220 | Page background |
+| ground | #FFFFFF | #121B2C | Cards, inputs, secondary buttons |
+| surface | #EBEEF3 | #1A2539 | Quiet panels and tiles inside the page |
+| line | #E3E6EC | #2A3650 | Borders, dividers |
+| ink | #101828 | #E6EAF2 | Text |
+| muted | #5B6474 | #A3AEC2 | Secondary text (≥ 5.3:1 on canvas, ground and surface) |
+| primary | #2B4ACB | #8AA4FF | The one main button per screen, links |
+| attention-bg / ink | #FEF3C7 / #5A3B00 | #3A2F10 / #F5D58A | Needs action: inbox, shortfall, stale values |
+| good-bg / ink | #E7F6F3 / #0B6B5E | #10302B / #7FD8C8 | Confirmations, healthy status |
+| danger-bg / ink | #FDE7DF / #9A3412 | #3B1D14 / #F4A898 | Discard, delete, failed checks, shortfalls |
+| info-bg | #EEF2FF | #1C2650 | Neutral highlight panels |
+| nav / nav-ink / nav-muted / nav-active | #0F1B2D / #C9D2E0 / #8E9AB0 / #22324D | #070D18 / … / #1A2539 | The sidebar |
 
-Dark mode follows the device setting (`prefers-color-scheme`).
+Dark mode follows the device setting (`prefers-color-scheme`). Every text pair above passes WCAG AA.
+
+## Navigation (ADR-025)
+
+A left sidebar (a menu button on phones and tablets) with the pages in groups: Home · Analyze
+(Spending, Purchases, Net worth) · Daily (Inbox, Transactions, People & transfers) · Plan
+(Bills, Subscriptions, Forecast) · Reports (Monthly report, Data health, Import); Upload
+statements, Settings, who's signed in and the database status at the bottom. The Inbox shows
+how many lines wait for a category. URLs stay as they were.
+
+## KPI tiles
+
+`components/KpiCard`: label (small caps, muted), the value in the display face, an optional note
+or change (good / bad tone) below; the attention tone fills the tile. A row of 3–5 opens a page.
 
 ### Category colors
 
@@ -57,9 +72,7 @@ New categories get a color from this list's unused hues or `muted` until one is 
 
 ## Charts
 
-- Money in / out: `flow-in` #00897B (dark #1E9E8F) and `flow-out` #7B4BD6 (dark #8F6BE8). The pair
-  passes the palette validator (lightness band, chroma, colorblind separation, contrast) on both
-  surfaces. Trends with one series use `primary`.
+- Money in / out: `flow-in` #0E8F7E (dark #2BB39F) and `flow-out` #7A5AF0 (dark #9B84F5). Trends with one series use `primary`.
 - Columns at most 24 px wide with 4 px rounded tops, 2 px apart; lines 2 px; hairline solid grid;
   axis ticks compact (5K). A legend whenever there are two or more series; plan values at 35%
   opacity with "Plan" in the legend.
@@ -69,8 +82,9 @@ New categories get a color from this list's unused hues or `muted` until one is 
 ## Shape and spacing
 
 - Buttons, nav items and chips: fully rounded (`rounded-full`), height ≥ 44 px.
-- Panels: `rounded-2xl` (20 px), tinted backgrounds (attention, info, good) instead of shadows.
-- Page width up to `max-w-6xl`, 48 px side padding on laptop, 16 px on phone.
+- Cards: `.card` (white, `rounded-2xl`, hairline border) on the canvas; tinted backgrounds
+  (attention, info, good) for status instead of shadows.
+- Content width up to `max-w-7xl` next to the 240 px sidebar; 40 px side padding on laptop, 16 px on phone.
 
 ## Buttons
 

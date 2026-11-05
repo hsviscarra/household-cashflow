@@ -1,3 +1,4 @@
+import KpiCard from "../components/KpiCard";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -156,10 +157,10 @@ export default function Overview() {
       </div>
 
       <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Tile label="Money in" value={money(income)} />
-        <Tile label="Money out" value={money(out)} />
-        <Tile label="Kept" value={signed(net)} tone={net < 0 ? "bad" : undefined} />
-        <Tile label="Share kept" value={pct(income ? net / income : null)} />
+        <KpiCard label="Money in" value={money(income)} />
+        <KpiCard label="Money out" value={money(out)} />
+        <KpiCard label="Kept" value={signed(net)} tone={net < 0 ? "bad" : undefined} />
+        <KpiCard label="Share kept" value={pct(income ? net / income : null)} />
       </dl>
       <p className="mt-3 text-sm text-muted">
         Money out = spending <span className="num">{money(expenses)}</span>
@@ -236,17 +237,6 @@ function MonthTip({ title, income, out }: { title: string; income: number; out: 
         <span>{signed(income - out)}</span>
       </div>
     </>
-  );
-}
-
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "bad" }) {
-  return (
-    <div className={`rounded-2xl px-4 py-3 ${tone === "bad" ? "bg-attention-bg" : "bg-surface"}`}>
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd className={`num mt-1 text-2xl font-semibold ${tone === "bad" ? "text-attention-ink" : ""}`}>
-        {value}
-      </dd>
-    </div>
   );
 }
 
