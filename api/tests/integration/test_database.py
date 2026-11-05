@@ -44,7 +44,7 @@ def test_migrations_upgrade_and_downgrade() -> None:
 
 
 def test_reference_tables_seeded() -> None:
-    from app.seeds import v1, v2, v3, v4, v6
+    from app.seeds import v1, v2, v3, v4, v6, v7
 
     _alembic("upgrade", "head")
     with get_engine().connect() as conn:
@@ -53,15 +53,25 @@ def test_reference_tables_seeded() -> None:
             for table in ("account", "category", "merchant_rule")
         }
     groups = len(v1.CATEGORIES) + sum(1 for g in v2.CATEGORIES if g[2] is not None)
-    children = sum(len(g["children"]) for g in v1.CATEGORIES) + sum(
-        len(g[3]) for g in v2.CATEGORIES
+    groups += len(v7.NEW_GROUPS)
+    children = (
+        sum(len(g["children"]) for g in v1.CATEGORIES)
+        + sum(len(g[3]) for g in v2.CATEGORIES)
+        + sum(len(g[3]) for g in v7.NEW_GROUPS)
+        + sum(len(subs) for _g, subs in v7.NEW_SUBS)
     )
     assert counts == {
         "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS) + len(v6.ACCOUNTS),
         "category": groups + children,
         "merchant_rule": sum(
             len(r)
-            for r in (v1.MERCHANT_RULES, v3.MERCHANT_RULES, v4.MERCHANT_RULES, v6.MERCHANT_RULES)
+            for r in (
+                v1.MERCHANT_RULES,
+                v3.MERCHANT_RULES,
+                v4.MERCHANT_RULES,
+                v6.MERCHANT_RULES,
+                v7.MERCHANT_RULES,
+            )
         ),
     }
 
@@ -233,7 +243,7 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     review = client.get("/api/review", params={"month": "2026-10-01"}).json()
     group = next(g for g in review["groups"] if g["merchant_key"].startswith("NEW MERCHANT"))
     cats = client.get("/api/categories").json()
-    travel = next(c["category_id"] for c in cats if c["name"] == "Travel")
+    travel = next(c["category_id"] for c in cats if c["name"] == "Travel & Vacations")
     done = client.post(
         "/api/review/resolve",
         json={"merchant_key": group["merchant_key"], "category_id": travel, "save_rule": True},

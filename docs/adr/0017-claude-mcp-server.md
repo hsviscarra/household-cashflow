@@ -77,3 +77,10 @@ positions plus cash don't tie out to the total, and every save is in `audit.load
 task can say which statements are missing. It skips the load history, because `audit.load_log`
 stays closed to `mart_reader`; every other table it reads was already granted in 0020. No new
 grants.
+
+## Amendment (0.36.0): category names
+
+Migration 0027 gives `mart_reader` SELECT on `core.category`: `data_status` tells a transfer
+that needs its other side (card payment, own accounts) from money held for others or lent by its
+category. Category names and descriptions are already visible through the mart views. Merchant
+rules stay closed.

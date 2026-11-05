@@ -5,6 +5,24 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.36.0] — A fuller category tree
+
+### Added
+- **New groups:** Insurance (health, dad's health, car, home, life), Entertainment & Leisure
+  (sports and clubs, gym and fitness, outings, hobbies), Education & Career, Personal Care, Gifts &
+  Celebrations, Family Support and Taxes, each with descriptions for the picker and Claude.
+- **New subcategories:** Travel & Vacations (Lodging, Flights, Trip Transport, Trip Activities &
+  Food), Health (Hospital, Dental), Transport (Car Maintenance, Tolls), Pets (Vet, Food &
+  Supplies), Shopping (Home & Furniture), Other Income (Consulting & Freelance, Gifts Received,
+  Reimbursements from Others), Transfers (Held for Others, Loans to Others, Loan Repaid to Me).
+- **Rules** for merchants seen since July: Quito Tenis y Golf, Workout, Fitbod, Zurich, AIG Pay
+  Club, Hospital de los Valles, Lab Ecuamerican, Kryterion, lodges and hotels, Airbnb, Kywi.
+
+### Changed
+- Travel is now **Travel & Vacations**; health insurance and dad's insurance moved to the
+  Insurance group with their lines; the FlexJobs rule goes to Education & Career / Job Search.
+- **Money held for others or lent** is no longer listed as a transfer "missing the other side".
+
 ## [0.35.0] — Data Status for Claude
 
 ### Added

@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.seeds import v1, v2, v3, v4, v6
+from app.seeds import v1, v2, v3, v4, v6, v7
 
 
 # ---------- accounts ----------
@@ -50,7 +50,9 @@ def test_update_missing_account_is_404(client: TestClient) -> None:
 def test_categories_returned_as_groups_with_children(client: TestClient) -> None:
     groups = client.get("/api/categories").json()
     new_groups = [g for g, _kind, color, _children in v2.CATEGORIES if color is not None]
-    assert [g["name"] for g in groups] == [g["name"] for g in v1.CATEGORIES] + new_groups
+    renamed = dict(v7.RENAMES)
+    first = [renamed.get(g["name"], g["name"]) for g in v1.CATEGORIES]
+    assert [g["name"] for g in groups] == first + new_groups + [g for g, *_ in v7.NEW_GROUPS]
     housing = next(g for g in groups if g["name"] == "Housing")
     assert housing["kind"] == "expense"
     assert housing["color"] == "#6B6788"
@@ -61,9 +63,9 @@ def test_categories_returned_as_groups_with_children(client: TestClient) -> None
 
 def test_create_subcategory_inherits_kind(client: TestClient) -> None:
     groups = client.get("/api/categories").json()
-    travel = next(g for g in groups if g["name"] == "Travel")
+    travel = next(g for g in groups if g["name"] == "Travel & Vacations")
     resp = client.post(
-        "/api/categories", json={"name": "Flights", "parent_id": travel["category_id"]}
+        "/api/categories", json={"name": "Cruises", "parent_id": travel["category_id"]}
     )
     assert resp.status_code == 201
     assert resp.json()["kind"] == "expense"
@@ -99,7 +101,13 @@ def test_update_category_color_and_reject_bad_color(client: TestClient) -> None:
 # ---------- merchant rules ----------
 def test_rules_listed_in_priority_order_with_paths(client: TestClient) -> None:
     rules = client.get("/api/merchant-rules").json()
-    seeded = (v1.MERCHANT_RULES, v3.MERCHANT_RULES, v4.MERCHANT_RULES, v6.MERCHANT_RULES)
+    seeded = (
+        v1.MERCHANT_RULES,
+        v3.MERCHANT_RULES,
+        v4.MERCHANT_RULES,
+        v6.MERCHANT_RULES,
+        v7.MERCHANT_RULES,
+    )
     assert len(rules) == sum(len(r) for r in seeded)
     priorities = [r["priority"] for r in rules]
     assert priorities == sorted(priorities)

@@ -37,11 +37,11 @@ test("a new merchant rule categorizes a description, then is removed", async ({ 
   await page.getByLabel("Pattern in the statement description").fill(pattern);
   const category = page.getByRole("combobox", { name: "Category" });
   await category.fill("trips"); // found by its description
-  await page.getByRole("option", { name: /^Travel/ }).click();
-  await expect(category).toHaveValue("Travel");
+  await page.getByRole("option", { name: /^Travel & Vacations(?! \/)/ }).click();
+  await expect(category).toHaveValue("Travel & Vacations");
   await page.getByLabel("Priority (lower runs first)").fill("5");
   await page.getByRole("button", { name: "Add rule" }).click();
-  await expect(page.getByText(`Rule added: ${pattern} → Travel.`)).toBeVisible();
+  await expect(page.getByText(`Rule added: ${pattern} → Travel & Vacations.`)).toBeVisible();
 
   await tester.fill(`pos ${pattern.toLowerCase()} quito`);
   await page.getByRole("button", { name: "Test rules" }).click();

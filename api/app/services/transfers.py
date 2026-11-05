@@ -183,13 +183,28 @@ def other_legs(db: Session, rows: list[Transaction]) -> dict[int, Leg]:
     return out
 
 
+def _paired_categories(db: Session) -> list[int]:
+    """Transfer categories whose other leg is in another of the household's accounts: card
+    payments, moves between own accounts and the Transfers group itself. Money held for others
+    or lent out has no such leg."""
+    ids = [c.category_id for c in (_category(db, *CARD_PAYMENT), _category(db, *OWN_ACCOUNTS)) if c]
+    group = db.scalar(
+        select(Category.category_id).where(
+            Category.parent_id.is_(None), Category.name == CARD_PAYMENT[0]
+        )
+    )
+    return ids + ([group] if group is not None else [])
+
+
 def unmatched(db: Session, month: date | None = None) -> list[Transaction]:
     """Transfers whose other side isn't loaded (or doesn't fit): usually a statement to upload."""
+    paired = _paired_categories(db)
     q = select(Transaction).where(
         Transaction.source == "statement",
         Transaction.type == "transfer",
         Transaction.transfer_group_id.is_(None),
         Transaction.parent_transaction_id.is_(None),
+        Transaction.category_id.is_(None) | Transaction.category_id.in_(paired),
     )
     if month:
         q = q.where(Transaction.cash_month == month.replace(day=1))
