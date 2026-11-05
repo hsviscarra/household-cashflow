@@ -25,6 +25,7 @@ from decimal import Decimal
 from sqlalchemy import case, exists, func, select
 from sqlalchemy.orm import Session, aliased
 
+from app.ingestion import transfer_email
 from app.models import (
     Account,
     BalanceSnapshot,
@@ -412,4 +413,64 @@ def open_notes(db: Session, older_than: date) -> list[TransferNote]:
             .where(TransferNote.transaction_id.is_(None), TransferNote.txn_date < older_than)
             .order_by(TransferNote.txn_date)
         )
+    )
+
+
+# ---------------------------------------------------------------- notes from the banks' emails
+@dataclass
+class EmailResult:
+    status: str  # noted, matched, duplicate, skipped
+    message: str
+    note_id: int | None = None
+
+
+def _our_account(db: Session, bank: str, last4: str | None) -> Account | None:
+    accounts = [
+        a
+        for a in db.scalars(
+            select(Account).where(Account.institution == bank, Account.is_active == True)  # noqa: E712
+        )
+        if a.kind != "credit_card"
+    ]
+    if last4 is not None:
+        return next((a for a in accounts if a.last4 == last4), None)
+    # Produbanco's "enviada" doesn't print the account: the email goes to Hernan, so his.
+    mine = [a for a in accounts if a.owner == "Hernan"]
+    return mine[0] if len(mine) == 1 else None
+
+
+def note_from_email(
+    db: Session, notice: transfer_email.Notice, sent_on: date, user: str
+) -> EmailResult:
+    """Turn a bank's transfer notice into a note (once per bank reference) and match it."""
+    account = _our_account(db, notice.bank, notice.our_last4)
+    if account is None:
+        return EmailResult("skipped", "Not one of the household's accounts.")
+    own = {a.last4 for a in db.scalars(select(Account).where(Account.last4.is_not(None)))}
+    if notice.other_last4 is not None and notice.other_last4 in own:
+        return EmailResult(
+            "skipped", "Between the household's own accounts: matched as a transfer."
+        )
+    reference = f"{notice.bank}:{notice.reference}" if notice.reference else None
+    amount = notice.amount if notice.direction == "received" else -notice.amount
+    note, created = add_note(
+        db,
+        {
+            "txn_date": notice.day or sent_on,
+            "amount": amount,
+            "account_id": account.account_id,
+            "other_party": notice.other_party,
+            "description": notice.description,
+            "source": "email",
+            "reference": reference,
+        },
+        user,
+    )
+    if not created:
+        return EmailResult("duplicate", "Already noted.", note.note_id)
+    who = note.other_party or "someone"
+    if note.transaction_id is not None:
+        return EmailResult("matched", f"Noted ({who}) and matched to its line.", note.note_id)
+    return EmailResult(
+        "noted", f"Noted ({who}); it will be matched when the statement is read.", note.note_id
     )

@@ -95,6 +95,19 @@ ROTATE=1 ./infra/azure/setup-inbox.sh
 
 Then paste the new `INBOX_TOKEN` into the script's properties.
 
+## Transfer notices (0.38.0)
+
+The same script also sends the banks' transfer notices (Produbanco "Transferencia enviada /
+recibida / acreditada", Pichincha "NOTIFICACION BANCO PICHINCHA") to `/api/inbox/transfer`, with
+the same token. The app keeps only the date, amount, account, the other party's name, the
+description typed at the bank and the bank's reference, as a transfer note (People & Transfers
+page); the email text isn't stored. Notices for accounts that aren't the household's (a copy
+for a relative's account) and transfers between the household's own accounts are skipped. Each
+notice is labeled `cashflow-imported` once the app has answered.
+
+To turn it on, paste the new `infra/gmail/Code.gs` over the script's code and save; the daily
+trigger stays. To bring in older notices, run `backfill()` (it reads from `BACKFILL_FROM`).
+
 ## Turn it off
 
 - In the script editor, open **Triggers** and delete the `run` trigger.
