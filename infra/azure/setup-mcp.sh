@@ -37,7 +37,7 @@ az containerapp update -g "$RG" -n "$APP" \
 echo "2/3 Letting /mcp past the sign-in (it checks the token instead)..."
 EXCLUDED="/api/health,/mcp"
 # Keep the statement inbox's path (F20, setup-inbox.sh) when it's on.
-if [ -n "$(secret inbox-token)" ]; then EXCLUDED="$EXCLUDED,/api/inbox"; fi
+if [ -n "$(secret inbox-token)" ]; then EXCLUDED="$EXCLUDED,/api/inbox,/api/inbox/transfer"; fi
 az containerapp auth update -g "$RG" -n "$APP" --excluded-paths "$EXCLUDED" -o none
 
 FQDN=$(az containerapp show -g "$RG" -n "$APP" --query properties.configuration.ingress.fqdn -o tsv)
