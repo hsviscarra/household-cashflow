@@ -448,6 +448,9 @@ class TransferNote(Timestamps, Base):
     )
     category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
     other_party: Mapped[str | None] = mapped_column(Unicode(100))  # the name the bank printed
+    # The person's part of a shared payment (positive): the matched line is split into this, in
+    # the person's category, and the rest, in the note's category.
+    share: Mapped[Decimal | None] = mapped_column(Money)
     description: Mapped[str | None] = mapped_column(Unicode(400))
     source: Mapped[str] = mapped_column(Unicode(10), default="manual")
     # The bank's reference, so the same email read twice makes one note.

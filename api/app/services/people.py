@@ -284,13 +284,37 @@ def match_note(db: Session, note: TransferNote, user: str) -> Transaction | None
     person = db.get(Counterparty, note.counterparty_id) if note.counterparty_id else None
     category_id = note.category_id or (person.category_id if person else None)
     reason = f"transfer note {note.note_id}"
-    _apply(db, row, person, category_id, "note", reason, user)
+    if note.share and person and person.category_id and row.category_source not in KEEP:
+        _split_share(db, row, note, person, user)
+    else:
+        _apply(db, row, person, category_id, "note", reason, user)
     text = " · ".join(x for x in (note.other_party, note.description) if x)
     if text and text not in (row.notes or ""):
         new = f"{row.notes} · {text}" if row.notes else text
         classify._log(db, row, "notes", row.notes, new[:1000], reason, user)
         row.notes = new[:1000]
     return row
+
+
+def _split_share(
+    db: Session, row: Transaction, note: TransferNote, person: Counterparty, user: str
+) -> None:
+    """A payment that is partly someone else's (Lopes pays Rubén's work and Hernan's together):
+    the line becomes two parts, the person's share in their category and the rest in the
+    note's."""
+    sign = Decimal(1) if row.amount > 0 else Decimal(-1)
+    theirs = sign * abs(note.share or ZERO)
+    parts = [
+        classify.Part(theirs, person.category_id or 0, f"{person.name}'s share"),
+        classify.Part(row.amount - theirs, note.category_id or 0, None),
+    ]
+    made = classify.split(db, row, parts, user)
+    made[0].counterparty_id = person.counterparty_id
+    if row.counterparty_id != person.counterparty_id:
+        classify._log(
+            db, row, "counterparty_id", row.counterparty_id, person.counterparty_id, "note", user
+        )
+        row.counterparty_id = person.counterparty_id
 
 
 def match_all(db: Session, user: str) -> int:
@@ -324,7 +348,22 @@ def add_note(db: Session, fields: dict[str, object], user: str) -> tuple[Transfe
     ):
         if fields.get(key) is not None and db.get(model, fields[key]) is None:
             raise PeopleError(f"{what} not found.", 404)
+    share = fields.get("share")
+    if share is not None:
+        share = abs(Decimal(str(share)))
+        person = (
+            db.get(Counterparty, fields["counterparty_id"])
+            if fields.get("counterparty_id")
+            else None
+        )
+        if person is None or person.category_id is None:
+            raise PeopleError("A share needs a person with a category (their part goes there).")
+        if fields.get("category_id") is None:
+            raise PeopleError("A share needs a category for the rest (your part).")
+        if not 0 < share < abs(amount):
+            raise PeopleError("The share must be more than 0 and less than the amount.")
     note = TransferNote(
+        share=share,
         txn_date=fields["txn_date"],
         amount=amount,
         account_id=fields.get("account_id"),

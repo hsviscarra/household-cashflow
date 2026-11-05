@@ -373,3 +373,52 @@ def test_data_status_lists_notes_without_a_line(client: TestClient, db: Session)
     assert [i.text for i in notes] == ["1 transfer note has no statement line"]
     assert notes[0].link == "/people"
     assert people.open_notes(db, date(2026, 7, 1))[0].amount == Decimal("99")
+
+
+def test_a_shared_payment_is_split(client: TestClient, db: Session) -> None:
+    """Lopes pays Rubén's work and Hernan's in one transfer: the note says Rubén's share."""
+    held = _cat(db, "Transfers", "Held for Others")
+    consulting = _cat(db, "Other Income", "Consulting & Freelance")
+    ruben = client.post(
+        "/api/people", json={"name": "Rubén", "category_id": held, "new_balance": True}
+    ).json()
+    produ = _acct(db, "Produbanco Ahorros Hernan")
+    row = _line(db, "lopes", produ, date(2026, 10, 20), "1065", "TRANSFERENCIA")
+    db.commit()
+    body = {
+        "txn_date": "2026-10-20",
+        "direction": "received",
+        "amount": "1065",
+        "account_id": produ,
+        "counterparty_id": ruben["counterparty_id"],
+        "category_id": consulting,
+        "share": "852",
+        "description": "Lopes agosto-septiembre",
+    }
+    note = client.post("/api/transfer-notes", json=body).json()
+    assert note["transaction_id"] == row.transaction_id and Decimal(note["share"]) == 852
+    db.expire_all()
+    parts = sorted(
+        db.scalars(
+            select(Transaction).where(Transaction.parent_transaction_id == row.transaction_id)
+        ),
+        key=lambda t: t.amount,
+    )
+    assert [(p.amount, p.category_id) for p in parts] == [
+        (Decimal("213.0000"), consulting),
+        (Decimal("852.0000"), held),
+    ]
+    assert parts[1].counterparty_id == ruben["counterparty_id"] and parts[1].type == "transfer"
+    assert parts[0].type == "income" and parts[0].counterparty_id is None
+    sheet = client.get("/api/networth", params={"as_of": "2026-10-31"}).json()
+    item = next(i for i in sheet["items"] if i["name"] == "Holding for Rubén")
+    assert item["value"] == "852.0000"
+
+    # A share needs the person's category, a category for the rest, and to fit the amount.
+    bad = [
+        {**body, "share": "1065"},
+        {**body, "category_id": None},
+        {**body, "counterparty_id": None},
+    ]
+    for b in bad:
+        assert client.post("/api/transfer-notes", json=b).status_code == 422, b

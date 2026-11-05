@@ -177,6 +177,8 @@ class NoteIn(BaseModel):
     category_id: int | None = None
     other_party: str | None = Field(default=None, max_length=100)
     description: str | None = Field(default=None, max_length=400)
+    # The person's part of a shared payment: their category; the rest goes to category_id.
+    share: Decimal | None = Field(default=None, gt=0)
 
 
 class NoteOut(BaseModel):
@@ -191,6 +193,7 @@ class NoteOut(BaseModel):
     category_path: str | None
     other_party: str | None
     description: str | None
+    share: Decimal | None
     source: str
     transaction_id: int | None
     line_date: date | None
@@ -214,6 +217,7 @@ def _note_out(db: Session, n: TransferNote) -> NoteOut:
         category_path=category_paths(db).get(n.category_id) if n.category_id else None,
         other_party=n.other_party,
         description=n.description,
+        share=n.share,
         source=n.source,
         transaction_id=n.transaction_id,
         line_date=line.txn_date if line else None,

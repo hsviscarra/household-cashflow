@@ -26,6 +26,9 @@ names the other party, the amount, the account's last 4 and the description; Pic
   statement line with the same amount, in its account when it has one, at most 5 days apart,
   closest first, one line per note. The line gets the person, the note's category (else the
   person's) and the description in its notes.
+- **Shared payments:** a note may carry the person's share. The matched line is then split
+  (F9 splits): the share in the person's category with the person on it, the rest in the note's
+  category. A share needs a person with a category and a category for the rest.
 - **Precedence:** a category chosen by hand (manual, accepted suggestion, split, workbook) is never
   changed; a note or a person overrides a rule or a statement section. Notes run before people's
   texts, both after each approved statement, when a note or person is saved, and on demand.

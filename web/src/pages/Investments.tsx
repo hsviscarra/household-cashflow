@@ -43,8 +43,8 @@ export default function InvestmentsSection() {
     <section aria-label="Investments" className="mt-10">
       <h2 className="font-display text-3xl font-bold leading-tight">Investments · Interactive Brokers</h2>
       <p className="mt-1 text-muted">
-        {line ?? "No portfolio saved yet."} Positions, cash and value from your IBKR account; the total
-        counts in net worth above.
+        {line ?? "No portfolio saved yet."} Positions, cash and value from your IBKR account; the total counts
+        in net worth above.
       </p>
       {(!line || p.stale) && (
         <p className="mt-3 rounded-2xl bg-info-bg px-4 py-3 text-sm">

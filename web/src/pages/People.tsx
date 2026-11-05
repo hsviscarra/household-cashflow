@@ -85,12 +85,14 @@ function NoteForm({ groups, people, notify }: { groups: CategoryGroup[]; people:
   const [account, setAccount] = useState<number | "">("");
   const [category, setCategory] = useState<number | "">("");
   const [description, setDescription] = useState("");
+  const [share, setShare] = useState("");
   const save = useMutation({
     mutationFn: createNote,
     onSuccess: (n) => {
       refresh();
       setAmount("");
       setDescription("");
+      setShare("");
       notify(
         n.transaction_id
           ? `Saved and matched to the ${day(n.line_date!)} line: ${n.line_description}.`
@@ -113,6 +115,7 @@ function NoteForm({ groups, people, notify }: { groups: CategoryGroup[]; people:
           account_id: account === "" ? null : account,
           category_id: category === "" ? null : category,
           description: description.trim() || null,
+          ...(person !== "" && share.trim() ? { share: share.trim() } : {}),
         });
       }}
     >
@@ -187,9 +190,27 @@ function NoteForm({ groups, people, notify }: { groups: CategoryGroup[]; people:
           </select>
         </label>
       </div>
+      {person !== "" && (
+        <label className="mt-4 block">
+          <span className="label">Their share, if part of it is yours (optional)</span>
+          <input
+            className="field w-36"
+            inputMode="decimal"
+            value={share}
+            onChange={(e) => setShare(e.target.value)}
+          />
+          <span className="mt-1 block text-sm text-muted">
+            The line is split: their share in their category, the rest in the category below.
+          </span>
+        </label>
+      )}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <CategoryPicker
-          label="Category (optional: the person's is used)"
+          label={
+            person !== "" && share.trim()
+              ? "Category for your part"
+              : "Category (optional: the person's is used)"
+          }
           value={category}
           onChange={setCategory}
           groups={groups}
@@ -266,6 +287,7 @@ function NoteRow({ n, onDelete }: { n: TransferNote; onDelete: () => void }) {
           {n.transaction_id
             ? `Matched: ${day(n.line_date!)} ${n.line_description ?? ""}`
             : "Waiting for its statement"}
+          {n.share && ` · their share ${money(n.share)}`}
           {n.category_path && ` · ${n.category_path}`}
           {n.account_name && ` · ${n.account_name}`}
           {n.source === "email" && " · from the bank's email"}

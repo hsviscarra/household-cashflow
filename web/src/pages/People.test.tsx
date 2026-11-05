@@ -59,6 +59,7 @@ const note = (over: Partial<TransferNote>): TransferNote => ({
   category_path: null,
   other_party: "INTELLIGENT ENTERPRISE MANAG",
   description: "pago obra",
+  share: null,
   source: "email",
   transaction_id: null,
   line_date: null,
@@ -76,7 +77,7 @@ beforeEach(() => {
   calls = [];
   people = [RUBEN];
   notes = [
-    note({}),
+    note({ share: "300.00" }),
     note({
       note_id: 2,
       amount: "-25.00",
@@ -180,6 +181,8 @@ describe("People & transfers", () => {
     // Cards don't receive transfers: only bank accounts are offered.
     expect(within(form).queryByText("Capital One Venture")).toBeNull();
     pickCategory(within(form).getByRole("combobox", { name: /Category/ }), "held", /Held for Others/);
+    fireEvent.change(within(form).getByLabelText(/Their share/), { target: { value: "852" } });
+    expect(within(form).getByRole("combobox", { name: "Category for your part" })).toBeTruthy();
     fireEvent.change(within(form).getByLabelText("What it was for"), { target: { value: "pago obra" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save the note" }));
     await screen.findByText(/Saved and matched to the Nov 4 line: TRANSFERENCIA/);
@@ -192,6 +195,7 @@ describe("People & transfers", () => {
       account_id: 5,
       category_id: 41,
       description: "pago obra",
+      share: "852",
     });
   });
 
@@ -200,6 +204,7 @@ describe("People & transfers", () => {
     const list = await screen.findByRole("list", { name: "Transfer notes" });
     expect(within(list).getByText(/Waiting for its statement/)).toBeTruthy();
     expect(within(list).getByText(/from the bank's email/)).toBeTruthy();
+    expect(within(list).getByText(/their share 300.00/)).toBeTruthy();
     expect(within(list).getByText(/Matched: Oct 14 TRANSFERENCIA/)).toBeTruthy();
     expect(within(list).getByText(/Someone/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Match again" }));

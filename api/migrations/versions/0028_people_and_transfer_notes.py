@@ -117,6 +117,7 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("other_party", sa.Unicode(100), nullable=True),
+        sa.Column("share", sa.Numeric(19, 4), nullable=True),
         sa.Column("description", sa.Unicode(400), nullable=True),
         sa.Column("source", sa.Unicode(10), server_default="manual", nullable=False),
         sa.Column("reference", sa.Unicode(64), nullable=True),

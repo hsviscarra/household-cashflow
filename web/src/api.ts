@@ -1123,6 +1123,7 @@ export type TransferNote = {
   category_path: string | null;
   other_party: string | null;
   description: string | null;
+  share: string | null;
   source: "manual" | "email";
   transaction_id: number | null;
   line_date: string | null;
@@ -1138,6 +1139,7 @@ export type NoteInput = {
   category_id?: number | null;
   other_party?: string | null;
   description?: string | null;
+  share?: string | null;
 };
 
 export const fetchPeople = () => send<Person[]>("GET", "/api/people");

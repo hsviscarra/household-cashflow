@@ -18,6 +18,9 @@ the Excel workbook.
 - **Money held for someone** on Debt & Net Worth: "Holding for Rubén" starts from an amount you
   enter and moves with his lines (received for him raises it, paid out for him lowers it).
 - **Data Status** lists transfer notes whose statement is loaded but which found no line.
+- **Shared payments:** a note can say the person's share ("Rubén's share: $852" of a $1,065
+  Lopes payment). The matched line is split: their share in their category (Held for Others,
+  counted in their balance), the rest in the note's category (Consulting & Freelance).
 - A line's person can be set or cleared through the API (`counterparty_id`).
 
 ### Changed
