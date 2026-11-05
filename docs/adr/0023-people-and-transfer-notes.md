@@ -50,3 +50,13 @@ names the other party, the amount, the account's last 4 and the description; Pic
 - Deleting a note or a person never changes a line's category; the line only loses the link or
   name.
 - The import preview doesn't show note matches yet: they apply when the statement is approved.
+
+## Update (0.38.0): notes from the banks' emails
+
+The Gmail script posts each transfer notice's subject and text to `/api/inbox/transfer` (the
+inbox token now opens `/api/inbox/*`). `app/ingestion/transfer_email.py` reads five formats; the
+household's account is found by the last 4 digits the email prints (Produbanco's "enviada"
+prints none: Hernan's only active Produbanco bank account). Skipped: accounts that aren't the
+household's, and transfers to another household account (transfer matching pairs those). The
+date is the one in the text when it is unambiguous, else the email's day in Quito. Only the
+note's fields are stored; the text, cédula digits and other account numbers are dropped.

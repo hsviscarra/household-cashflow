@@ -27,7 +27,7 @@ async def allow_list(
     path = request.url.path.rstrip("/")
     if path == MCP_PATH:
         return await _bearer(request, call_next, settings.mcp_token, "The MCP endpoint is off.")
-    if path == INBOX_PATH:
+    if path == INBOX_PATH or path.startswith(INBOX_PATH + "/"):
         return await _bearer(request, call_next, settings.inbox_token, "The inbox is off.")
     allowed = settings.allowed_email_set
     if not allowed or request.url.path in OPEN_PATHS:

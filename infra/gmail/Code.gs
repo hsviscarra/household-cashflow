@@ -14,6 +14,11 @@
  * (Purchases page). Invoices forwarded from another Gmail by a filter count too: a filter keeps the
  * vendor as the sender.
  *
+ * And the banks' transfer notices (Produbanco "Transferencia enviada / recibida / acreditada",
+ * Pichincha "NOTIFICACION"): their text goes to /api/inbox/transfer, which keeps only the date,
+ * amount, account, the other party's name and the description typed at the bank, as a transfer
+ * note. When the statement arrives, its anonymous "TRANSFERENCIA" line gets that name (ADR-023).
+ *
  * Labels it adds:
  *   cashflow-imported  sent; read, or a statement already in the app
  *   cashflow-check     sent, but it needs you on the Import page (or the app refused the file)
@@ -54,6 +59,11 @@ const SOURCES = [
   { bank: 'Invoices', query: 'filename:xml', files: XML },
 ];
 
+// Transfer notices: text only, no attachment.
+const TRANSFERS =
+  'from:(bancaenlinea@produbanco.com OR banco@pichincha.com) ' +
+  'subject:(transferencia OR notificacion) -subject:"estado de cuenta"';
+
 const DONE = 'cashflow-imported';
 const CHECK = 'cashflow-check';
 const RECENT = 'newer_than:45d';
@@ -86,6 +96,68 @@ function setup() {
 }
 
 function importStatements_(window) {
+  importTransfers_(window);
+  importFiles_(window);
+}
+
+/** Each transfer notice once; the app answers noted, matched, duplicate or skipped. */
+function importTransfers_(window) {
+  const props = props_();
+  const url = (props.getProperty('APP_URL') || '').replace(/\/+$/, '');
+  const token = props.getProperty('INBOX_TOKEN') || '';
+  if (!url || !token) {
+    throw new Error('Set APP_URL and INBOX_TOKEN in Project Settings -> Script properties.');
+  }
+  const done = label_(DONE);
+  const counts = { noted: 0, matched: 0, duplicate: 0, skipped: 0, later: 0 };
+  for (const thread of GmailApp.search(`${TRANSFERS} ${window} -label:${DONE}`, 0, 100)) {
+    let finished = true;
+    for (const message of thread.getMessages()) {
+      const result = postTransfer_(url, token, message);
+      if (result === null) {
+        finished = false;
+        counts.later += 1;
+        continue;
+      }
+      counts[result.status] = (counts[result.status] || 0) + 1;
+    }
+    if (finished) thread.addLabel(done);
+  }
+  console.log(
+    `Transfer notices: noted ${counts.noted}, matched ${counts.matched}, ` +
+      `already noted ${counts.duplicate}, not ours ${counts.skipped}, next run ${counts.later}.`
+  );
+}
+
+function postTransfer_(url, token, message) {
+  try {
+    const response = UrlFetchApp.fetch(`${url}/api/inbox/transfer`, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: `Bearer ${token}` },
+      payload: JSON.stringify({
+        subject: message.getSubject().slice(0, 300),
+        body: message.getPlainBody().slice(0, 100000),
+        sender: address_(message.getFrom()),
+        sent_on: Utilities.formatDate(message.getDate(), 'America/Guayaquil', 'yyyy-MM-dd'),
+      }),
+      muteHttpExceptions: true,
+    });
+    const code = response.getResponseCode();
+    if (code === 200) return JSON.parse(response.getContentText());
+    if (code === 401 || code === 404) {
+      throw new Error(`The app refused the token (HTTP ${code}): check INBOX_TOKEN and APP_URL.`);
+    }
+    console.warn(`Transfer notice: HTTP ${code}; trying again next run.`);
+    return null;
+  } catch (e) {
+    if (String(e).includes('refused the token')) throw e;
+    console.warn(`Transfer notice: ${e}; trying again next run.`);
+    return null;
+  }
+}
+
+function importFiles_(window) {
   const props = props_();
   const url = (props.getProperty('APP_URL') || '').replace(/\/+$/, '');
   const token = props.getProperty('INBOX_TOKEN') || '';

@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.38.0] — Transfer notes from the banks' emails
+
+### Added
+- **The Gmail script sends the banks' transfer notices** (Produbanco sent, received and credited;
+  Pichincha sent and received) to `/api/inbox/transfer`. Each becomes a transfer note with the
+  other party's name and the description typed at the bank, so the statement's anonymous
+  "TRANSFERENCIA" line is named and, for a known person, categorized when it's read.
+- Notices for someone else's account and transfers between the household's own accounts are
+  skipped; the same notice twice makes one note (the bank's reference).
+
 ## [0.37.0] — People and transfer notes
 
 ### Added

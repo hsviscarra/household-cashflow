@@ -12,20 +12,22 @@ invoice, stored with its products and matched to the card line that paid it.
 
 import logging
 from collections.abc import Callable
+from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session, get_session_factory
-from app.ingestion import ocr, stage
+from app.ingestion import ocr, stage, transfer_email
 from app.ingestion.detect import PdfError, read_pdf
 from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
 from app.routers.invoices import receive_xml
+from app.services import people
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 DB = Annotated[Session, Depends(get_session)]
@@ -146,3 +148,28 @@ def read_statement(
         except Exception:  # a background task has nobody to answer: log it, keep the app up
             db.rollback()
             log.exception("Emailed statement %s failed while reading", statement_id)
+
+
+# ---------------------------------------------------------------- transfer notices (ADR-023)
+class TransferEmailIn(BaseModel):
+    subject: str = Field(max_length=300)
+    body: str = Field(max_length=100_000)
+    sender: str = Field(default="", max_length=320)
+    sent_on: date  # the email's day in Quito
+
+
+class TransferEmailOut(BaseModel):
+    status: Literal["noted", "matched", "duplicate", "skipped"]
+    message: str
+    note_id: int | None = None
+
+
+@router.post("/transfer", response_model=TransferEmailOut)
+def receive_transfer(body: TransferEmailIn, db: DB) -> TransferEmailOut:
+    """One bank transfer notice (Produbanco, Pichincha). The text is read here and dropped: only
+    the note's fields are stored."""
+    notice = transfer_email.parse(body.subject, body.body)
+    if notice is None:
+        return TransferEmailOut(status="skipped", message="Not a transfer notice this app reads.")
+    result = people.note_from_email(db, notice, body.sent_on, _who(body.sender))
+    return TransferEmailOut(status=result.status, message=result.message, note_id=result.note_id)  # type: ignore[arg-type]
