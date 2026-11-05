@@ -7,6 +7,9 @@ test("accounts show the seeded cards with the last four digits only", async ({ p
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByText("Capital One Venture")).toBeVisible();
   await expect(page.getByText("•••• 4003")).toBeVisible();
+  // The database status sits at the bottom of the sidebar; on a phone the menu opens it.
+  const menu = page.getByRole("button", { name: "Menu" });
+  if (await menu.isVisible()) await menu.click();
   await expect(page.getByText("Database connected")).toBeVisible();
 });
 
