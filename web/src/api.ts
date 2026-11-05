@@ -586,7 +586,7 @@ export const createFromExcel = (year: number, names: string[]) =>
 
 // ---------------- F12: month status ----------------
 export type StatusItem = {
-  kind: "statement" | "import" | "uncategorized" | "transfer" | "recurring" | "balance";
+  kind: "statement" | "import" | "uncategorized" | "transfer" | "recurring" | "balance" | "note";
   text: string;
   link: string;
   count: number;
@@ -1076,3 +1076,81 @@ export async function uploadInvoices(files: File[]): Promise<InvoiceUpload[]> {
   }
   return data as InvoiceUpload[];
 }
+
+// ---------- people and transfer notes (ADR-023) ----------
+export type Person = {
+  counterparty_id: number;
+  name: string;
+  patterns: string | null;
+  category_id: number | null;
+  category_path: string | null;
+  holding_id: number | null;
+  holding_name: string | null;
+  is_active: boolean;
+  notes: string | null;
+  lines: number;
+  received: string;
+  paid: string;
+};
+export type PersonInput = {
+  name: string;
+  patterns?: string | null;
+  category_id?: number | null;
+  holding_id?: number | null;
+  notes?: string | null;
+  new_balance?: boolean;
+  opening_balance?: string | null;
+  opening_as_of?: string | null;
+};
+export type PersonLine = {
+  transaction_id: number;
+  txn_date: string;
+  amount: string;
+  description: string;
+  account_name: string | null;
+  category_path: string | null;
+  notes: string | null;
+};
+export type TransferNote = {
+  note_id: number;
+  txn_date: string;
+  amount: string;
+  account_id: number | null;
+  account_name: string | null;
+  counterparty_id: number | null;
+  person: string | null;
+  category_id: number | null;
+  category_path: string | null;
+  other_party: string | null;
+  description: string | null;
+  share: string | null;
+  source: "manual" | "email";
+  transaction_id: number | null;
+  line_date: string | null;
+  line_description: string | null;
+  created_by: string;
+};
+export type NoteInput = {
+  txn_date: string;
+  direction: "sent" | "received";
+  amount: string;
+  account_id?: number | null;
+  counterparty_id?: number | null;
+  category_id?: number | null;
+  other_party?: string | null;
+  description?: string | null;
+  share?: string | null;
+};
+
+export const fetchPeople = () => send<Person[]>("GET", "/api/people");
+export const createPerson = (p: PersonInput) => send<Person>("POST", "/api/people", p);
+export const updatePerson = (id: number, p: Partial<PersonInput> & { is_active?: boolean }) =>
+  send<Person>("PATCH", `/api/people/${id}`, p);
+export const deletePerson = (id: number) => send<void>("DELETE", `/api/people/${id}`);
+export const fetchPersonLines = (id: number) => send<PersonLine[]>("GET", `/api/people/${id}/lines`);
+export const fetchNotes = (state: "open" | "matched" | "all" = "all") =>
+  send<TransferNote[]>("GET", `/api/transfer-notes?state=${state}`);
+export const createNote = (n: NoteInput) => send<TransferNote>("POST", "/api/transfer-notes", n);
+export const deleteNote = (id: number) => send<void>("DELETE", `/api/transfer-notes/${id}`);
+export const matchNotes = () =>
+  send<{ matched: number; tagged: number }>("POST", "/api/transfer-notes/match");

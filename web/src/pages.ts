@@ -33,6 +33,12 @@ export const PAGES: PageDef[] = [
     summary: "Merchants no rule knows: choose a category once, with Claude's suggestion.",
   },
   {
+    path: "/people",
+    label: "People & Transfers",
+    feature: "F24",
+    summary: "Whose money a transfer was, notes before the statement, money held for others.",
+  },
+  {
     path: "/recurring",
     label: "Recurring",
     feature: "F11",

@@ -8,6 +8,7 @@ import BatchPage from "./pages/Batch";
 import DebtPage from "./pages/Debt";
 import ImportPage from "./pages/Import";
 import Overview from "./pages/Overview";
+import PeoplePage from "./pages/People";
 import ProjectionsPage from "./pages/Projections";
 import PurchasesPage from "./pages/Purchases";
 import RecurringPage from "./pages/Recurring";
@@ -77,6 +78,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/settings": <Settings />,
   "/transactions": <TransactionsPage />,
   "/review": <ReviewPage />,
+  "/people": <PeoplePage />,
   "/recurring": <RecurringPage />,
   "/status": <StatusPage />,
   "/spending": <SpendingPage />,

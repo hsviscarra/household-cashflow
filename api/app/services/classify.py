@@ -18,6 +18,7 @@ from app.models import (
     Account,
     Category,
     ChangeLog,
+    Counterparty,
     ImportBatch,
     MerchantRule,
     MerchantSuggestion,
@@ -444,6 +445,7 @@ def edit(
     category_id: int | None = None,
     notes: str | None = None,
     person: str | None = None,
+    counterparty_id: int | None = None,
     fields: set[str],
 ) -> None:
     if "category_id" in fields:
@@ -461,6 +463,11 @@ def edit(
     if "person" in fields:
         _log(db, row, "person", row.person, person, "Edited", user)
         row.person = person
+    if "counterparty_id" in fields:
+        if counterparty_id is not None and db.get(Counterparty, counterparty_id) is None:
+            raise ClassifyError(f"Person {counterparty_id} not found.", 404)
+        _log(db, row, "counterparty_id", row.counterparty_id, counterparty_id, "Edited", user)
+        row.counterparty_id = counterparty_id
     db.commit()
     if row.type == "transfer" and row.transfer_group_id is None:
         transfers.match(db, user)

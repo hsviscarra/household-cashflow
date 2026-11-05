@@ -28,7 +28,7 @@ from app.models import (
     RecurringTemplate,
     Transaction,
 )
-from app.services import loans, recurring, status
+from app.services import loans, people, recurring, status
 
 ZERO = Decimal(0)
 ASSET_CLASSES = ("property", "vehicle", "investment", "cash", "purchase")
@@ -99,6 +99,7 @@ class Item:
     loan: Loan | None = None
     category_id: int | None = None
     recurring_template_id: int | None = None
+    lines: Decimal | None = None  # a person's balance: their lines after the latest value
 
 
 @dataclass
@@ -204,6 +205,7 @@ def holdings(db: Session, as_of: date) -> list[Item]:
     ):
         snaps[s.holding_id or 0].append(s)
     out = []
+    held = people.linked_holdings(db)
     for h in db.scalars(select(Holding).order_by(Holding.sort_order, Holding.name)):
         upto = [s for s in snaps[h.holding_id] if s.as_of <= as_of]
         last = upto[-1] if upto else None
@@ -250,6 +252,14 @@ def holdings(db: Session, as_of: date) -> list[Item]:
             )
             if lines and not last:
                 item.as_of, item.source = as_of, "lines"
+        if h.holding_class == "personal_loan" and h.holding_id in held:
+            # Money held for (or lent to) a person moves with their transfer lines (ADR-023).
+            moved = people.balance_lines(db, h.holding_id, last.as_of if last else None, as_of)
+            if moved:
+                item.value = (last.amount if last else ZERO) + moved
+                item.lines = moved
+                if not last:
+                    item.as_of, item.source = as_of, "lines"
         if h.holding_class == "loan":
             item.loan = _loan(db, h, as_of)
         out.append(item)

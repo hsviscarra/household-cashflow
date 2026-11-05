@@ -5,6 +5,28 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.37.0] — People and transfer notes
+
+### Added
+- **People & Transfers page:** tell the app about a transfer (sent or received, amount, date, for
+  whom, account, category, what it was for). When the statement is read, the anonymous
+  "TRANSFERENCIA" line with the same amount, within 5 days, gets the name, the category and the
+  description. Notes typed after the statement match at once.
+- **People:** a name, texts to find in statements ("RUBEN MIRANDA; NAPOLES") and a category; their
+  lines are named and categorized automatically, and listed on their card with totals received
+  and paid.
+- **Money held for someone** on Debt & Net Worth: "Holding for Rubén" starts from an amount you
+  enter and moves with his lines (received for him raises it, paid out for him lowers it).
+- **Data Status** lists transfer notes whose statement is loaded but which found no line.
+- **Shared payments:** a note can say the person's share ("Rubén's share: $852" of a $1,065
+  Lopes payment). The matched line is split: their share in their category (Held for Others,
+  counted in their balance), the rest in the note's category (Consulting & Freelance).
+- A line's person can be set or cleared through the API (`counterparty_id`).
+
+### Changed
+- Lines that belong to a person, or that are held for others or lent, are never paired as a
+  transfer between own accounts.
+
 ## [0.36.0] — A fuller category tree
 
 ### Added

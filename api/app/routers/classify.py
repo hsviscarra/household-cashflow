@@ -80,6 +80,7 @@ def transaction_out(
         transfer_group_id=t.transfer_group_id,
         transfer_with=TransferLegOut(**vars(other)) if other else None,
         recurring_entry_id=t.recurring_entry_id,
+        counterparty_id=t.counterparty_id,
     )
 
 
@@ -193,6 +194,7 @@ def edit_transaction(
             category_id=body.category_id,
             notes=body.notes,
             person=body.person,
+            counterparty_id=body.counterparty_id,
             fields=fields,
         )
     except classify.ClassifyError as exc:

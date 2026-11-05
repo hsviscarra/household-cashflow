@@ -385,6 +385,7 @@ class TransactionOut(BaseModel):
     transfer_group_id: int | None = None
     transfer_with: "TransferLegOut | None" = None  # the other side of a matched transfer
     recurring_entry_id: int | None = None  # F11: the recurring entry this line pays
+    counterparty_id: int | None = None  # whose money it is or who it was for (ADR-023)
 
 
 # ---------------- F9: classification ----------------
@@ -447,6 +448,7 @@ class TransactionPatch(BaseModel):
     category_id: int | None = None
     notes: str | None = Field(default=None, max_length=1000)
     person: Owner | None = None
+    counterparty_id: int | None = None  # null clears it
 
 
 class PartIn(BaseModel):
@@ -655,7 +657,9 @@ class EntryOut(BaseModel):
 
 # ---------------- F12: month status ----------------
 class StatusItemOut(BaseModel):
-    kind: Literal["statement", "import", "uncategorized", "transfer", "recurring", "balance"]
+    kind: Literal[
+        "statement", "import", "uncategorized", "transfer", "recurring", "balance", "note"
+    ]
     text: str
     link: str
     count: int
@@ -976,6 +980,7 @@ class SheetItemOut(BaseModel):
     loan: LoanOut | None
     category_id: int | None
     recurring_template_id: int | None
+    lines: Decimal | None = None  # a person's balance: their lines after the latest value
 
 
 class SheetPointOut(BaseModel):
