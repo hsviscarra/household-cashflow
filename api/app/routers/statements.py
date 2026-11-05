@@ -1,13 +1,24 @@
 """Statement upload and list (F3)."""
 
+from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
-from app.db.session import get_session
+from app.config import get_settings
+from app.db.session import get_session, get_session_factory
+from app.ingestion import stage
 from app.ingestion.preview import latest_batches
 from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement, to_out
@@ -17,6 +28,7 @@ from app.schemas import StatementOut, StatementPatch, UploadResultOut
 router = APIRouter(prefix="/api/statements", tags=["statements"])
 DB = Annotated[Session, Depends(get_session)]
 Store = Annotated[StatementStore, Depends(get_store)]
+Sessions = Annotated[Callable[[], Session], Depends(get_session_factory)]
 MAX_FILES = 50
 
 
@@ -26,14 +38,32 @@ def _user(request: Request) -> str:
 
 @router.post("", response_model=list[UploadResultOut])
 async def upload(
-    files: list[UploadFile], request: Request, db: DB, store: Store
+    files: list[UploadFile],
+    request: Request,
+    db: DB,
+    store: Store,
+    sessions: Sessions,
+    later: BackgroundTasks,
 ) -> list[UploadResultOut]:
     if len(files) > MAX_FILES:
         raise HTTPException(422, f"Upload at most {MAX_FILES} files at a time.")
     out = []
     for f in files:
         data = await f.read(MAX_BYTES + 1)
-        out.append(store_statement(db, store, data, f.filename or "", _user(request)))
+        res = store_statement(db, store, data, f.filename or "", _user(request))
+        out.append(res)
+        st = res.statement
+        if (
+            get_settings().auto_approve
+            and res.outcome == "stored"
+            and st is not None
+            and st.can_read
+            and st.status == "detected"
+        ):
+            # Read after the answer, and approve if it ties out (ADR-024).
+            later.add_task(
+                stage.read_and_approve, sessions, store, st.statement_file_id, _user(request)
+            )
     return out
 
 

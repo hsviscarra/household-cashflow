@@ -8,14 +8,17 @@ Nothing reaches core until the statement ties out and Hernan approves.
 
 import hashlib
 import json
+import logging
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.ingestion import ocr
 from app.ingestion.detect import read_pages
 from app.ingestion.parsers import OCR_SOURCES, PARSERS
@@ -37,6 +40,8 @@ from app.models import (
 )
 from app.services import classify, people, recurring, transfers
 from app.services import rules as rule_engine
+
+log = logging.getLogger(__name__)
 
 EC_PLACES = ("QUITO", "GUAYAQUIL", "ECUADOR", "RUMINAHUI", "CUMBAYA", "MEJIA", "PICHIN")
 SECTION_PATHS = {
@@ -427,6 +432,55 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
     for month in sorted({s.txn_date.replace(day=1) for s in new}):
         recurring.match(db, month, user)
     return len(new), len(staged) - len(new)
+
+
+# ---------------------------------------------------------------- automatic approval
+AUTO = " (automatic)"
+
+
+def not_ready(db: Session, batch: ImportBatch) -> str | None:
+    """Why a batch needs a person, or None when it can be approved on its own: it ties out
+    (totals and the previous statement's closing balance) and no line was left unread."""
+    if batch.status != "preview":
+        return f"Already {batch.status}."
+    if not batch.tieout_ok:
+        return "It doesn't tie out."
+    rejects = db.scalar(
+        select(func.count())
+        .select_from(RejectedLine)
+        .where(RejectedLine.statement_file_id == batch.statement_file_id)
+    )
+    if rejects:
+        return f"{rejects} {'line' if rejects == 1 else 'lines'} couldn't be read."
+    return None
+
+
+def auto_approve(db: Session, batch: ImportBatch, user: str) -> bool:
+    """Approve a batch that needs nobody (and AUTO_APPROVE is on). Returns whether it did."""
+    if not get_settings().auto_approve or not_ready(db, batch) is not None:
+        return False
+    approve(db, batch, user + AUTO)
+    return True
+
+
+def read_and_approve(
+    sessions: Callable[[], Session], store: StatementStore, statement_id: int, user: str
+) -> None:
+    """In the background, after an upload or an emailed statement: read it into a batch and
+    approve it when it ties out. Anything else waits on the Import page, where Read shows why."""
+    with sessions() as db:
+        sf = db.get(StatementFile, statement_id)
+        if sf is None:
+            return
+        try:
+            batch = parse_statement(db, store, sf, user)
+            auto_approve(db, batch, user)
+        except StageError as exc:
+            db.rollback()
+            log.warning("Statement %s not read: %s", statement_id, exc)
+        except Exception:  # a background task has nobody to answer: log it, keep the app up
+            db.rollback()
+            log.exception("Statement %s failed while reading", statement_id)
 
 
 def reject(db: Session, batch: ImportBatch, user: str) -> None:

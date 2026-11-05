@@ -358,6 +358,12 @@ export type TransferLeg = {
 
 export const readStatement = (id: number) => send<Batch>("POST", `/api/statements/${id}/read`);
 export const fetchBatch = (id: number) => send<Batch>("GET", `/api/batches/${id}`);
+export type ApproveReady = {
+  approved: number;
+  loaded: number;
+  waiting: { batch_id: number; file_name: string; reason: string }[];
+};
+export const approveReady = () => send<ApproveReady>("POST", "/api/batches/approve-ready");
 export const approveBatch = (id: number) =>
   send<{ batch_id: number; loaded: number; skipped_duplicates: number }>(
     "POST",

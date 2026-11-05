@@ -4,6 +4,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,7 +13,7 @@ from app.db.session import get_session
 from app.ingestion import stage
 from app.ingestion.preview import batch_out, category_paths
 from app.ingestion.storage import StatementStore, get_store
-from app.models import Account, ImportBatch, StatementFile, Transaction
+from app.models import Account, ImportBatch, StatementFile, StatementHeader, Transaction
 from app.routers.classify import transaction_out
 from app.schemas import ApplyRulesOut, ApproveOut, BatchOut, TransactionOut
 from app.services import classify, transfers
@@ -40,6 +41,7 @@ def read_statement(statement_id: int, request: Request, db: DB, store: Store) ->
         raise HTTPException(404, f"Statement {statement_id} not found.")
     try:
         batch = stage.parse_statement(db, store, sf, _user(request))
+        stage.auto_approve(db, batch, _user(request))
     except stage.StageError as exc:
         db.rollback()
         raise HTTPException(exc.status, str(exc)) from exc
@@ -59,6 +61,48 @@ def approve_batch(batch_id: int, request: Request, db: DB) -> ApproveOut:
     except stage.StageError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return ApproveOut(batch_id=batch_id, loaded=loaded, skipped_duplicates=skipped)
+
+
+class WaitingOut(BaseModel):
+    batch_id: int
+    file_name: str
+    reason: str
+
+
+class ApproveReadyOut(BaseModel):
+    approved: int
+    loaded: int
+    waiting: list[WaitingOut]
+
+
+@router.post("/batches/approve-ready", response_model=ApproveReadyOut)
+def approve_ready(request: Request, db: DB) -> ApproveReadyOut:
+    """Approve every waiting statement that ties out, oldest period first (so each opening
+    balance follows the previous closing). The rest are listed with what they need."""
+    rows = db.execute(
+        select(ImportBatch, StatementFile.file_name)
+        .join(StatementFile, StatementFile.statement_file_id == ImportBatch.statement_file_id)
+        .outerjoin(
+            StatementHeader, StatementHeader.statement_file_id == ImportBatch.statement_file_id
+        )
+        .where(ImportBatch.status == "preview")
+        .order_by(StatementHeader.period_start, ImportBatch.batch_id)
+    ).all()
+    approved = loaded = 0
+    waiting = []
+    for batch, name in rows:
+        reason = stage.not_ready(db, batch)
+        if reason is None:
+            try:
+                n, _ = stage.approve(db, batch, _user(request))
+            except stage.StageError as exc:
+                reason = str(exc)
+            else:
+                approved += 1
+                loaded += n
+                continue
+        waiting.append(WaitingOut(batch_id=batch.batch_id, file_name=name, reason=reason))
+    return ApproveReadyOut(approved=approved, loaded=loaded, waiting=waiting)
 
 
 @router.post("/batches/{batch_id}/apply-rules", response_model=ApplyRulesOut)

@@ -1,6 +1,7 @@
 """Unit-test database: all models on in-memory SQLite, seeded with seeds v1 and v2, plus the mart
 views. SQLite has no schemas, so every schema maps to the main database."""
 
+import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -10,6 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+# Most tests walk through read -> preview -> approve by hand; tests of automatic approval
+# (ADR-024) turn it on themselves.
+os.environ.setdefault("AUTO_APPROVE", "false")
 
 from app.db.session import get_session, get_session_factory
 from app.ingestion.storage import LocalStore, get_store

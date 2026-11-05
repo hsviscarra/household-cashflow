@@ -138,9 +138,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Start the image (migrations run on start)
+        # The end-to-end tests walk read -> preview -> approve by hand; automatic approval
+        # (ADR-024) is covered by the API tests.
         run: |
           docker run -d --name app --network host \
             -e APP_ENV=local \
+            -e AUTO_APPROVE=false \
             -e MCP_TOKEN=ci-only-mcp-token -e 'READER_PASSWORD=Ci-Only-Passw0rd!' \
             -e "DATABASE_URL=mssql+pyodbc://sa:Ci-Only-Passw0rd!@localhost:1433/cashflow?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes" \
             cashflow:ci

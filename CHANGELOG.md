@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.39.0] — Statements that tie out approve themselves
+
+### Added
+- **Automatic approval** (ADR-024): a statement whose lines add up to its totals, whose opening
+  balance matches the previous statement's closing balance and that has no unreadable lines is
+  approved as soon as it's read: from the Gmail script, after an upload (uploads are now read
+  right away) and after Read. Anything else waits on the Import page with the reason.
+- **Approve all that tie out** on the Import page: the waiting backlog in one click, oldest first,
+  listing what still needs you.
+- `AUTO_APPROVE=false` turns it off.
 ## [0.38.1] — Transfer notices past the sign-in
 
 ### Fixed

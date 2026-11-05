@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import {
   approveBatch,
+  approveReady,
   assignStatement,
   fetchAccounts,
   fetchStatements,
@@ -192,6 +193,33 @@ function BulkActions({ statements }: { statements: Statement[] }) {
           >
             Read all ({unread.length})
           </button>
+        </div>
+      )}
+      {months.some(([, m]) => m.ready.length > 0) && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            className="btn btn-primary h-9 px-4"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setErrors([]);
+              setProgress("Approving every statement that ties out, oldest first…");
+              try {
+                const r = await approveReady();
+                setProgress(
+                  `Approved ${r.approved} ${r.approved === 1 ? "statement" : "statements"} (${r.loaded} lines).`,
+                );
+                setErrors(r.waiting.map((w) => `${w.file_name}: ${w.reason}`));
+              } catch (e) {
+                setErrors([(e as Error).message]);
+              }
+              setBusy(false);
+              qc.invalidateQueries();
+            }}
+          >
+            Approve all that tie out
+          </button>
+          <span className="text-sm text-muted">New uploads that tie out are approved on their own.</span>
         </div>
       )}
       {months.length > 0 && (
