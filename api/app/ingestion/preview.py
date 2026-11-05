@@ -26,6 +26,7 @@ from app.schemas import (
     RejectOut,
     StgLineOut,
 )
+from app.services import people
 
 
 def category_paths(db: Session) -> dict[int, str]:
@@ -61,6 +62,7 @@ def batch_out(db: Session, batch: ImportBatch) -> BatchOut:
         .order_by(StgTransaction.txn_date, StgTransaction.stg_id)
     ).all()
 
+    hints = people.preview(db, [s for s, _, _ in rows])
     lines: list[StgLineOut] = []
     totals: dict[tuple[str, str], list[Decimal]] = defaultdict(lambda: [Decimal(0), Decimal(0)])
     for s, cardholder, account_name in rows:
@@ -82,6 +84,10 @@ def batch_out(db: Session, batch: ImportBatch) -> BatchOut:
                 account_name=account_name,
                 pay_reference=s.pay_reference,
                 is_duplicate=s.is_duplicate,
+                hint_source=hints[s.stg_id].source if s.stg_id in hints else None,
+                hint_person=hints[s.stg_id].person if s.stg_id in hints else None,
+                hint_text=hints[s.stg_id].text if s.stg_id in hints else None,
+                hint_share=hints[s.stg_id].share if s.stg_id in hints else None,
             )
         )
         if not s.is_duplicate:

@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.40.0] — The import preview shows your notes
+
+### Added
+- **Import preview:** a line a transfer note will name shows "Your note · Rubén · pago obra"; a
+  line whose description has a person's text shows the person; a shared payment shows the split
+  (their share, the rest yours). The note's or person's category is on the line already, so the
+  preview's totals by category include it.
+
 ## [0.39.0] — Statements that tie out approve themselves
 
 ### Added

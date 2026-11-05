@@ -60,10 +60,17 @@ function batch(over: Partial<Batch> = {}): Batch {
       { name: "Interest", expected: "10.00", actual: "10.00", ok: true },
     ],
     lines: [
-      line(1, "UBER EATS SAN JOSE", "-12.50"),
+      line(1, "UBER EATS SAN JOSE", "-12.50", {
+        hint_source: "person",
+        hint_person: "Rubén",
+      }),
       line(2, "CAPITAL ONE MOBILE PYMT", "500.00", {
         type: "transfer",
         category_path: "Transfers / Card Payment",
+        hint_source: "note",
+        hint_person: "Rubén",
+        hint_text: "LOPES · agosto",
+        hint_share: "400.00",
       }),
       line(3, "NEW MERCHANT XYZ", "-40.00", { category_id: null, category_path: null }),
       line(4, "OLD LINE", "-5.00", { is_duplicate: true }),
@@ -290,6 +297,12 @@ describe("Import batch", () => {
     expect(within(lines).getByText("12.50")).toBeInTheDocument();
     expect(within(lines).getByText("Already loaded")).toBeInTheDocument();
     expect(screen.getAllByText("Needs a category").length).toBeGreaterThan(0);
+    expect(within(lines).getByText("Rubén (found in the description)")).toBeInTheDocument();
+    expect(
+      within(lines).getByText(
+        "Your note · Rubén · LOPES · agosto · split: Rubén's share 400.00, the rest yours",
+      ),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Approve import" }));
     expect(await screen.findByText("Import approved.")).toBeInTheDocument();

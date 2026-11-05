@@ -318,6 +318,11 @@ class StgLineOut(BaseModel):
     account_name: str | None = None
     pay_reference: str | None = None
     is_duplicate: bool
+    # What a transfer note or a person will do to the line at approval (ADR-023).
+    hint_source: Literal["note", "person"] | None = None
+    hint_person: str | None = None
+    hint_text: str | None = None
+    hint_share: Decimal | None = None
 
 
 class CategoryTotalOut(BaseModel):

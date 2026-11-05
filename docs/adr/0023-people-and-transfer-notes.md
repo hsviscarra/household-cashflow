@@ -49,7 +49,9 @@ names the other party, the amount, the account's last 4 and the description; Pic
   notes cover the rest.
 - Deleting a note or a person never changes a line's category; the line only loses the link or
   name.
-- The import preview doesn't show note matches yet: they apply when the statement is approved.
+- The import preview shows them (0.40.0): when a statement is read, the same matching marks
+  the waiting lines and gives them the note's or person's category (a shared payment keeps its
+  own until it is split at approval). Approval links and splits for real.
 
 ## Update (0.38.0): notes from the banks' emails
 
