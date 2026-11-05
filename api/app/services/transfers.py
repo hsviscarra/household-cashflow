@@ -60,9 +60,16 @@ def _candidates(db: Session) -> list[Transaction]:
     )
 
 
-def _may_pair(t: Transaction) -> bool:
-    """A leg that matching may (re)classify: a transfer, or a line nobody categorized yet."""
-    return t.type == "transfer" or t.category_id is None
+def _may_pair(t: Transaction, paired: list[int]) -> bool:
+    """A leg that matching may (re)classify: a transfer between own accounts (or one without a
+    category), or a line nobody categorized yet. Money held for someone or lent, and lines that
+    belong to a person (ADR-023), stay what they are: received for Rubén and paid out for him the
+    same week look like two legs, but they aren't."""
+    if t.counterparty_id is not None:
+        return False
+    if t.type == "transfer":
+        return t.category_id is None or t.category_id in paired
+    return t.category_id is None
 
 
 def _log(db: Session, row: Transaction, column: str, old: object, new: object, user: str) -> None:
@@ -90,7 +97,8 @@ def match(db: Session, user: str = "system") -> MatchResult:
     kinds = {a.account_id: a.kind for a in db.scalars(select(Account))}
     card = _category(db, *CARD_PAYMENT)
     own = _category(db, *OWN_ACCOUNTS)
-    rows = [t for t in _candidates(db) if _may_pair(t)]
+    paired = _paired_categories(db)
+    rows = [t for t in _candidates(db) if _may_pair(t, paired)]
     taken: set[int] = set()
     pairs = 0
     for t in rows:

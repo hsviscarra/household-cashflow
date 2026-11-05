@@ -36,7 +36,18 @@ TXN_STATUSES = ("pending", "confirmed", "matched")
 # How a line got its category (F9): a merchant rule, the statement section, Hernan's choice, an
 # accepted Claude suggestion, the Excel history, a split of a parent line, or a matched transfer
 # (F10).
-CATEGORY_SOURCES = ("rule", "section", "manual", "suggestion", "excel", "split", "match")
+CATEGORY_SOURCES = (
+    "rule",
+    "section",
+    "manual",
+    "suggestion",
+    "excel",
+    "split",
+    "match",
+    "note",
+    "person",
+)
+NOTE_SOURCES = ("manual", "email")
 SNAPSHOT_KINDS = ("asset", "liability")
 # F14 balance sheet: what each holding is (ADR-012).
 HOLDING_CLASSES = (
@@ -245,6 +256,10 @@ class Transaction(Timestamps, Base):
     recurring_entry_id: Mapped[int | None] = mapped_column(
         ForeignKey("core.recurring_entry.entry_id", ondelete="SET NULL"), index=True
     )
+    # Whose money this is or who it was for (ADR-023): Rubén's money passing through, a loan.
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.counterparty.counterparty_id", ondelete="SET NULL"), index=True
+    )
 
 
 # ---------------- F11: recurring templates, their amounts and month entries ----------------
@@ -389,6 +404,58 @@ class Holding(Timestamps, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     notes: Mapped[str | None] = mapped_column(Unicode(400))
+
+
+class Counterparty(Timestamps, Base):
+    """Someone money moves to or from (ADR-023): Rubén, whose payments pass through the
+    household's accounts. Statement lines whose description contains one of his patterns, and
+    transfer notes about him, get his name and his category. With a balance item, the money still
+    held for him (or owed by him) shows on Debt & Net Worth."""
+
+    __tablename__ = "counterparty"
+    __table_args__ = (UniqueConstraint("name"), {"schema": "core"})
+
+    counterparty_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Unicode(100))
+    # Texts to find in statement descriptions, separated by ";" ("RUBEN MIRANDA; NAPOLES").
+    patterns: Mapped[str | None] = mapped_column(Unicode(400))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    # The personal_loan item on Debt & Net Worth his lines move: its latest value plus them.
+    holding_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.holding.holding_id", ondelete="SET NULL")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    notes: Mapped[str | None] = mapped_column(Unicode(400))
+
+
+class TransferNote(Timestamps, Base):
+    """A transfer told to the app before (or after) its statement (ADR-023): the statement says
+    "TRANSFERENCIA", the note says who and why. Matched to the line with the same signed amount,
+    in the note's account when it has one, at most 5 days apart."""
+
+    __tablename__ = "transfer_note"
+    __table_args__ = (
+        CheckConstraint(_in("source", NOTE_SOURCES), name="source"),
+        {"schema": "core"},
+    )
+
+    note_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    txn_date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Money)  # signed: negative = sent
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("core.account.account_id"))
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.counterparty.counterparty_id")
+    )
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    other_party: Mapped[str | None] = mapped_column(Unicode(100))  # the name the bank printed
+    description: Mapped[str | None] = mapped_column(Unicode(400))
+    source: Mapped[str] = mapped_column(Unicode(10), default="manual")
+    # The bank's reference, so the same email read twice makes one note.
+    reference: Mapped[str | None] = mapped_column(Unicode(64), index=True)
+    transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("core.transaction.transaction_id"), index=True
+    )
+    created_by: Mapped[str] = mapped_column(Unicode(320))
 
 
 class LoanInstallment(Base):

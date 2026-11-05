@@ -35,7 +35,7 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import classify, recurring, transfers
+from app.services import classify, people, recurring, transfers
 from app.services import rules as rule_engine
 
 EC_PLACES = ("QUITO", "GUAYAQUIL", "ECUADOR", "RUMINAHUI", "CUMBAYA", "MEJIA", "PICHIN")
@@ -418,6 +418,9 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
     except Exception:
         db.rollback()
         raise
+    # Transfer notes told before the statement, and people's names in descriptions (ADR-023).
+    people.match_all(db, user)
+    people.tag_lines(db, user)
     # The other side of a card payment or own-account transfer may already be loaded (F10).
     transfers.match(db, user)
     # New lines may pay a month's recurring entries (F11).

@@ -19,6 +19,7 @@ const ACTION: Record<StatusItem["kind"], string> = {
   transfer: "Review",
   recurring: "Open the grid",
   balance: "Check the statements",
+  note: "Check the notes",
 };
 
 const KIND_LABEL: Record<StatusItem["kind"], string> = {
@@ -28,6 +29,7 @@ const KIND_LABEL: Record<StatusItem["kind"], string> = {
   transfer: "Transfer",
   recurring: "Recurring",
   balance: "Balance",
+  note: "Transfer note",
 };
 
 /** "3 things missing" / "1 thing missing" / "Complete". */

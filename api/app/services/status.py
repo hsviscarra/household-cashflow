@@ -31,6 +31,7 @@ from app.models import (
     StatementFileAccount,
     StatementHeader,
     Transaction,
+    TransferNote,
 )
 from app.services import classify, recurring, transfers
 
@@ -53,7 +54,7 @@ def _days(start: date, end: date) -> str:
 
 @dataclass
 class Item:
-    kind: str  # statement, import, uncategorized, transfer, recurring, balance
+    kind: str  # statement, import, uncategorized, transfer, recurring, balance, note
     text: str
     link: str
     count: int = 1
@@ -442,6 +443,7 @@ def month_status(db: Session, today: date | None = None, with_loads: bool = True
         _pending_imports(db, ms)
         _lines(db, ms)
         _recurring(db, ms)
+        _notes(db, ms, by_account)
         out.append(ms)
     _balance_breaks(db, by_account, {a.account_id: a for a in accounts}, out)
 
@@ -521,6 +523,31 @@ def _lines(db: Session, ms: MonthStatus) -> None:
         ms.items.append(
             Item("transfer", f"{t} {word} missing the other side", f"/review?month={month}", t)
         )
+
+
+def _notes(db: Session, ms: MonthStatus, by_account: dict[int, list[_Stmt]]) -> None:
+    """Transfer notes (ADR-023) whose statement is loaded but which found no line: a wrong
+    amount, date or account on the note, or a line someone already classified by hand."""
+    end = month_end(ms.month)
+    late = [
+        n
+        for n in db.scalars(
+            select(TransferNote).where(
+                TransferNote.transaction_id.is_(None),
+                TransferNote.txn_date >= ms.month,
+                TransferNote.txn_date <= end,
+            )
+        )
+        if any(
+            s.start <= n.txn_date and s.end >= n.txn_date + timedelta(days=5)
+            for a, stmts in by_account.items()
+            if n.account_id in (None, a)
+            for s in stmts
+        )
+    ]
+    if late:
+        word = "transfer note has" if len(late) == 1 else "transfer notes have"
+        ms.items.append(Item("note", f"{len(late)} {word} no statement line", "/people", len(late)))
 
 
 def _recurring(db: Session, ms: MonthStatus) -> None:
