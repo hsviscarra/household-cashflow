@@ -16,7 +16,7 @@ from app.ingestion.storage import StatementStore, get_store
 from app.models import Account, ImportBatch, StatementFile, StatementHeader, Transaction
 from app.routers.classify import transaction_out
 from app.schemas import ApplyRulesOut, ApproveOut, BatchOut, TransactionOut
-from app.services import classify, transfers
+from app.services import classify, inbox, transfers
 
 router = APIRouter(prefix="/api", tags=["batches"])
 DB = Annotated[Session, Depends(get_session)]
@@ -73,6 +73,9 @@ class ApproveReadyOut(BaseModel):
     approved: int
     loaded: int
     waiting: list[WaitingOut]
+    # Merchants and lines Claude's sure suggestions categorized right after (ADR-029).
+    auto_merchants: int = 0
+    auto_lines: int = 0
 
 
 @router.post("/batches/approve-ready", response_model=ApproveReadyOut)
@@ -102,7 +105,14 @@ def approve_ready(request: Request, db: DB) -> ApproveReadyOut:
                 loaded += n
                 continue
         waiting.append(WaitingOut(batch_id=batch.batch_id, file_name=name, reason=reason))
-    return ApproveReadyOut(approved=approved, loaded=loaded, waiting=waiting)
+    auto = inbox.autopilot(db, _user(request)) if approved else inbox.Autopilot()
+    return ApproveReadyOut(
+        approved=approved,
+        loaded=loaded,
+        waiting=waiting,
+        auto_merchants=auto.merchants,
+        auto_lines=auto.lines,
+    )
 
 
 @router.post("/batches/{batch_id}/apply-rules", response_model=ApplyRulesOut)

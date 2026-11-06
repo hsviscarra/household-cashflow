@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     # Statements that tie out (totals, continuity) with no unreadable lines are approved as soon
     # as they're read, and uploads are read right away; the rest wait on the Import page.
     auto_approve: bool = True
+    # After a statement is approved on its own, Claude's suggestions this sure or more are
+    # accepted with a rule (ADR-029); 0 turns it off. Needs ANTHROPIC_API_KEY.
+    auto_accept_confidence: Decimal = Decimal("0.90")
     # Password of the read-only database login the MCP endpoint queries with (SELECT on mart
     # views only). Created or updated at start-up; empty = the endpoint uses the app's login
     # (local development and tests only).

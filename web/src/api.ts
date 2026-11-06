@@ -1269,3 +1269,24 @@ export const fetchProducts = (month: string, product_group?: string) =>
   send<ProductRow[]>("GET", `/api/spending/products${query({ month, product_group })}`);
 export const fetchIdeas = (month: string, person?: string) =>
   send<Idea[]>("GET", `/api/spending/ideas${query({ month, person })}`);
+
+// ---------- the Inbox doing more of the work (ADR-029) ----------
+export type AutoRule = {
+  rule_id: number;
+  pattern: string;
+  category_id: number;
+  category_path: string;
+  lines: number;
+  accepted_at: string;
+  is_active: boolean;
+};
+export type AutoState = { threshold: string; on: boolean; rules: AutoRule[] };
+export type Many = { merchants: number; lines: number; also_by_rule: number; skipped: number };
+export const fetchAuto = () => send<AutoState>("GET", "/api/review/auto");
+export const undoAuto = (ruleId: number) =>
+  send<{ lines: number }>("POST", `/api/review/auto/${ruleId}/undo`);
+export const resolveMany = (merchant_keys: string[], category_id: number | null) =>
+  send<Many>("POST", "/api/review/resolve-many", { merchant_keys, category_id, save_rule: true });
+export const fetchWho = (month?: string | null) => send<Txn[]>("GET", `/api/review/who${query({ month })}`);
+export const setWho = (transaction_id: number, counterparty_id: number) =>
+  send<Txn>("POST", "/api/review/who", { transaction_id, counterparty_id });

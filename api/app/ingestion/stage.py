@@ -38,7 +38,7 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import classify, people, recurring, transfers
+from app.services import classify, inbox, people, recurring, transfers
 from app.services import rules as rule_engine
 
 log = logging.getLogger(__name__)
@@ -477,7 +477,8 @@ def read_and_approve(
             return
         try:
             batch = parse_statement(db, store, sf, user)
-            auto_approve(db, batch, user)
+            if auto_approve(db, batch, user):
+                inbox.autopilot(db, user + AUTO)  # Claude's sure suggestions, ADR-029
         except StageError as exc:
             db.rollback()
             log.warning("Statement %s not read: %s", statement_id, exc)

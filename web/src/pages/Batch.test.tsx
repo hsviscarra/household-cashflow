@@ -389,7 +389,7 @@ describe("Import batch", () => {
   it("asks Claude about this statement, then accepts the likely suggestion", async () => {
     renderAt("/import/batches/9");
     const section = await screen.findByRole("region", { name: "Needs a category" });
-    fireEvent.click(within(section).getByRole("button", { name: "Ask Claude about 1 merchants" }));
+    fireEvent.click(within(section).getByRole("button", { name: "Ask Claude about 1 merchant" }));
     expect(
       await within(section).findByText(/Claude suggested a category for 1 of 1 merchants/),
     ).toBeInTheDocument();
