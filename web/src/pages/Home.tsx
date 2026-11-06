@@ -218,7 +218,7 @@ function Card({
 function Needs() {
   const review = useQuery({ queryKey: ["review", "count"], queryFn: () => fetchReview() });
   const status = useQuery({ queryKey: ["status"], queryFn: fetchStatus });
-  const projection = useQuery({ queryKey: ["projections"], queryFn: fetchProjection });
+  const projection = useQuery({ queryKey: ["projections"], queryFn: () => fetchProjection() });
   const items: { text: string; to: string }[] = [];
   const n = review.data?.uncategorized_lines ?? 0;
   if (n) items.push({ text: `${n} ${n === 1 ? "line" : "lines"} to review`, to: "/review" });
@@ -251,7 +251,7 @@ function Needs() {
 
 function Numbers({ f }: { f: Flows }) {
   const sheet = useQuery({ queryKey: ["networth"], queryFn: fetchBalanceSheet });
-  const projection = useQuery({ queryKey: ["projections"], queryFn: fetchProjection });
+  const projection = useQuery({ queryKey: ["projections"], queryFn: () => fetchProjection() });
   const list = rows(f.flows);
   const sum = (side: "in" | "out", key: "amount" | "prev") =>
     list.filter((r) => r.side === side).reduce((s, r) => s + r[key], 0);
@@ -342,7 +342,7 @@ function Where({ f }: { f: Flows }) {
 }
 
 function Coming() {
-  const projection = useQuery({ queryKey: ["projections"], queryFn: fetchProjection });
+  const projection = useQuery({ queryKey: ["projections"], queryFn: () => fetchProjection() });
   const p = projection.data;
   const items = p ? comingUp(p, p.today) : [];
   const total = items.reduce((s, i) => s + Math.abs(num(i.amount)), 0);

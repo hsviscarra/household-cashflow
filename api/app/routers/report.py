@@ -6,12 +6,13 @@ from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.schemas import ExportDatasetOut, FindingOut, ReportMonthsOut, ReportOut
-from app.services import export, report, suggest
+from app.services import answers, export, report, suggest
 
 router = APIRouter(prefix="/api", tags=["report"])
 DB = Annotated[Session, Depends(get_session)]
@@ -47,6 +48,25 @@ def _out(r: report.Report) -> ReportOut:
 @router.get("/reports", response_model=ReportMonthsOut)
 def report_months(db: DB) -> ReportMonthsOut:
     return ReportMonthsOut(months=report.months(db), claude=suggest.available())
+
+
+class AnswerOut(BaseModel):
+    n: int
+    question: str
+    answer: str
+    detail: str
+    tone: str
+    link: str | None
+
+
+@router.get("/reports/{month}/answers", response_model=list[AnswerOut])
+def month_answers(
+    month: str,
+    db: DB,
+    today: Annotated[date | None, Query(description="Default today")] = None,
+) -> list[AnswerOut]:
+    """The month in ten answers (ADR-033), worked out live."""
+    return [AnswerOut(**asdict(a)) for a in answers.answers(db, _month(month), today)]
 
 
 @router.get("/reports/{month}", response_model=ReportOut | None)

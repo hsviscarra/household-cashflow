@@ -5,6 +5,23 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.49.0] — Forecast and the month in ten answers
+
+### Added
+- **Forecast per account** (ADR-033): each bank account's balance day by day with its own bills
+  and income, a floor to warn under, and a heads-up saying how much to move and by when.
+- Horizon of 1, 3 or 12 months and everyday spending averaged over 3, 6 or 12 months, saved per
+  person; money held for other people left out of the starting cash unless you count it.
+- **What if**: move money between accounts each month, add something each month or a one-off,
+  and see the lowest cash, first short day and end cash against the forecast without it
+  (`POST /api/projections/scenario`).
+- **How it's calculated** on the Forecast page, with each assumption editable in place.
+- **The month in ten answers** on the Report page (`GET /api/reports/{month}/answers`), live,
+  each with a link to the page behind it.
+
+### Changed
+- The day-by-day chart shows the total and each account as lines, with the floor dashed.
+
 ## [0.48.0] — Net worth you can trust at a glance
 
 ### Added

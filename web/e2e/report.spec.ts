@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 test("report: write the month's findings, then download its transactions", async ({ page }) => {
   await page.goto("/report");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^\w+ \d{4} report$/);
+  await expect(page.getByRole("list", { name: "Ten answers" }).getByRole("listitem")).toHaveCount(10);
   const write = page.getByRole("button", {
     name: /^(Write the report|Write the report with Claude|Regenerate)$/,
   });

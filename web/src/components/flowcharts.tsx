@@ -249,3 +249,74 @@ export function Waterfall({
     </figure>
   );
 }
+
+export type CashSeries = {
+  key: string;
+  label: string;
+  color: string;
+  points: { day: string; balance: string }[];
+  dashed?: boolean;
+};
+
+/** Cash day by day (ADR-033): the total and each account as lines, the floor dashed. */
+export function CashLines({ series, floor, title }: { series: CashSeries[]; floor: number; title: string }) {
+  const W = 900;
+  const H = 260;
+  const pad = { l: 56, r: 12, t: 12, b: 26 };
+  const days = series[0]?.points.map((p) => p.day) ?? [];
+  if (!days.length) return null;
+  const values = series.flatMap((s) => s.points.map((p) => Number(p.balance)));
+  const max = Math.max(floor, 0, ...values);
+  const min = Math.min(floor, 0, ...values);
+  const span = max - min || 1;
+  const x = (i: number) => pad.l + (i / Math.max(1, days.length - 1)) * (W - pad.l - pad.r);
+  const y = (v: number) => pad.t + ((max - v) / span) * (H - pad.t - pad.b);
+  const ticks = [max, (max + min) / 2, min];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={title}>
+      {ticks.map((t) => (
+        <g key={t}>
+          <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="var(--color-line)" />
+          <text
+            x={pad.l - 6}
+            y={y(t) + 4}
+            textAnchor="end"
+            fontSize={11}
+            fill="var(--color-muted)"
+            className="num"
+          >
+            {short(t)}
+          </text>
+        </g>
+      ))}
+      {min < 0 && <line x1={pad.l} x2={W - pad.r} y1={y(0)} y2={y(0)} stroke="var(--color-muted)" />}
+      {floor > 0 && (
+        <line
+          x1={pad.l}
+          x2={W - pad.r}
+          y1={y(floor)}
+          y2={y(floor)}
+          stroke="var(--color-danger-ink)"
+          strokeDasharray="5 4"
+        />
+      )}
+      {days.map((d, i) =>
+        d.endsWith("-01") ? (
+          <text key={d} x={x(i)} y={H - 6} textAnchor="middle" fontSize={11} fill="var(--color-muted)">
+            {new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short" })}
+          </text>
+        ) : null,
+      )}
+      {series.map((s) => (
+        <polyline
+          key={s.key}
+          fill="none"
+          stroke={s.color}
+          strokeWidth={s.dashed ? 1.5 : 2.5}
+          strokeDasharray={s.dashed ? "4 3" : undefined}
+          points={s.points.map((p, i) => `${x(i)},${y(Number(p.balance))}`).join(" ")}
+        />
+      ))}
+    </svg>
+  );
+}

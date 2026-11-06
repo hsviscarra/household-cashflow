@@ -180,4 +180,35 @@ describe("monthly report", () => {
       "/api/exports/monthly_cash.xlsx",
     );
   });
+
+  it("answers the ten questions for the month, live", async () => {
+    renderWith({
+      "GET /api/reports": { months: ["2026-10-01"], claude: false },
+      "GET /api/reports/2026-10": null,
+      "GET /api/reports/2026-10/answers": [
+        {
+          n: 1,
+          question: "Did we spend more or less than usual?",
+          answer: "+12% vs Sep",
+          detail: "Spent $2,240.00.",
+          tone: "warn",
+          link: "/cashflow?month=2026-10",
+        },
+        {
+          n: 5,
+          question: "Will cash be short next month?",
+          answer: "No",
+          detail: "Fine.",
+          tone: "good",
+          link: null,
+        },
+      ],
+      "GET /api/exports": EXPORTS,
+    });
+    expect(await screen.findByRole("heading", { name: "October 2026, in ten answers" })).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Ten answers" });
+    expect(list).toHaveTextContent("1. Did we spend more or less than usual?+12% vs SepSpent $2,240.00.");
+    expect(within(list).getAllByRole("link", { name: "See the details" })).toHaveLength(1);
+    expect(within(list).getByText("No")).toHaveClass("text-good-ink");
+  });
 });

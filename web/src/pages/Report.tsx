@@ -3,11 +3,13 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import {
   exportUrl,
+  fetchAnswers,
   fetchExports,
   fetchReport,
   fetchReportMonths,
   generateReport,
   type Finding,
+  type MonthAnswer,
   type MonthlyReport,
   type Tone,
 } from "../api";
@@ -129,6 +131,7 @@ export default function ReportPage() {
             : "Claude is off (no API key), so the findings are written by rules."}
         </p>
       )}
+      {month && label && <TenAnswers month={month} label={label} />}
       {r && <ReportBody r={r} />}
       {month && <Downloads month={month} />}
     </section>
@@ -183,6 +186,41 @@ function ReportBody({ r }: { r: MonthlyReport }) {
       </ol>
       <p className="mt-2 text-sm text-muted">{writtenBy(r)}.</p>
     </>
+  );
+}
+
+const ANSWER_TONE: Record<MonthAnswer["tone"], string> = {
+  good: "text-good-ink",
+  warn: "text-attention-ink",
+  neutral: "text-ink",
+};
+
+/** The month in ten answers (ADR-033): live from the pages' own numbers, no saved report needed. */
+function TenAnswers({ month, label }: { month: string; label: string }) {
+  const q = useQuery({ queryKey: ["answers", month], queryFn: () => fetchAnswers(month) });
+  if (!q.data?.length) return null;
+  return (
+    <section className="mt-8" aria-labelledby="answers">
+      <h2 id="answers" className="font-display text-2xl font-bold">
+        {label}, in ten answers
+      </h2>
+      <ol className="mt-3 grid gap-3 md:grid-cols-2" aria-label="Ten answers">
+        {q.data.map((a) => (
+          <li key={a.n} className="card">
+            <p className="text-sm text-muted">
+              {a.n}. {a.question}
+            </p>
+            <p className={`num mt-1 font-display text-2xl font-bold ${ANSWER_TONE[a.tone]}`}>{a.answer}</p>
+            <p className="mt-1 text-sm">{a.detail}</p>
+            {a.link && (
+              <Link className="mt-1 inline-block text-sm text-primary underline" to={a.link}>
+                See the details
+              </Link>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

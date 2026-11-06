@@ -122,4 +122,110 @@ describe("Projections", () => {
     renderWith({ detail: "boom" }, 500);
     expect(await screen.findByText("Could not load the projection: boom")).toBeInTheDocument();
   });
+
+  it("warns per account, changes the horizon and floor, and runs what-ifs", async () => {
+    const run = (id: number, name: string, low: string, short: string | null, move: string) => ({
+      account_id: id,
+      name,
+      start: "1000",
+      as_of: "2026-09-30",
+      daily: P.daily,
+      lowest: { day: "2026-11-14", balance: low },
+      under_floor: short,
+      move,
+    });
+    const F: Projection = {
+      ...P,
+      horizon: 3,
+      average_over: 3,
+      floor: "500",
+      held: "1237.09",
+      include_held: false,
+      accounts: [run(1, "Pichincha", "-300", "2026-11-01", "800"), run(2, "Produbanco", "900", null, "0")],
+      first_short: "2026-11-01",
+      end_cash: "2750",
+      base: null,
+    };
+    const calls: { method: string; url: string; body?: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        calls.push({ method, url, body: init?.body as string | undefined });
+        const json = (b: unknown) => Promise.resolve(new Response(JSON.stringify(b)));
+        if (url.startsWith("/api/me/settings")) return json({ user: "h", settings: {} });
+        if (url === "/api/accounts")
+          return json([
+            { account_id: 1, name: "Pichincha", kind: "checking", is_active: true },
+            { account_id: 2, name: "Produbanco", kind: "savings", is_active: true },
+            { account_id: 3, name: "Visa", kind: "credit_card", is_active: true },
+          ]);
+        if (method === "POST")
+          return json({
+            ...F,
+            end_cash: "2650",
+            first_short: null,
+            base: { lowest: F.lowest, first_short: "2026-11-01", end_cash: "2750" },
+          });
+        return json(F);
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ProjectionsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const heads = await screen.findByRole("region", { name: "Heads-up" });
+    expect(heads).toHaveTextContent(
+      "Pichincha dips to −300.00 on Nov 14, under your 500.00 floor from Nov 1. Move 800.00 in before Nov 1.",
+    );
+    expect(heads).not.toHaveTextContent("Produbanco");
+    expect(screen.getByRole("list", { name: "Lines" })).toHaveTextContent("Dashed red: your floor 500.00");
+    expect(screen.getByText(/Money held for others/).closest("dt")).toHaveTextContent(
+      "(1,237.09) counted as yours",
+    );
+
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Horizon" })).getByRole("button", { name: "12 months" }),
+    );
+    await vi.waitFor(() => expect(calls.some((c) => c.url.includes("horizon=12"))).toBe(true));
+    expect(calls.some((c) => c.method === "PUT" && c.url === "/api/me/settings/forecast")).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Floor"), { target: { value: "750" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.url.includes("floor=750"))).toBe(true));
+
+    // Move money each month: one change out of the first account and one into the second.
+    const form = screen.getByRole("form", { name: "Add a what-if" });
+    await within(form).findAllByRole("option", { name: "Produbanco" });
+    expect(within(form).queryAllByRole("option", { name: "Visa" })).toHaveLength(0);
+    fireEvent.change(within(form).getByLabelText("Amount"), { target: { value: "200" } });
+    fireEvent.change(within(form).getByLabelText("From"), { target: { value: "2" } });
+    fireEvent.change(within(form).getByLabelText("To"), { target: { value: "1" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add to the forecast" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const sent = JSON.parse(calls.find((c) => c.method === "POST")!.body!);
+    expect(sent.changes).toEqual([
+      { name: "Move Produbanco → Pichincha", amount: "-200", every: "month", day: 1, account_id: 2 },
+      { name: "Move Produbanco → Pichincha", amount: "200", every: "month", day: 1, account_id: 1 },
+    ]);
+    expect(await screen.findByText(/With these: lowest cash/)).toHaveTextContent(
+      "first day short none (was Nov 1), cash at the end 2,650.00 (was 2,750.00).",
+    );
+
+    // A one-off coming in, then remove them all.
+    fireEvent.click(screen.getByRole("button", { name: "A one-off" }));
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Bonus" } });
+    fireEvent.change(within(form).getByLabelText("Money"), { target: { value: "in" } });
+    fireEvent.change(within(form).getByLabelText("Amount"), { target: { value: "500" } });
+    fireEvent.change(within(form).getByLabelText("On"), { target: { value: "2026-12-10" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add to the forecast" }));
+    const added = screen.getByRole("list", { name: "What-ifs added" });
+    expect(added).toHaveTextContent("Bonus: +500.00 on Dec 10");
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]);
+    expect(screen.queryByRole("list", { name: "What-ifs added" })).toBeNull();
+  });
 });

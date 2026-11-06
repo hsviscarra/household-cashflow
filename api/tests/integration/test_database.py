@@ -571,6 +571,32 @@ def test_projections_on_sql_server(tmp_path: object) -> None:
     assert Decimal(p["start_cash"]) > 0
     assert [m["month"] for m in p["months"]] == ["2026-11-01", "2026-12-01", "2027-01-01"]
     assert p["daily"][-1]["day"] == "2027-01-31"
+    # ADR-033: options, per-account runs, a what-if against the base and the ten answers.
+    opts = {"today": "2026-10-20", "horizon": 12, "average_over": 6, "floor": 100000}
+    p12 = client.get("/api/projections", params=opts).json()
+    assert len(p12["months"]) == 12 and Decimal(p12["floor"]) == 100000
+    assert all(a["under_floor"] for a in p12["accounts"])
+    acct = p12["accounts"][0]["account_id"] if p12["accounts"] else None
+    sc = client.post(
+        "/api/projections/scenario",
+        params={"today": "2026-10-20"},
+        json={
+            "horizon": 1,
+            "average_over": 3,
+            "floor": 0,
+            "include_held": False,
+            "changes": [
+                {"name": "Bonus", "amount": "500", "every": "once", "on": "2026-11-10"},
+                {"name": "Save", "amount": "-50", "every": "month", "day": 5, "account_id": acct},
+            ],
+        },
+    )
+    assert sc.status_code == 200, sc.text
+    out = sc.json()
+    assert Decimal(out["end_cash"]) == Decimal(out["base"]["end_cash"]) + 450
+    answers = client.get("/api/reports/2026-10/answers", params={"today": "2026-10-20"})
+    assert answers.status_code == 200, answers.text
+    assert [a["n"] for a in answers.json()] == list(range(1, 11))
 
 
 def test_loan_schedule_on_sql_server(tmp_path: object) -> None:

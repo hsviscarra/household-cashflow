@@ -99,6 +99,15 @@ how many lines wait for a category. URLs stay as they were.
 - A possible duplicate is one attention-ink line under the item with an underlined action.
 - The what-if sits in a surface box inside the loan's card.
 
+## Forecast (ADR-033)
+
+- The cash chart draws the total as a solid primary line and each account dashed in its own
+  color, with a legend under it; the floor is a dashed danger line, zero a muted line.
+- The heads-up is an attention box listing each account under the floor with the amount and the
+  date to move it by; segment switches (horizon, months to average) use `aria-pressed`.
+- The ten answers are cards in two columns: the question small and muted, the answer large in
+  the display font, colored good or attention by tone (never color only: the sentence says it).
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note
