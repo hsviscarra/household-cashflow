@@ -910,7 +910,7 @@ export const fetchProjection = () => send<Projection>("GET", "/api/projections")
 // ---------- F16: monthly report and export ----------
 export type Tone = "good" | "bad" | "neutral";
 export type Finding = { title: string; text: string; tone: Tone };
-type Flow = {
+type ReportFlow = {
   income: string;
   expenses: string;
   savings: string;
@@ -921,7 +921,7 @@ type Flow = {
 export type ReportFacts = {
   month: string;
   data: { complete: boolean; source?: string; open: string[] };
-  cash_flow: { month: Flow | null; last_month: Flow | null; average_3_months: Flow | null };
+  cash_flow: { month: ReportFlow | null; last_month: ReportFlow | null; average_3_months: ReportFlow | null };
   [key: string]: unknown;
 };
 export type MonthlyReport = {
@@ -1176,3 +1176,54 @@ export const createNote = (n: NoteInput) => send<TransferNote>("POST", "/api/tra
 export const deleteNote = (id: number) => send<void>("DELETE", `/api/transfer-notes/${id}`);
 export const matchNotes = () =>
   send<{ matched: number; tagged: number }>("POST", "/api/transfer-notes/match");
+
+// ---------- Cash flow: one month by category, and the lines behind it (ADR-027) ----------
+export type Flow = {
+  type: string;
+  group_id: number;
+  group_name: string;
+  group_color: string | null;
+  category_id: number;
+  category_name: string;
+  amount: string;
+  prev: string;
+  transactions: number;
+};
+export type Flows = {
+  month: string;
+  prev_month: string;
+  months: string[];
+  source: "excel" | "statements" | "none";
+  flows: Flow[];
+  trend: { month: string; money_in: string; money_out: string }[];
+};
+export type FlowLine = {
+  transaction_id: number;
+  txn_date: string;
+  description: string;
+  merchant: string | null;
+  amount: string;
+  type: string;
+  category_name: string | null;
+  account_name: string | null;
+  person: string | null;
+  source: string;
+  notes: string | null;
+};
+export type FlowFilter = {
+  side?: "in" | "out";
+  group_id?: number;
+  category_id?: number;
+  merchant?: string;
+  person?: string;
+};
+const query = (o: Record<string, string | number | undefined | null>) => {
+  const q = new URLSearchParams();
+  Object.entries(o).forEach(([k, v]) => v !== undefined && v !== null && q.set(k, String(v)));
+  const s = q.toString();
+  return s ? `?${s}` : "";
+};
+export const fetchFlows = (month?: string | null, person?: string) =>
+  send<Flows>("GET", `/api/cashflow/flows${query({ month, person })}`);
+export const fetchFlowLines = (month: string, f: FlowFilter) =>
+  send<FlowLine[]>("GET", `/api/cashflow/lines${query({ month, ...f })}`);

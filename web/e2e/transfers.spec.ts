@@ -45,7 +45,7 @@ test("transfers: both sides are matched, and the cash view counts card payments"
   await page.goto("/review?month=2026-08");
   await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
 
-  await page.goto("/");
+  await page.goto("/cashflow");
   await page.getByRole("button", { name: "Cash view" }).click();
   await expect(page.getByRole("button", { name: "Cash view" })).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/view=cash/);

@@ -1027,3 +1027,58 @@ def test_batch_with_rejected_lines_opens_on_sql_server(tmp_path: object) -> None
     assert again.status_code == 200, again.text
     assert client.get("/api/statements").status_code == 200
     assert client.get("/api/recurring/templates").status_code == 200
+
+
+def test_cash_flows_and_settings_on_sql_server(tmp_path: object) -> None:
+    """ADR-026 and ADR-027 on SQL Server: the month by category matches the cash flow view, its
+    lines add up, the person switch filters, and per-person settings save; 0029 down and up."""
+    from decimal import Decimal
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa27.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    if b.get("batch_id") and b.get("tieout_ok"):
+        client.post(f"/api/batches/{b['batch_id']}/approve")
+
+    out = client.get("/api/cashflow/flows", params={"month": "2026-08-01"}).json()
+    monthly = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
+    aug = monthly["2026-08-01"]
+    money_out = sum(Decimal(f["amount"]) for f in out["flows"] if f["type"] != "income")
+    expected = sum(Decimal(aug[k]) for k in ("expenses", "savings", "debt_payments"))
+    assert money_out == expected and len(out["trend"]) == 12
+    first = next(f for f in out["flows"] if f["type"] != "income")
+    lines = client.get(
+        "/api/cashflow/lines",
+        params={"month": "2026-08-01", "side": "out", "category_id": first["category_id"]},
+    ).json()
+    assert -sum(Decimal(ln["amount"]) for ln in lines) == Decimal(first["amount"])
+    for person in ("Hernan", "Lauren", "Joint"):
+        assert client.get("/api/cashflow/flows", params={"person": person}).status_code == 200
+        assert client.get("/api/transactions", params={"person": person}).status_code == 200
+        assert client.get("/api/spending", params={"person": person}).status_code == 200
+
+    me = {"X-MS-CLIENT-PRINCIPAL-NAME": "it@example.com"}
+    put = client.put(
+        "/api/me/settings/table:transactions", json={"value": {"columns": []}}, headers=me
+    )
+    assert put.status_code == 200
+    client.put(
+        "/api/me/settings/table:transactions", json={"value": {"columns": ["date"]}}, headers=me
+    )
+    got = client.get("/api/me/settings", headers=me).json()["settings"]
+    assert got == {"table:transactions": {"columns": ["date"]}}
+    assert client.delete("/api/me/settings/table:transactions", headers=me).status_code == 204
+
+    _alembic("downgrade", "0028")
+    _alembic("upgrade", "head")

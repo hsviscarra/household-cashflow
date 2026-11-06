@@ -1,11 +1,13 @@
 """Excel history import and cash flow reads (F2)."""
 
+from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -23,7 +25,7 @@ from app.schemas import (
     SourcesIn,
     SourcesOut,
 )
-from app.services import history_load, networth, recurring, sources
+from app.services import cashflow, history_load, networth, recurring, sources
 from app.services.excel_history import ParsedWorkbook, parse_workbook
 
 router = APIRouter(prefix="/api", tags=["history"])
@@ -95,6 +97,94 @@ def category_months(
         .order_by(v.c.cash_month, v.c.group_name, v.c.category_name)
     )
     return [CategoryMonthOut.model_validate(r._mapping) for r in db.execute(q)]
+
+
+# The Both/Hernan/Lauren switch (ADR-026); "Joint" also takes lines with no person.
+Person = Annotated[Literal["Hernan", "Lauren", "Joint"] | None, Query()]
+
+
+class FlowOut(BaseModel):
+    type: str
+    group_id: int
+    group_name: str
+    group_color: str | None
+    category_id: int
+    category_name: str
+    amount: Decimal
+    prev: Decimal
+    transactions: int
+
+
+class MonthTotalOut(BaseModel):
+    month: date
+    money_in: Decimal
+    money_out: Decimal
+
+
+class FlowsOut(BaseModel):
+    month: date
+    prev_month: date
+    months: list[date]
+    source: Literal["excel", "statements", "none"]
+    flows: list[FlowOut]
+    trend: list[MonthTotalOut]
+
+
+class FlowLineOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    description: str
+    merchant: str | None
+    amount: Decimal
+    type: str
+    category_name: str | None
+    account_name: str | None
+    person: str | None
+    source: str
+    notes: str | None
+
+
+@router.get("/cashflow/flows", response_model=FlowsOut)
+def cash_flows(
+    db: DB,
+    month: Annotated[
+        date | None, Query(description="Any day of the month; default the latest")
+    ] = None,
+    person: Person = None,
+) -> FlowsOut:
+    """One month by category with the month before, and twelve months of totals (ADR-027)."""
+    f = cashflow.flows(db, month, person)
+    return FlowsOut(
+        month=f.month,
+        prev_month=f.prev_month,
+        months=f.months,
+        source=f.source,  # type: ignore[arg-type]
+        flows=[FlowOut(**asdict(x)) for x in f.flows],
+        trend=[MonthTotalOut(**asdict(x)) for x in f.trend],
+    )
+
+
+@router.get("/cashflow/lines", response_model=list[FlowLineOut])
+def cash_flow_lines(
+    db: DB,
+    month: date,
+    side: Literal["in", "out"] | None = None,
+    group_id: int | None = None,
+    category_id: int | None = None,
+    merchant: str | None = None,
+    person: Person = None,
+) -> list[FlowLineOut]:
+    """The lines behind a band, group, category or merchant of one month."""
+    found = cashflow.lines(
+        db,
+        month,
+        side=side,
+        group_id=group_id,
+        category_id=category_id,
+        merchant=merchant,
+        person=person,
+    )
+    return [FlowLineOut(**asdict(x)) for x in found]
 
 
 @router.get("/cashflow/plan", response_model=list[PlanMonthOut])

@@ -123,7 +123,7 @@ describe("Import: Excel history", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Load history" }));
     expect(await screen.findByText("History loaded.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "See the Overview" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "See the cash flow" })).toHaveAttribute("href", "/cashflow");
   });
 
   it("blocks loading when rows have no category or the file is already loaded", async () => {

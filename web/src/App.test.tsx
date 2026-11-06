@@ -6,27 +6,30 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App, { WAKE_MS, databasePill } from "./App";
 import { PAGES } from "./pages";
 
+const EMPTY_FLOWS = {
+  month: "2026-11-01",
+  prev_month: "2026-10-01",
+  months: [],
+  source: "none",
+  flows: [],
+  trend: [],
+};
+
 function mockApi(health: object, me: object) {
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string) =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify(
-            url.endsWith("/health")
-              ? health
-              : url.includes("/cashflow/")
-                ? []
-                : url.includes("/api/review")
-                  ? { month: null, groups: [], uncategorized_lines: 12, suggestions_available: false }
-                  : me,
-          ),
-          {
-            status: url.endsWith("/health") && (health as { database: string }).database !== "ok" ? 503 : 200,
-          },
-        ),
-      ),
-    ),
+    vi.fn((url: string) => {
+      const body = (data: unknown, status = 200) =>
+        Promise.resolve(new Response(JSON.stringify(data), { status }));
+      if (url.endsWith("/health"))
+        return body(health, (health as { database: string }).database !== "ok" ? 503 : 200);
+      if (url.startsWith("/api/cashflow/flows")) return body(EMPTY_FLOWS);
+      if (url.startsWith("/api/review"))
+        return body({ month: null, groups: [], uncategorized_lines: 12, suggestions_available: false });
+      if (url.startsWith("/api/me/settings")) return body({ user: "local", settings: {} });
+      if (url === "/api/me") return body(me);
+      return body({ detail: "not here" }, 404);
+    }),
   );
 }
 

@@ -31,6 +31,7 @@ const VIEWS: { id: CashView; label: string; help: string }[] = [
   },
 ];
 
+/** The year-by-year history (the former Overview), shown under the month on Cash flow. */
 export default function Overview() {
   const [params, setParams] = useSearchParams();
   const view: CashView = params.get("view") === "cash" ? "cash" : "spending";
@@ -106,7 +107,7 @@ export default function Overview() {
 
   return (
     <section>
-      <h1 className="font-display text-4xl font-bold leading-tight">
+      <h2 className="font-display text-3xl font-bold leading-tight">
         {net >= 0 ? (
           <>
             In {span} you kept <span className="num">{money(net)}</span> of{" "}
@@ -117,10 +118,11 @@ export default function Overview() {
             In {span} you spent <span className="num">{money(-net)}</span> more than came in.
           </>
         )}
-      </h1>
+      </h2>
       <p className="mt-2 text-muted">
-        Money in and out of the household by month: the Cash Flow workbook through June 2026, then approved
-        statements. A month is complete once every account’s statement for it is loaded.
+        The whole history, year by year, for both of you. Money in and out of the household by month: the Cash
+        Flow workbook through June 2026, then approved statements. A month is complete once every account’s
+        statement for it is loaded.
       </p>
 
       <div role="group" aria-label="View" className="mt-6 flex flex-wrap gap-2">
@@ -345,7 +347,7 @@ function CategoryTable({ year, months }: { year: number; months: string[] }) {
 function EmptyOverview() {
   return (
     <section className="max-w-3xl">
-      <h1 className="font-display text-4xl font-bold leading-tight">No cash flow yet</h1>
+      <h2 className="font-display text-3xl font-bold leading-tight">No cash flow yet</h2>
       <p className="mt-3 text-lg text-muted">
         Load the Cash Flow workbook to see every month since August 2019. Statements add the detail from F4
         on.

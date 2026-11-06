@@ -117,11 +117,11 @@ function renderAt(path = "/") {
   );
 }
 
-describe("Overview", () => {
+describe("Cash flow history (the former Overview)", () => {
   it("leads with the latest year in a sentence and shows the tiles", async () => {
     renderAt();
-    const h1 = await screen.findByRole("heading", { level: 1 });
-    expect(h1).toHaveTextContent("In Jan–Feb 2026 you kept 900.00 of 18,000.00.");
+    const h2 = await screen.findByRole("heading", { level: 2, name: /^In / });
+    expect(h2).toHaveTextContent("In Jan–Feb 2026 you kept 900.00 of 18,000.00.");
     expect(screen.getByText("Money in", { selector: "dt" }).nextSibling).toHaveTextContent("18,000.00");
     expect(screen.getByText("Share kept", { selector: "dt" }).nextSibling).toHaveTextContent("5%");
     expect(screen.getByRole("button", { name: "2026" })).toHaveAttribute("aria-pressed", "true");
@@ -129,7 +129,7 @@ describe("Overview", () => {
 
   it("toggles between the spending view and the cash view", async () => {
     renderAt("/?year=2026");
-    await screen.findByRole("heading", { level: 1 });
+    await screen.findByRole("heading", { level: 2, name: /^In / });
     expect(screen.getByRole("button", { name: "Spending view" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText(/card payments/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cash view" }));
@@ -141,11 +141,13 @@ describe("Overview", () => {
 
   it("switches year and says when more went out than came in", async () => {
     renderAt("/?year=2025");
-    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+    expect(await screen.findByRole("heading", { level: 2, name: /^In / })).toHaveTextContent(
       "In December 2025 you kept 3,500.00 of 7,000.00.",
     );
     fireEvent.click(screen.getByRole("button", { name: "2026" }));
-    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("you kept 900.00");
+    expect(await screen.findByRole("heading", { level: 2, name: /^In / })).toHaveTextContent(
+      "you kept 900.00",
+    );
   });
 
   it("draws months, the plan and a hover tooltip", async () => {

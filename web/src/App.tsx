@@ -8,7 +8,8 @@ import { GROUPS, PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
 import DebtPage from "./pages/Debt";
 import ImportPage from "./pages/Import";
-import Overview from "./pages/Overview";
+import CashFlowPage from "./pages/CashFlow";
+import Home from "./pages/Home";
 import PeoplePage from "./pages/People";
 import ProjectionsPage from "./pages/Projections";
 import PurchasesPage from "./pages/Purchases";
@@ -87,6 +88,7 @@ function InboxCount() {
 
 const NAV_ORDER = [
   "/",
+  "/cashflow",
   "/spending",
   "/purchases",
   "/debt",
@@ -183,7 +185,8 @@ function Placeholder({ page }: { page: PageDef }) {
 }
 
 const PAGE_ELEMENTS: Record<string, JSX.Element> = {
-  "/": <Overview />,
+  "/": <Home />,
+  "/cashflow": <CashFlowPage />,
   "/import": <ImportPage />,
   "/settings": <Settings />,
   "/transactions": <TransactionsPage />,

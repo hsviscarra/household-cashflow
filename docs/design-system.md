@@ -50,6 +50,17 @@ how many lines wait for a category. URLs stay as they were.
   filters. Compact rows halve the vertical cell padding; nothing else changes size.
 - Saved views are listed in the sidebar under "Saved views", each with a remove (×) button.
 
+## Cash flow charts (ADR-027)
+
+- **Sankey**: money in (flow-in) on the left, the month as an ink bar in the middle, money out
+  on the right in each group's color, "Left over" in flow-in. Bands at 28% opacity; a node is
+  at least a label tall; more than nine nodes on a side fold into "Other". Each band is a
+  button that opens its group or category.
+- **Waterfall**: last month (muted), the changes (flow-in when good, danger ink when not:
+  more money in is good, more money out is not), this month (ink).
+- **Home widgets** are cards in two columns (Needs you and the numbers span both); Customize
+  lists them with up, down and hide.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

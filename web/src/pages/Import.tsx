@@ -88,8 +88,8 @@ function HistoryCard() {
                 ? `, replacing ${load.data.replaced_transactions.toLocaleString()} earlier rows`
                 : ""}
               .{" "}
-              <Link to="/" className="font-semibold underline">
-                See the Overview
+              <Link to="/cashflow" className="font-semibold underline">
+                See the cash flow
               </Link>
             </p>
           </div>
