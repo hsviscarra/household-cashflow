@@ -10,7 +10,14 @@ export const PAGES: PageDef[] = [
     label: "Home",
     group: "Home",
     feature: "F2",
-    summary: "Monthly cash flow, KPIs and the 2021 onward history.",
+    summary: "What needs you, the month in numbers, what’s coming and your goals.",
+  },
+  {
+    path: "/cashflow",
+    label: "Cash flow",
+    group: "Analyze",
+    feature: "F2",
+    summary: "Money in and out by month, where it went, and why it changed.",
   },
   {
     path: "/spending",

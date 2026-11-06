@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.43.0] — Home and Cash flow
+
+### Added
+- **Cash flow page** (ADR-027): money in and out for twelve months; pick a month to see where
+  its money came from and went (a Sankey) and why it differs from the month before (a
+  waterfall and a table of the biggest changes). Click any band or row to go from group to
+  category, merchant and lines; the path above goes back up, and the view can be saved. The
+  year-by-year history moved here.
+- **A new Home**: what needs you, the month in numbers (with net worth and the lowest cash
+  ahead), where it went, bills due in the next 14 days, goals like the new house and money held
+  for others, and the Inbox. "Customize" hides and orders the widgets for each of you.
+- Cash flow and Home follow the Both / Hernan / Lauren switch.
+
 ## [0.42.0] — Your own settings, the person switch and saved views
 
 ### Added

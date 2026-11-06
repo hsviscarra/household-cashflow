@@ -75,6 +75,7 @@ export type ColumnDatum = {
   in: number;
   out: number;
   plan?: boolean;
+  selected?: boolean;
   tooltip: ReactNode;
 };
 
@@ -83,7 +84,15 @@ const OUT = "var(--color-flow-out)";
 const PAD = { top: 12, right: 8, bottom: 28, left: 44 };
 
 /** Money in and out per month: two columns per month on one axis. */
-export function InOutColumns({ data, title }: { data: ColumnDatum[]; title: string }) {
+export function InOutColumns({
+  data,
+  title,
+  onSelect,
+}: {
+  data: ColumnDatum[];
+  title: string;
+  onSelect?: (key: string) => void;
+}) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const height = 240;
@@ -133,12 +142,26 @@ export function InOutColumns({ data, title }: { data: ColumnDatum[]; title: stri
           const op = d.plan ? 0.35 : 1;
           return (
             <g key={d.key}>
-              {hover === i && (
-                <rect x={cx - band / 2} y={PAD.top} width={band} height={plotH} fill="var(--color-surface)" />
+              {(hover === i || d.selected) && (
+                <rect
+                  x={cx - band / 2}
+                  y={PAD.top}
+                  width={band}
+                  height={plotH}
+                  rx={8}
+                  fill={d.selected ? "var(--color-info-bg)" : "var(--color-surface)"}
+                />
               )}
               <path d={topRounded(cx - bar - 1, y(d.in), bar, y(0) - y(d.in))} fill={IN} opacity={op} />
               <path d={topRounded(cx + 1, y(d.out), bar, y(0) - y(d.out))} fill={OUT} opacity={op} />
-              <text x={cx} y={height - 8} textAnchor="middle" fontSize={11} fill="var(--color-muted)">
+              <text
+                x={cx}
+                y={height - 8}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight={d.selected ? 700 : 400}
+                fill={d.selected ? "var(--color-ink)" : "var(--color-muted)"}
+              >
                 {d.label}
               </text>
               <rect
@@ -148,10 +171,17 @@ export function InOutColumns({ data, title }: { data: ColumnDatum[]; title: stri
                 width={band}
                 height={plotH + PAD.bottom}
                 fill="transparent"
+                className={onSelect ? "cursor-pointer" : undefined}
                 onMouseEnter={() => setHover(i)}
                 onFocus={() => setHover(i)}
                 onBlur={() => setHover(null)}
+                onClick={() => onSelect?.(d.key)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onSelect?.(d.key);
+                }}
                 tabIndex={0}
+                role={onSelect ? "button" : undefined}
+                aria-pressed={onSelect ? !!d.selected : undefined}
                 aria-label={d.label}
               />
             </g>
