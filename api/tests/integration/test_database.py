@@ -1100,10 +1100,12 @@ def test_merchants_products_and_ideas_on_sql_server(tmp_path: object) -> None:
     app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
     client = TestClient(app)
     files = [("files", ("bofa28.pdf", s.bofa_full(), "application/pdf"))]
-    st = client.post("/api/statements", files=files).json()[0]["statement"]
-    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
-    if b.get("batch_id") and b.get("tieout_ok"):
-        client.post(f"/api/batches/{b['batch_id']}/approve")
+    up = client.post("/api/statements", files=files).json()[0]
+    if up["outcome"] != "duplicate":  # an earlier test may have loaded it already
+        st = up["statement"]
+        b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+        if b.get("batch_id") and b.get("tieout_ok"):
+            client.post(f"/api/batches/{b['batch_id']}/approve")
 
     month = {"month": "2026-08-01"}
     rows = client.get("/api/spending/merchants", params=month).json()
