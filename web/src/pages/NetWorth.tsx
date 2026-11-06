@@ -14,6 +14,7 @@ import {
   uploadLoanTable,
   type BalanceSheet,
   type HoldingClass,
+  type LoanSchedule,
   type SheetItem,
 } from "../api";
 import { categoryOptions } from "../categories";
@@ -40,7 +41,12 @@ export const CLASSES: {
   },
   { id: "loan", label: "Loan", side: "liability", group: "Loans" },
   { id: "card", label: "Credit card", side: "liability", group: "Credit cards" },
-  { id: "personal_loan", label: "Money owed to a person", side: "liability", group: "Owed to people" },
+  {
+    id: "personal_loan",
+    label: "Money owed to or held for a person",
+    side: "liability",
+    group: "Held for or owed to people",
+  },
   { id: "other", label: "Other", side: null, group: "Other" },
 ];
 const SOURCE: Record<string, string> = {
@@ -70,20 +76,122 @@ function useRefresh() {
   return () => qc.invalidateQueries({ queryKey: ["networth"] });
 }
 
+// How long a value stays fresh (ADR-032), by kind: bank and card balances come with each
+// statement, investments daily, property and vehicles once a year. Money held for a person moves
+// with their lines, so it never goes out of date.
+const FRESH_DAYS: Partial<Record<HoldingClass, number>> = {
+  cash: 45,
+  card: 45,
+  loan: 45,
+  purchase: 45,
+  investment: 10,
+  property: 365,
+  vehicle: 365,
+  other: 180,
+};
+
+const daysBetween = (a: string, b: string) =>
+  Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86_400_000);
+
+/** Whether an item's value is out of date, and how old it is. */
+export function freshness(item: SheetItem, on: string): { stale: boolean; age: number | null } {
+  const limit = FRESH_DAYS[item.holding_class];
+  if (!item.as_of) return { stale: limit !== undefined, age: null };
+  const age = daysBetween(item.as_of, on);
+  return { stale: limit !== undefined && age > limit, age };
+}
+
+/** An old workbook value next to a fresh one of the same kind is probably the same money twice. */
+export function maybeDuplicate(item: SheetItem, items: SheetItem[], on: string): string | null {
+  if (item.source !== "excel" || !freshness(item, on).stale) return null;
+  const twin = items.find(
+    (i) =>
+      i.key !== item.key && i.is_active && i.holding_class === item.holding_class && i.source !== "excel",
+  );
+  return twin ? twin.name : null;
+}
+
+/** Monthly debt payments: loans' payments and purchases' installments. */
+export function monthlyDebt(items: SheetItem[]): number {
+  return items
+    .filter((i) => i.is_active)
+    .reduce((s, i) => s + num(i.loan?.monthly_payment ?? 0) + num(i.purchase?.installment ?? 0), 0);
+}
+
+/** Paying `extra` more each month on a loan: how many months sooner it ends and the interest
+ * saved. The rate comes from the schedule (balance, interest left, months left). */
+export function whatIf(
+  s: { balance: string | null; interest_left: string; left: number },
+  extra: number,
+): { months: number; sooner: number; saved: number } | null {
+  const balance = num(s.balance);
+  const n = s.left;
+  if (!balance || n <= 0 || extra <= 0) return null;
+  const pay = (balance + num(s.interest_left)) / n; // principal and interest a month
+  // The monthly rate r with pay = balance·r / (1 − (1+r)^−n), by bisection.
+  let lo = 0;
+  let hi = 0.05;
+  for (let k = 0; k < 80; k++) {
+    const r = (lo + hi) / 2;
+    const p = r === 0 ? balance / n : (balance * r) / (1 - (1 + r) ** -n);
+    if (p > pay) hi = r;
+    else lo = r;
+  }
+  const r = (lo + hi) / 2;
+  const total = pay + extra;
+  const months =
+    r === 0 ? Math.ceil(balance / total) : Math.ceil(-Math.log(1 - (r * balance) / total) / Math.log(1 + r));
+  return {
+    months,
+    sooner: n - months,
+    saved: Math.max(0, num(s.interest_left) - (months * total - balance)),
+  };
+}
+
 export default function BalanceSheetSection() {
   const q = useQuery({ queryKey: ["networth"], queryFn: fetchBalanceSheet });
   const [adding, setAdding] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: "good" | "bad" } | null>(null);
   const notify: Notify = (message, tone = "good") => setStatus({ message, tone });
   const s = q.data;
-  const active = s?.items.filter((i) => i.is_active) ?? [];
+  const on = today();
+  const [onlyStale, setOnlyStale] = useState(false);
+  const allActive = s?.items.filter((i) => i.is_active) ?? [];
+  const stale = allActive.filter((i) => freshness(i, on).stale);
+  const active = onlyStale ? stale : allActive;
   const paused = s?.items.filter((i) => !i.is_active) ?? [];
+  const sum = (f: (i: SheetItem) => boolean) => allActive.filter(f).reduce((t, i) => t + num(i.value), 0);
+  const assets = num(s?.assets);
+  const share = (cls: HoldingClass[]) =>
+    assets ? Math.round((sum((i) => i.side === "asset" && cls.includes(i.holding_class)) / assets) * 100) : 0;
+  const loans = allActive.filter((i) => i.loan?.schedule);
+  const interestLeft = loans.reduce((t, i) => t + num(i.loan!.schedule!.interest_left), 0);
+  const lastPayoff = loans
+    .map((i) => i.loan!.schedule!.payoff)
+    .filter((x): x is string => !!x)
+    .sort()
+    .at(-1);
+  const biggest = allActive
+    .filter((i) => i.side === "liability")
+    .sort((a, b) => num(b.value) - num(a.value))[0];
 
   return (
     <section aria-label="Balance sheet">
-      <h1 className="font-display text-4xl font-bold leading-tight">
-        {s ? sheetHeadline(s) : "Debt & Net Worth"}
-      </h1>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="mr-auto font-display text-4xl font-bold leading-tight">
+          {s ? sheetHeadline(s) : "Debt & Net Worth"}
+        </h1>
+        {s && stale.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            aria-pressed={onlyStale}
+            onClick={() => setOnlyStale(!onlyStale)}
+          >
+            {onlyStale ? "Show everything" : `Update values (${stale.length} out of date)`}
+          </button>
+        )}
+      </div>
       <p className="mt-2 text-lg text-muted">
         What you own and owe today: property, vehicles, investments, bank balances and the new house’s down
         payment; loans, credit cards and money owed to people.
@@ -106,15 +214,48 @@ export default function BalanceSheetSection() {
       </p>
       {s && (
         <>
-          <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Tile label="You own" value={money(s.assets)} />
-            <Tile label="You owe" value={money(s.liabilities)} />
+          <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             <Tile
               label="Net worth"
               value={`${num(s.net_worth) < 0 ? "−" : ""}${money(Math.abs(num(s.net_worth)))}`}
+              hint={`as of ${day(s.as_of)}`}
             />
-            <Tile label="Still to pay on purchases" value={money(s.commitments)} hint="not counted yet" />
+            <Tile
+              label="You own"
+              value={money(s.assets)}
+              hint={`property ${share(["property", "vehicle"])}% · cash ${share(["cash"])}% · investments ${share(["investment"])}%`}
+            />
+            <Tile
+              label="You owe"
+              value={money(s.liabilities)}
+              hint={
+                biggest && num(s.liabilities)
+                  ? `${biggest.name} ${Math.round((num(biggest.value) / num(s.liabilities)) * 100)}% of it`
+                  : undefined
+              }
+            />
+            <Tile
+              label="Debt payments a month"
+              value={money(monthlyDebt(s.items))}
+              hint="loans and installments"
+            />
+            {loans.length > 0 ? (
+              <Tile
+                label="Interest left on loans"
+                value={money(interestLeft)}
+                hint={lastPayoff ? `last one paid off ${monthLong(lastPayoff)}` : undefined}
+              />
+            ) : (
+              <Tile label="Still to pay on purchases" value={money(s.commitments)} hint="not counted yet" />
+            )}
           </dl>
+          {onlyStale && (
+            <p className="mt-4 rounded-2xl bg-attention-bg px-4 py-3 text-attention-ink">
+              Showing the {stale.length} {stale.length === 1 ? "value" : "values"} out of date: bank and card
+              balances older than 45 days, investments older than 10, property older than a year. Update each,
+              or pause one that’s counted twice.
+            </p>
+          )}
           <div className="mt-4">
             <button className="btn btn-primary" onClick={() => setAdding(!adding)}>
               {adding ? "Close" : "Add something you own or owe"}
@@ -122,19 +263,39 @@ export default function BalanceSheetSection() {
           </div>
           {adding && <HoldingForm onDone={() => setAdding(false)} notify={notify} />}
 
-          <Side
-            title="What you own"
-            items={active.filter((i) => i.side === "asset")}
-            total={s.assets}
-            notify={notify}
-          />
-          <Side
-            title="What you owe"
-            items={active.filter((i) => i.side === "liability")}
-            total={s.liabilities}
-            notify={notify}
-          />
-          {paused.length > 0 && <Side title="Paused (not counted)" items={paused} notify={notify} />}
+          <div className="grid gap-x-8 xl:grid-cols-2">
+            <Side
+              title="What you own"
+              items={active.filter((i) => i.side === "asset")}
+              all={s.items}
+              total={s.assets}
+              notify={notify}
+            />
+            <div>
+              <Side
+                title="What you owe"
+                items={active.filter((i) => i.side === "liability")}
+                all={s.items}
+                total={s.liabilities}
+                notify={notify}
+              />
+              {num(s.commitments) > 0 && !onlyStale && (
+                <div className="mt-4 rounded-2xl bg-surface px-4 py-3 text-sm">
+                  <div className="text-xs font-semibold tracking-wide text-muted uppercase">
+                    Coming at delivery
+                  </div>
+                  <p className="mt-1">
+                    <strong className="num">{money(s.commitments)}</strong> still to pay on purchases in
+                    progress (installments and what’s financed at delivery). It shows here as a commitment,
+                    not yet a debt.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          {paused.length > 0 && !onlyStale && (
+            <Side title="Paused (not counted)" items={paused} all={s.items} notify={notify} />
+          )}
 
           <h2 className="mt-10 font-display text-2xl font-bold">Net worth over time</h2>
           <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
@@ -213,11 +374,13 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
 function Side({
   title,
   items,
+  all,
   total,
   notify,
 }: {
   title: string;
   items: SheetItem[];
+  all: SheetItem[];
   total?: string;
   notify: Notify;
 }) {
@@ -236,9 +399,9 @@ function Side({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
             {c.group} · <span className="num">{money(list.reduce((sum, i) => sum + num(i.value), 0))}</span>
           </h3>
-          <ul className="mt-2 grid gap-3 md:grid-cols-2">
+          <ul className="mt-2 grid gap-3">
             {list.map((i) => (
-              <ItemCard key={i.key} item={i} notify={notify} />
+              <ItemCard key={i.key} item={i} all={all} notify={notify} />
             ))}
           </ul>
         </div>
@@ -247,8 +410,19 @@ function Side({
   );
 }
 
-function ItemCard({ item, notify }: { item: SheetItem; notify: Notify }) {
+function ItemCard({ item, all, notify }: { item: SheetItem; all: SheetItem[]; notify: Notify }) {
   const [mode, setMode] = useState<"value" | "edit" | "history" | "payments" | null>(null);
+  const refresh = useRefresh();
+  const fresh = freshness(item, today());
+  const twin = maybeDuplicate(item, all, today());
+  const pause = useMutation({
+    mutationFn: () => updateHolding(item.holding_id!, { is_active: false }),
+    onSuccess: () => {
+      refresh();
+      notify(`${item.name} paused: no longer counted.`);
+    },
+    onError: (e: Error) => notify(e.message, "bad"),
+  });
   const isLoan = item.holding_class === "loan" && item.holding_id != null;
   const schedule = item.loan?.schedule ?? null;
   const p = item.purchase;
@@ -263,8 +437,29 @@ function ItemCard({ item, notify }: { item: SheetItem; notify: Notify }) {
         <div className="min-w-0">
           <p className="font-semibold">{item.name}</p>
           <p className="text-sm text-muted">
-            {item.as_of ? `${day(item.as_of)} · ${SOURCE[item.source ?? ""] ?? item.source}` : "No value yet"}
+            {item.as_of ? `${day(item.as_of)} · ${SOURCE[item.source ?? ""] ?? item.source}` : "No value yet"}{" "}
+            {item.is_active && item.holding_class !== "personal_loan" && (
+              <span
+                className={`ml-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${fresh.stale ? "bg-attention-bg text-attention-ink" : "bg-good-bg text-good-ink"}`}
+              >
+                {fresh.stale
+                  ? fresh.age === null
+                    ? "no date"
+                    : `out of date · ${fresh.age} days`
+                  : "up to date"}
+              </span>
+            )}
           </p>
+          {twin && (
+            <p className="mt-1 text-sm text-attention-ink">
+              Probably the same money as {twin}, from the workbook.{" "}
+              {item.holding_id != null && (
+                <button type="button" className="font-semibold underline" onClick={() => pause.mutate()}>
+                  Pause it
+                </button>
+              )}
+            </p>
+          )}
         </div>
         <p className="num shrink-0 font-display text-2xl font-bold">
           {item.value != null ? money(item.value) : "—"}
@@ -299,6 +494,7 @@ function ItemCard({ item, notify }: { item: SheetItem; notify: Notify }) {
         </div>
       )}
       {schedule && <ScheduleLine schedule={schedule} />}
+      {schedule && schedule.left > 0 && <WhatIf schedule={schedule} name={item.name} />}
       {item.loan && item.loan.monthly_payment && !schedule && (
         <p className="mt-2 text-sm">
           Paying <span className="num">{money(item.loan.monthly_payment)}</span> a month ·{" "}
@@ -377,6 +573,45 @@ function ScheduleLine({
         <span className="num">{money(s.other_left)}</span> insurance and charges over {s.left}{" "}
         {s.left === 1 ? "month" : "months"}
       </p>
+    </div>
+  );
+}
+
+/** "Paying 100 more a month ends it 3 years sooner and saves 4,200 of interest." */
+function WhatIf({ schedule, name }: { schedule: LoanSchedule; name: string }) {
+  const [extra, setExtra] = useState("100");
+  const r = whatIf(schedule, num(extra));
+  return (
+    <div className="mt-2 rounded-xl bg-surface px-3 py-2 text-sm">
+      <label className="flex flex-wrap items-center gap-2">
+        Paying
+        <input
+          className="field num h-9"
+          style={{ width: "6.5rem" }}
+          inputMode="decimal"
+          aria-label={`Extra a month on ${name}`}
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+        />
+        more a month
+      </label>
+      {r && r.sooner <= 0 ? (
+        <p className="mt-1 text-muted">still ends with the last payment ({schedule.left} left).</p>
+      ) : r ? (
+        <p className="mt-1">
+          ends it{" "}
+          <strong>
+            {r.sooner >= 12
+              ? `${Math.floor(r.sooner / 12)} ${Math.floor(r.sooner / 12) === 1 ? "year" : "years"}${r.sooner % 12 ? ` ${r.sooner % 12} months` : ""}`
+              : `${r.sooner} ${r.sooner === 1 ? "month" : "months"}`}{" "}
+            sooner
+          </strong>{" "}
+          ({r.months} payments instead of {schedule.left}) and saves about{" "}
+          <strong className="num">{money(r.saved)}</strong> of interest.
+        </p>
+      ) : (
+        <p className="mt-1 text-muted">Enter an amount to see how much sooner it ends.</p>
+      )}
     </div>
   );
 }

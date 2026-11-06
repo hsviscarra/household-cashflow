@@ -92,6 +92,13 @@ how many lines wait for a category. URLs stay as they were.
   with ↑ for money in. Status is also in the chip's text for screen readers, never color only.
 - On phones the calendar becomes a list by day.
 
+## Net worth (ADR-032)
+
+- Freshness is a small badge after the date: good background "up to date", attention
+  background "out of date · N days".
+- A possible duplicate is one attention-ink line under the item with an underlined action.
+- The what-if sits in a surface box inside the loan's card.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.48.0] — Net worth you can trust at a glance
+
+### Added
+- **Freshness** on every balance (ADR-032), and **Update values (N out of date)** to see only
+  the old ones.
+- **Possible duplicates**: old workbook values next to a live account of the same kind, with
+  Pause it.
+- **Tiles**: debt payments a month and interest left on loans, with what you own by kind and
+  the largest debt's share.
+- **What if** on a loan: how much sooner it ends and the interest saved paying more a month.
+
+### Changed
+- Own and owe side by side on wide screens; "Coming at delivery" under what you owe.
+
 ## [0.47.0] — Bills & subscriptions, one page, any schedule
 
 ### Added
