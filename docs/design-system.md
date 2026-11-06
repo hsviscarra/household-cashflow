@@ -85,6 +85,13 @@ how many lines wait for a category. URLs stay as they were.
 - A line's person is a muted pill linking to their lines; the note follows in muted text.
 - The footer under the table: lines shown and money out on the left, "Total shown" on the right.
 
+## Bills (ADR-031)
+
+- Calendar cells are bordered, Monday first, today ringed in primary. A bill is a small chip:
+  good background when paid, surface when due, danger background when late, info background
+  with ↑ for money in. Status is also in the chip's text for screen readers, never color only.
+- On phones the calendar becomes a list by day.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

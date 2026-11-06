@@ -24,17 +24,25 @@ const day = (iso: string) =>
     year: "numeric",
   });
 
-export default function SubscriptionsPage() {
+export default function SubscriptionsPage({ embedded = false }: { embedded?: boolean }) {
   const q = useQuery({ queryKey: ["subscriptions"], queryFn: fetchSubscriptions });
   const data = q.data;
   const active = data?.subscriptions.filter((s) => s.active && s.cadence !== "possible") ?? [];
   return (
     <section>
-      <h1 className="font-display text-4xl font-bold leading-tight">
-        {data && active.length
-          ? `${active.length} subscriptions cost ${money(data.monthly_cost)} a month`
-          : "Subscriptions"}
-      </h1>
+      {embedded ? (
+        <h2 className="font-display text-3xl font-bold leading-tight">
+          {data && active.length
+            ? `${active.length} subscriptions cost ${money(data.monthly_cost)} a month`
+            : "Subscriptions"}
+        </h2>
+      ) : (
+        <h1 className="font-display text-4xl font-bold leading-tight">
+          {data && active.length
+            ? `${active.length} subscriptions cost ${money(data.monthly_cost)} a month`
+            : "Subscriptions"}
+        </h1>
+      )}
       <p className="mt-2 text-lg text-muted">
         Charges that repeat at a steady interval with a similar amount, found in your card and bank
         statements.

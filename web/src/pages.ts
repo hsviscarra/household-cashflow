@@ -1,6 +1,13 @@
 // Every page of the app, with the roadmap feature that fills it in and its sidebar group (ADR-025).
 export type NavGroup = "Home" | "Analyze" | "Daily" | "Plan" | "Reports" | "More";
-export type PageDef = { path: string; label: string; feature: string; summary: string; group: NavGroup };
+export type PageDef = {
+  path: string;
+  label: string;
+  feature: string;
+  summary: string;
+  group: NavGroup;
+  hidden?: boolean; // reachable by address, not listed in the sidebar
+};
 
 export const GROUPS: NavGroup[] = ["Home", "Analyze", "Daily", "Plan", "Reports", "More"];
 
@@ -56,10 +63,10 @@ export const PAGES: PageDef[] = [
   },
   {
     path: "/recurring",
-    label: "Bills",
+    label: "Bills & subscriptions",
     group: "Plan",
     feature: "F11",
-    summary: "Monthly templates and the month grid.",
+    summary: "What repeats: a calendar of the month, by group, price changes, the year grid.",
   },
   {
     path: "/import",
@@ -74,6 +81,8 @@ export const PAGES: PageDef[] = [
     group: "Plan",
     feature: "F14",
     summary: "Recurring charges and weekly app billing.",
+    // Part of Bills & subscriptions now (ADR-031): the address still works, the sidebar doesn't list it.
+    hidden: true,
   },
   {
     path: "/debt",

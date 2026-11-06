@@ -26,6 +26,7 @@ from sqlalchemy import delete, exists, func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import (
+    Account,
     Category,
     ChangeLog,
     ExcelCell,
@@ -104,8 +105,26 @@ def amount_for(history: list[RecurringAmount], month: date) -> Decimal | None:
     return hit
 
 
+EVERY = (0, 1, 2, 3, 4, 6, 12)  # 0: once
+
+
+def due_in(t: RecurringTemplate, month: date) -> bool:
+    """Whether the item falls in `month` by how often it repeats (ADR-031): monthly every month,
+    every N months counted from its first month, once only then."""
+    every = t.every_months if t.every_months is not None else 1
+    if every == 0:
+        return month == t.start_month
+    gap = (month.year - t.start_month.year) * 12 + month.month - t.start_month.month
+    return gap % every == 0
+
+
 def active_in(t: RecurringTemplate, month: date) -> bool:
-    return t.is_active and t.start_month <= month and (t.end_month is None or month <= t.end_month)
+    return (
+        t.is_active
+        and t.start_month <= month
+        and (t.end_month is None or month <= t.end_month)
+        and due_in(t, month)
+    )
 
 
 def signed(type_: str, amount: Decimal) -> Decimal:
@@ -132,6 +151,8 @@ def create_template(
     sort_order: int | None = None,
     source: str = "manual",
     excel: tuple[str, str | None, str] | None = None,
+    every_months: int = 1,
+    due_day: int | None = None,
 ) -> RecurringTemplate:
     name = name.strip()
     if not name:
@@ -161,6 +182,8 @@ def create_template(
         excel_group=excel[1] if excel else None,
         excel_label=excel[2] if excel else None,
         notes=notes,
+        every_months=every_months,
+        due_day=due_day,
     )
     db.add(t)
     db.flush()
@@ -193,6 +216,8 @@ EDITABLE = (
     "is_active",
     "sort_order",
     "notes",
+    "every_months",
+    "due_day",
 )
 
 
@@ -208,6 +233,8 @@ def update_template(db: Session, template_id: int, changes: dict[str, object], u
         if not name or clash:
             raise RecurringError("Choose a name no other template has.", 409 if clash else 422)
         changes["name"] = name
+    if "every_months" in changes and changes["every_months"] is None:
+        del changes["every_months"]  # not nullable: leaving it out keeps it
     if "match_pattern" in changes:
         changes["match_pattern"] = str(changes["match_pattern"] or "").strip() or None
     if changes.get("end_month") is not None:
@@ -931,3 +958,144 @@ def _unique_name(db: Session, name: str) -> str:
         candidate = f"{name[:95]} ({n})"
         n += 1
     return candidate
+
+
+# ---------------------------------------------------------------- bills (ADR-031)
+@dataclass
+class Bill:
+    template_id: int
+    name: str
+    type: str
+    group: str
+    group_color: str | None
+    category_path: str
+    account_name: str | None
+    every_months: int
+    due_day: int | None  # set, or read from the lines it matched; None when neither
+    due_day_set: bool
+    expected: Decimal  # signed, like transactions
+    paid: Decimal | None  # matched lines, signed
+    lines: int
+    status: str  # paid, due, late, skipped
+    avg3: Decimal | None  # matched in the three months before, average (signed)
+    payments_left: int | None  # with an end month: this one and the ones after
+    price_from: Decimal | None  # the amount before its latest change, when it changed lately
+    price_changed: date | None
+    end_month: date | None
+
+
+PRICE_RECENT = 6  # months a price change is shown for
+
+
+def _usual_day(days: list[int]) -> int | None:
+    if not days:
+        return None
+    s = sorted(days)
+    return s[len(s) // 2]
+
+
+def bills(db: Session, month: date, today: date | None = None) -> list[Bill]:
+    """Every recurring item due in `month` (by how often it repeats), with whether a line paid
+    it, the day it's due, the three months before and its latest price change."""
+    month = first(month)
+    today = today or date.today()
+    window = [add_months(month, -i) for i in (3, 2, 1)]
+    entries = list(
+        db.scalars(
+            select(RecurringEntry).where(
+                RecurringEntry.month >= window[0], RecurringEntry.month <= month
+            )
+        )
+    )
+    by_cell = {(e.template_id, e.month): e for e in entries}
+    paid: dict[int, Decimal] = defaultdict(Decimal)
+    count: dict[int, int] = defaultdict(int)
+    days: dict[int, list[int]] = defaultdict(list)
+    entry_template = {e.entry_id: e.template_id for e in entries}
+    # The usual day: lines matched over the last year.
+    year_entries = dict(
+        db.execute(
+            select(RecurringEntry.entry_id, RecurringEntry.template_id).where(
+                RecurringEntry.month >= add_months(month, -12), RecurringEntry.month <= month
+            )
+        ).all()
+    )
+    ids = list(year_entries)
+    for start in range(0, len(ids), 1000):
+        for entry_id, amount, day in db.execute(
+            select(Transaction.recurring_entry_id, Transaction.amount, Transaction.txn_date).where(
+                Transaction.recurring_entry_id.in_(ids[start : start + 1000])
+            )
+        ):
+            if entry_id is None:
+                continue
+            days[year_entries[entry_id]].append(day.day)
+            if entry_id in entry_template:
+                paid[entry_id] += amount
+                count[entry_id] += 1
+    cats = {c.category_id: c for c in db.scalars(select(Category))}
+    accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
+    history = amounts(db)
+    out = []
+    for t in db.scalars(
+        select(RecurringTemplate).order_by(RecurringTemplate.sort_order, RecurringTemplate.name)
+    ):
+        e = by_cell.get((t.template_id, month))
+        if e is None and not active_in(t, month):
+            continue
+        expected = e.amount if e is not None else amount_for(history[t.template_id], month)
+        if expected is None:
+            continue
+        cat = cats.get(t.category_id)
+        parent = cats.get(cat.parent_id) if cat and cat.parent_id else None
+        path = f"{parent.name} / {cat.name}" if parent and cat else cat.name if cat else ""
+        due = t.due_day or _usual_day(days[t.template_id])
+        n = count[e.entry_id] if e is not None else 0
+        if e is not None and e.status == "skipped" and not n:
+            status = "skipped"
+        elif n:
+            status = "paid"
+        elif month < first(today) or (
+            month == first(today) and due is not None and due < today.day
+        ):
+            status = "late"
+        else:
+            status = "due"
+        before = [
+            paid[x.entry_id]
+            for m in window
+            if m < month
+            and (x := by_cell.get((t.template_id, m))) is not None
+            and count[x.entry_id]
+        ]
+        left = None
+        if t.end_month is not None:
+            left = sum(1 for m in months(month, t.end_month) if due_in(t, m))
+        changes = [a for a in history[t.template_id] if a.from_month <= month]
+        price_from = price_changed = None
+        if len(changes) >= 2 and changes[-1].from_month >= add_months(month, -PRICE_RECENT):
+            price_from, price_changed = changes[-2].amount, changes[-1].from_month
+        out.append(
+            Bill(
+                template_id=t.template_id,
+                name=t.name,
+                type=t.type,
+                group=t.excel_group or (parent.name if parent else cat.name if cat else ""),
+                group_color=(parent.color if parent else cat.color if cat else None),
+                category_path=path,
+                account_name=accounts.get(t.account_id) if t.account_id else None,
+                every_months=t.every_months,
+                due_day=due,
+                due_day_set=t.due_day is not None,
+                expected=expected,
+                paid=paid[e.entry_id] if e is not None and n else None,
+                lines=n,
+                status=status,
+                avg3=(sum(before, Decimal(0)) / len(before)) if before else None,
+                payments_left=left,
+                price_from=price_from,
+                price_changed=price_changed,
+                end_month=t.end_month,
+            )
+        )
+    return out
