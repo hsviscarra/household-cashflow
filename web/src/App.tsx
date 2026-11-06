@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useRef } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
-import { fetchHealth, fetchMe } from "./api";
-import { PAGES, type PageDef } from "./pages";
+import { fetchHealth, fetchMe, fetchReview } from "./api";
+import { GROUPS, PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
 import DebtPage from "./pages/Debt";
 import ImportPage from "./pages/Import";
@@ -56,8 +56,114 @@ function StatusPill() {
 
 function SignedIn() {
   const { data } = useQuery({ queryKey: ["me"], queryFn: fetchMe });
-  if (!data?.authenticated) return null;
-  return <span className="text-sm text-muted">{data.name}</span>;
+  if (!data?.authenticated || !data.name) return null;
+  return (
+    <span className="flex items-center gap-2 text-sm text-nav-ink">
+      <span
+        aria-hidden="true"
+        className="flex h-7 w-7 items-center justify-center rounded-full bg-nav-active font-semibold text-nav-strong uppercase"
+      >
+        {data.name.charAt(0)}
+      </span>
+      {data.name}
+    </span>
+  );
+}
+
+/** Lines waiting for a category: the Inbox badge. */
+function InboxCount() {
+  const { data } = useQuery({ queryKey: ["review", "count"], queryFn: () => fetchReview() });
+  const n = data?.uncategorized_lines ?? 0;
+  if (!n) return null;
+  return (
+    <span className="num ml-auto rounded-full bg-[#f59e0b] px-2 text-xs font-bold text-[#1f1300]">
+      {n}
+      <span className="sr-only"> waiting</span>
+    </span>
+  );
+}
+
+const NAV_ORDER = [
+  "/",
+  "/spending",
+  "/purchases",
+  "/debt",
+  "/review",
+  "/transactions",
+  "/people",
+  "/recurring",
+  "/subscriptions",
+  "/projections",
+  "/report",
+  "/status",
+  "/import",
+];
+
+function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const pages = NAV_ORDER.map((path) => PAGES.find((p) => p.path === path)!).filter(Boolean);
+  return (
+    <div className="flex h-full flex-col gap-1 px-3 py-5">
+      <Link
+        to="/"
+        onClick={onNavigate}
+        className="mb-3 hidden items-center gap-2.5 px-3 text-nav-strong lg:flex"
+      >
+        <span aria-hidden="true" className="h-7 w-7 rounded-lg bg-primary" />
+        <span className="font-display text-lg font-semibold">Cashflow</span>
+      </Link>
+      {GROUPS.filter((g) => g !== "More").map((g) => (
+        <div key={g} className="flex flex-col gap-0.5">
+          {g !== "Home" && (
+            <div className="mx-3 mt-4 mb-1 text-[11px] font-semibold tracking-widest text-nav-muted uppercase">
+              {g}
+            </div>
+          )}
+          {pages
+            .filter((p) => p.group === g)
+            .map((p) => (
+              <NavLink
+                key={p.path}
+                to={p.path}
+                end={p.path === "/"}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  `flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium ${
+                    isActive ? "bg-nav-active text-nav-strong" : "text-nav-ink hover:text-nav-strong"
+                  }`
+                }
+              >
+                {p.label}
+                {p.path === "/review" && <InboxCount />}
+              </NavLink>
+            ))}
+        </div>
+      ))}
+      <div className="mt-auto flex flex-col gap-2 px-0 pt-6">
+        <Link
+          to="/import"
+          onClick={onNavigate}
+          className="flex h-10 items-center justify-center rounded-xl border border-nav-active text-sm font-semibold text-nav-strong hover:bg-nav-active"
+        >
+          Upload statements
+        </Link>
+        <NavLink
+          to="/settings"
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            `flex h-10 items-center rounded-xl px-3 text-sm font-medium ${
+              isActive ? "bg-nav-active text-nav-strong" : "text-nav-ink hover:text-nav-strong"
+            }`
+          }
+        >
+          Settings
+        </NavLink>
+        <div className="flex flex-col gap-2 px-3 pt-2">
+          <SignedIn />
+          <StatusPill />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Placeholder({ page }: { page: PageDef }) {
@@ -90,41 +196,49 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
 };
 
 export default function App() {
+  const [menu, setMenu] = useState(false);
+  const { pathname } = useLocation();
+  useEffect(() => setMenu(false), [pathname]);
   return (
-    <div className="min-h-screen bg-ground text-ink">
-      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 pt-6 md:px-12">
-        <div className="font-display text-xl font-bold">Household Cash Flow</div>
-        <div className="flex items-center gap-3">
-          <SignedIn />
-          <StatusPill />
-        </div>
+    <div className="min-h-screen bg-canvas text-ink lg:flex">
+      <a
+        href="#content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-full focus:bg-ground focus:px-4 focus:py-2"
+      >
+        Skip to content
+      </a>
+      {/* Phone and tablet: a bar with the menu button; the sidebar opens over the page. */}
+      <header className="flex items-center justify-between bg-nav px-4 py-3 lg:hidden">
+        <Link to="/" className="flex items-center gap-2 text-nav-strong">
+          <span aria-hidden="true" className="h-7 w-7 rounded-lg bg-primary" />
+          <span className="font-display text-lg font-semibold">Cashflow</span>
+        </Link>
+        <button
+          type="button"
+          className="flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-nav-strong hover:bg-nav-active"
+          aria-expanded={menu}
+          aria-controls="sidebar"
+          onClick={() => setMenu(!menu)}
+        >
+          {menu ? "Close" : "Menu"}
+        </button>
       </header>
-      <nav aria-label="Main" className="mx-auto mt-4 max-w-6xl px-4 md:px-12">
-        <ul className="flex gap-1 overflow-x-auto rounded-full bg-surface p-1.5">
-          {PAGES.map((p) => (
-            <li key={p.path}>
-              <NavLink
-                to={p.path}
-                end={p.path === "/"}
-                className={({ isActive }) =>
-                  `flex h-11 items-center whitespace-nowrap rounded-full px-4 ${
-                    isActive ? "bg-ink font-semibold text-ground" : "text-ink hover:bg-line"
-                  }`
-                }
-              >
-                {p.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+      <nav
+        id="sidebar"
+        aria-label="Main"
+        className={`${menu ? "block" : "hidden"} bg-nav lg:sticky lg:top-0 lg:block lg:border-r lg:border-line lg:h-screen lg:w-60 lg:shrink-0 lg:overflow-y-auto`}
+      >
+        <Sidebar onNavigate={() => setMenu(false)} />
       </nav>
-      <main className="mx-auto max-w-6xl px-4 py-10 md:px-12">
-        <Routes>
-          {PAGES.map((p) => (
-            <Route key={p.path} path={p.path} element={PAGE_ELEMENTS[p.path] ?? <Placeholder page={p} />} />
-          ))}
-          <Route path="/import/batches/:batchId" element={<BatchPage />} />
-        </Routes>
+      <main id="content" className="min-w-0 flex-1 px-4 py-8 md:px-10 lg:py-10">
+        <div className="mx-auto max-w-7xl">
+          <Routes>
+            {PAGES.map((p) => (
+              <Route key={p.path} path={p.path} element={PAGE_ELEMENTS[p.path] ?? <Placeholder page={p} />} />
+            ))}
+            <Route path="/import/batches/:batchId" element={<BatchPage />} />
+          </Routes>
+        </div>
       </main>
     </div>
   );

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +12,15 @@ function mockApi(health: object, me: object) {
     vi.fn((url: string) =>
       Promise.resolve(
         new Response(
-          JSON.stringify(url.endsWith("/health") ? health : url.includes("/cashflow/") ? [] : me),
+          JSON.stringify(
+            url.endsWith("/health")
+              ? health
+              : url.includes("/cashflow/")
+                ? []
+                : url.includes("/api/review")
+                  ? { month: null, groups: [], uncategorized_lines: 12, suggestions_available: false }
+                  : me,
+          ),
           {
             status: url.endsWith("/health") && (health as { database: string }).database !== "ok" ? 503 : 200,
           },
@@ -51,6 +59,30 @@ describe("App shell", () => {
     for (const page of PAGES) {
       expect(screen.getByRole("link", { name: page.label })).toBeInTheDocument();
     }
+  });
+
+  it("groups the sidebar and counts the Inbox", async () => {
+    mockApi(okHealth, { name: null, authenticated: false });
+    renderAt("/");
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    for (const group of ["Analyze", "Daily", "Plan", "Reports"]) {
+      expect(within(nav).getByText(group)).toBeInTheDocument();
+    }
+    const inbox = within(nav).getByRole("link", { name: /^Inbox/ });
+    expect(inbox).toHaveAttribute("href", "/review");
+    expect(await within(inbox).findByText("12")).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Upload statements" })).toHaveAttribute("href", "/import");
+  });
+
+  it("opens and closes the menu on a phone", () => {
+    mockApi(okHealth, { name: null, authenticated: false });
+    renderAt("/");
+    const button = screen.getByRole("button", { name: "Menu" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Close" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("link", { name: "Spending" }));
+    expect(screen.getByRole("button", { name: "Menu" })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows the database as connected and the signed-in user", async () => {

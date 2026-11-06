@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.41.0] — A new look and a sidebar
+
+### Changed
+- **Navigation** (ADR-025): a left sidebar with the pages in groups (Analyze, Daily, Plan,
+  Reports) replaces the top bar; a menu button opens it on phones. The Inbox shows how many lines
+  wait. Upload statements, Settings, who's signed in and the database status sit at the bottom.
+- **Clearer names**: Review is now Inbox, Recurring Bills, Projections Forecast, Debt & Net Worth
+  Net worth, Data Status Data health, Report Monthly report, Overview Home. Links are unchanged.
+- **The Ledger look** (docs/design-system.md): Space Grotesk and Inter, a grey canvas with white
+  cards, new colors in light and dark mode, KPI tiles on Home.
+
 ## [0.40.0] — The import preview shows your notes
 
 ### Added
