@@ -1017,7 +1017,8 @@ class ProjectionEventOut(BaseModel):
     day: date
     name: str
     amount: Decimal
-    kind: Literal["income", "fixed", "purchase", "variable"]
+    kind: Literal["income", "fixed", "purchase", "variable", "change"]
+    account_id: int | None = None
 
 
 class ProjectionMonthOut(BaseModel):
@@ -1056,10 +1057,55 @@ class ProjectionOut(BaseModel):
     lowest: ProjectionDayOut | None
     next_payday: ProjectionEventOut | None
     alerts: list[ProjectionAlertOut]
+    # ADR-033
+    horizon: int = 3
+    average_over: int = 3
+    floor: Decimal = Decimal(0)
+    held: Decimal = Decimal(0)
+    include_held: bool = False
+    accounts: list["ProjectionAccountOut"] = []
+    first_short: date | None = None
+    end_cash: Decimal = Decimal(0)
+    base: "ScenarioBaseOut | None" = None  # with what-ifs: the same without them
+
+
+class ProjectionAccountOut(BaseModel):
+    account_id: int
+    name: str
+    start: Decimal
+    as_of: date | None
+    daily: list[ProjectionDayOut]
+    lowest: ProjectionDayOut
+    under_floor: date | None
+    move: Decimal
+
+
+class ScenarioBaseOut(BaseModel):
+    lowest: ProjectionDayOut | None
+    first_short: date | None
+    end_cash: Decimal
+
+
+class ChangeIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    amount: Decimal = Field(max_digits=15, decimal_places=2)  # money in positive
+    every: Literal["month", "once"] = "month"
+    day: int = Field(default=1, ge=1, le=31)
+    on: date | None = None
+    account_id: int | None = None
+
+
+class ScenarioIn(BaseModel):
+    horizon: Literal[1, 3, 12] = 3
+    average_over: Literal[3, 6, 12] = 3
+    floor: Decimal = Field(default=Decimal(0), ge=0, max_digits=15, decimal_places=2)
+    include_held: bool = False
+    changes: list[ChangeIn] = Field(default_factory=list, max_length=20)
 
 
 TemplateOut.model_rebuild()
 TransactionOut.model_rebuild()
+ProjectionOut.model_rebuild()
 
 
 # ---------------- F16: monthly report and export ----------------

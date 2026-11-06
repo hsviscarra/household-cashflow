@@ -198,3 +198,88 @@ def test_alert_rules(client: TestClient, db: Session) -> None:
     db.commit()
     assert projections.alerts(db, date(2026, 10, 1)) == []
     assert projections.alerts(db, date(2020, 1, 1)) == []
+
+
+def test_accounts_floor_held_horizon_and_what_ifs(client: TestClient, db: Session) -> None:
+    """ADR-033: each account day by day with its floor, money held for others left out, 1 or 12
+    months, a longer average and what-ifs against the base."""
+    st = client.post(
+        "/api/statements",
+        files=[
+            (
+                "files",
+                (
+                    "p.pdf",
+                    s.produbanco_full(
+                        period="Del 01 Sep 2026 Al 30 Sep 2026", opening="2000.00", lines=[]
+                    ),
+                    PDF,
+                ),
+            )
+        ],
+        headers=USER,
+    ).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    client.post(f"/api/batches/{b['batch_id']}/approve", headers=USER)
+    bank = _account(db, "Produbanco Ahorros Hernan")
+    _template(
+        client,
+        name="House",
+        category_id=_cat(db, "Condo Fee"),
+        type="expense",
+        amount="1500",
+        account_id=bank,
+        due_day=30,
+    )
+    # Rubén's money: 500 held in the bank.
+    person = client.post(
+        "/api/people",
+        json={
+            "name": "Rubén",
+            "new_balance": True,
+            "opening_balance": "500",
+            "opening_as_of": "2026-10-01",
+        },
+    )
+    assert person.status_code == 201, person.text
+
+    def get(**params: object) -> dict[str, Any]:
+        out: dict[str, Any] = client.get(
+            "/api/projections", params={"today": TODAY, **params}
+        ).json()
+        return out
+
+    p = get(floor="1000")
+    assert Decimal(p["held"]) == 500 and p["include_held"] is False
+    assert Decimal(p["start_cash"]) == 1500  # 2,000 less 500 held for Rubén
+    assert Decimal(get(include_held="true")["start_cash"]) == 2000
+    [acct] = p["accounts"]
+    assert acct["name"] == "Produbanco Ahorros Hernan" and Decimal(acct["start"]) == 2000
+    assert acct["under_floor"] == "2026-10-30"  # 2,000 - 1,500 = 500, under 1,000
+    # Oct 30, Nov 30, Dec 30 and Jan 30: 2,000 - 4 x 1,500 = -4,000; 5,000 brings it to 1,000.
+    assert Decimal(acct["lowest"]["balance"]) == Decimal(-4000)
+    assert Decimal(acct["move"]) == 5000
+    assert p["first_short"] == "2026-10-30"
+    assert [m["month"] for m in get(horizon="1")["months"]] == ["2026-11-01"]
+    assert len(get(horizon="12")["months"]) == 12
+    assert get(average_over="6")["average_over"] == 6
+    assert client.get("/api/projections", params={"horizon": 2}).status_code == 422
+
+    # What if: 1,000 a month in from the 1st, and a one-off 200 out.
+    body = {
+        "floor": "1000",
+        "changes": [
+            {"name": "From Hernan", "amount": "1000", "day": 1, "account_id": bank},
+            {"name": "Repair", "amount": "-200", "every": "once", "on": "2026-11-10"},
+            {"name": "Too late", "amount": "-5", "every": "once", "on": "2030-01-01"},
+        ],
+    }
+    w = client.post("/api/projections/scenario", params={"today": TODAY}, json=body).json()
+    assert w["base"]["first_short"] == "2026-10-30"
+    assert Decimal(w["end_cash"]) - Decimal(w["base"]["end_cash"]) == Decimal(3000 - 200)
+    nov = w["months"][0]
+    assert {e["name"] for e in nov["items"]} >= {"From Hernan", "Repair", "House"}
+    assert Decimal(nov["income"]) == 1000
+    assert Decimal(w["accounts"][0]["lowest"]["balance"]) == Decimal(-1000)  # 3,000 in, before
+    plain = client.post("/api/projections/scenario", params={"today": TODAY}, json={}).json()
+    assert plain["base"] is None

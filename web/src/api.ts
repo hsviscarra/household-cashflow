@@ -886,7 +886,8 @@ export type ProjectionEvent = {
   day: string;
   name: string;
   amount: string;
-  kind: "income" | "fixed" | "purchase" | "variable";
+  kind: "income" | "fixed" | "purchase" | "variable" | "change";
+  account_id?: number | null;
 };
 export type ProjectionMonth = {
   month: string;
@@ -916,8 +917,69 @@ export type Projection = {
     average: string;
     change: string | null;
   }[];
+  // ADR-033 (optional so older answers and tests still fit)
+  horizon?: number;
+  average_over?: number;
+  floor?: string;
+  held?: string;
+  include_held?: boolean;
+  accounts?: AccountRun[];
+  first_short?: string | null;
+  end_cash?: string;
+  base?: {
+    lowest: { day: string; balance: string } | null;
+    first_short: string | null;
+    end_cash: string;
+  } | null;
 };
-export const fetchProjection = () => send<Projection>("GET", "/api/projections");
+// ADR-033: choices, per-account runs and what-ifs.
+export type ForecastOptions = { horizon: number; average_over: number; floor: number; include_held: boolean };
+export type ForecastChange = {
+  name: string;
+  amount: string; // money in positive
+  every: "month" | "once";
+  day?: number;
+  on?: string | null;
+  account_id?: number | null;
+};
+export type AccountRun = {
+  account_id: number;
+  name: string;
+  start: string;
+  as_of: string | null;
+  daily: { day: string; balance: string }[];
+  lowest: { day: string; balance: string };
+  under_floor: string | null;
+  move: string;
+};
+export const DEFAULT_FORECAST: ForecastOptions = {
+  horizon: 3,
+  average_over: 3,
+  floor: 0,
+  include_held: false,
+};
+export const fetchProjection = (o: ForecastOptions = DEFAULT_FORECAST) => {
+  const same = (Object.keys(DEFAULT_FORECAST) as (keyof ForecastOptions)[]).every(
+    (k) => o[k] === DEFAULT_FORECAST[k],
+  );
+  return send<Projection>(
+    "GET",
+    `/api/projections${same ? "" : query({ horizon: o.horizon, average_over: o.average_over, floor: o.floor, include_held: String(o.include_held) })}`,
+  );
+};
+export const runScenario = (o: ForecastOptions, changes: ForecastChange[]) =>
+  send<Projection>("POST", "/api/projections/scenario", { ...o, changes });
+
+// ---------- the month in ten answers (ADR-033) ----------
+export type MonthAnswer = {
+  n: number;
+  question: string;
+  answer: string;
+  detail: string;
+  tone: "good" | "warn" | "neutral";
+  link: string | null;
+};
+export const fetchAnswers = (month: string) => send<MonthAnswer[]>("GET", `/api/reports/${month}/answers`);
 
 // ---------- F16: monthly report and export ----------
 export type Tone = "good" | "bad" | "neutral";

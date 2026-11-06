@@ -26,10 +26,12 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, RecurringEntry, RecurringTemplate, Transaction
 from app.models import v_spending_line as v
-from app.services import loans, networth, recurring
+from app.services import loans, networth, people, recurring
 
 MONTHS_AHEAD = 3
 AVERAGE_OVER = 3
+HORIZONS = (1, 3, 12)  # months ahead the page offers (ADR-033)
+AVERAGES = (3, 6, 12)  # months of everyday spending to average
 ALERT_RATIO = Decimal("1.30")
 ALERT_MIN = Decimal(25)
 ZERO = Decimal(0)
@@ -42,7 +44,36 @@ class Event:
     day: date
     name: str
     amount: Decimal  # signed: money in positive
-    kind: str  # income, fixed, purchase, variable
+    kind: str  # income, fixed, purchase, variable, change (a what-if)
+    account_id: int | None = None  # the bank account it moves, when known
+
+
+@dataclass
+class Change:
+    """A what-if (ADR-033): an amount (signed, money in positive) monthly from a day of the
+    month, or once on a date, optionally in one account."""
+
+    name: str
+    amount: Decimal
+    every: str = "month"  # month or once
+    day: int = 1
+    on: date | None = None
+    account_id: int | None = None
+
+
+@dataclass
+class AccountRun:
+    """One bank account day by day: its balance moved only by the items paid from or into it
+    (everyday spending isn't split by account; it's in the total)."""
+
+    account_id: int
+    name: str
+    start: Decimal
+    as_of: date | None
+    daily: list[tuple[date, Decimal]]
+    lowest: tuple[date, Decimal]
+    under_floor: date | None  # the first day under the floor
+    move: Decimal  # how much to move in before that day to stay at the floor
 
 
 @dataclass
@@ -87,6 +118,15 @@ class Projection:
     lowest: tuple[date, Decimal] | None
     next_payday: Event | None
     alerts: list[Alert]
+    # ADR-033: the choices it was made with, per-account runs and money left out.
+    horizon: int = MONTHS_AHEAD
+    average_over: int = AVERAGE_OVER
+    floor: Decimal = ZERO
+    held: Decimal = ZERO  # money held for others, left out of the cash unless asked
+    include_held: bool = False
+    accounts: list[AccountRun] = field(default_factory=list)
+    first_short: date | None = None  # the first day total cash is under the floor
+    end_cash: Decimal = ZERO
 
 
 def _usual_days(db: Session) -> dict[int, int]:
@@ -109,11 +149,13 @@ def _on(month: date, day: int) -> date:
     )
 
 
-def variable_average(db: Session, today: date) -> tuple[Decimal, list[date]]:
+def variable_average(
+    db: Session, today: date, over: int = AVERAGE_OVER
+) -> tuple[Decimal, list[date]]:
     """Average monthly spending no recurring item paid, over the last complete months, in cash
     terms: card purchases are left out because the card payments (recurring items) carry them."""
     current = recurring.first(today)
-    months = [recurring.add_months(current, -i) for i in range(AVERAGE_OVER, 0, -1)]
+    months = [recurring.add_months(current, -i) for i in range(over, 0, -1)]
     t = Transaction.__table__
     a = Account.__table__
     total = db.scalar(
@@ -173,7 +215,8 @@ def _recurring_events(
                 continue
             amount = -due[t.template_id][month]
         kind = "income" if t.type in INCOME else "fixed"
-        out.append(Event(_on(month, days.get(t.template_id, 1)), t.name, amount, kind))
+        day = t.due_day or days.get(t.template_id, 1)
+        out.append(Event(_on(month, day), t.name, amount, kind, t.account_id))
     return out
 
 
@@ -187,16 +230,18 @@ def _purchase_events(
             continue
         if item.category_id in paid_categories:
             continue  # a recurring item pays it already
-        last_day = (
-            db.scalar(
-                select(func.max(Transaction.txn_date)).where(
-                    Transaction.category_id == item.category_id
-                )
-            )
+        last = (
+            db.execute(
+                select(Transaction.txn_date, Transaction.account_id)
+                .where(Transaction.category_id == item.category_id)
+                .order_by(Transaction.txn_date.desc())
+                .limit(1)
+            ).first()
             if item.category_id
             else None
         )
-        day = last_day.day if last_day else 1
+        day = last[0].day if last else 1
+        account_id = last[1] if last else None
         left = p.installments_left
         for m in months:
             if left <= 0:
@@ -204,7 +249,9 @@ def _purchase_events(
             when = _on(m, day)
             if when < today:
                 continue
-            out.append(Event(when, f"{item.name} installment", -p.installment, "purchase"))
+            out.append(
+                Event(when, f"{item.name} installment", -p.installment, "purchase", account_id)
+            )
             left -= 1
     return out
 
@@ -237,10 +284,37 @@ def alerts(db: Session, today: date) -> list[Alert]:
     return sorted(out, key=lambda a: -(a.amount - a.average))
 
 
-def project(db: Session, today: date | None = None) -> Projection:
+def _change_events(changes: list[Change], today: date, end: date) -> list[Event]:
+    out = []
+    for c in changes:
+        if c.every == "once":
+            if c.on is not None and today <= c.on <= end:
+                out.append(Event(c.on, c.name, c.amount, "change", c.account_id))
+            continue
+        m = recurring.first(today)
+        while m <= end:
+            when = _on(m, c.day)
+            if today <= when <= end:
+                out.append(Event(when, c.name, c.amount, "change", c.account_id))
+            m = recurring.add_months(m, 1)
+    return out
+
+
+def project(
+    db: Session,
+    today: date | None = None,
+    *,
+    horizon: int = MONTHS_AHEAD,
+    average_over: int = AVERAGE_OVER,
+    floor: Decimal = ZERO,
+    include_held: bool = False,
+    changes: list[Change] | None = None,
+) -> Projection:
+    """The next `horizon` months (ADR-013, ADR-033): every day's cash in total and in each bank
+    account, with what-if changes added on top."""
     today = today or date.today()
     current = recurring.first(today)
-    months = [recurring.add_months(current, i) for i in range(1, MONTHS_AHEAD + 1)]
+    months = [recurring.add_months(current, i) for i in range(1, horizon + 1)]
     end = recurring.add_months(months[-1], 1) - timedelta(days=1)
 
     cash_items = [
@@ -248,8 +322,20 @@ def project(db: Session, today: date | None = None) -> Projection:
     ]
     start_cash = sum((i.value or ZERO for i in cash_items), ZERO)
     cash_as_of = min((i.as_of for i in cash_items if i.as_of), default=None)
+    # Money held for a person sits in the bank accounts but isn't yours to spend.
+    linked = people.linked_holdings(db)
+    held = sum(
+        (
+            i.value or ZERO
+            for i in networth.holdings(db, today)
+            if i.is_active and i.holding_id in linked and i.side == "liability"
+        ),
+        ZERO,
+    )
+    if not include_held:
+        start_cash -= held
 
-    variable, avg_months = variable_average(db, today)
+    variable, avg_months = variable_average(db, today, average_over)
     days = _usual_days(db)
     paid_categories = {t.category_id for t in db.scalars(select(RecurringTemplate))}
 
@@ -260,6 +346,7 @@ def project(db: Session, today: date | None = None) -> Projection:
     for m in months:
         events += _recurring_events(db, m, days, due)
     events += _purchase_events(db, today, [current, *months], paid_categories)
+    events += _change_events(changes or [], today, end)
 
     plans = {m: MonthPlan(m) for m in months}
     for e in events:
@@ -267,7 +354,7 @@ def project(db: Session, today: date | None = None) -> Projection:
         if plan is None:
             continue
         plan.items.append(e)
-        if e.kind == "income":
+        if e.kind == "income" or (e.kind == "change" and e.amount > 0):
             plan.income += e.amount
         elif e.kind == "purchase":
             plan.purchases -= e.amount
@@ -295,6 +382,41 @@ def project(db: Session, today: date | None = None) -> Projection:
         day += timedelta(days=1)
 
     lowest = min(daily, key=lambda d: (d[1], d[0])) if daily else None
+    first_short = next((d for d, b in daily if b < floor), None)
+
+    # Each bank account: its own items only.
+    runs = []
+    for item in cash_items:
+        if item.account_id is None:
+            continue
+        mine: dict[date, Decimal] = defaultdict(Decimal)
+        for e in events:
+            if e.account_id == item.account_id:
+                mine[e.day] += e.amount
+        if not mine:
+            continue
+        bal = item.value or ZERO
+        run = []
+        d = today
+        while d <= end:
+            bal += mine.get(d, ZERO)
+            run.append((d, bal.quantize(CENT)))
+            d += timedelta(days=1)
+        low = min(run, key=lambda x: (x[1], x[0]))
+        under = next((d for d, b in run if b < floor), None)
+        runs.append(
+            AccountRun(
+                item.account_id,
+                item.name,
+                (item.value or ZERO).quantize(CENT),
+                item.as_of,
+                run,
+                low,
+                under,
+                max(ZERO, floor - low[1]).quantize(CENT) if under else ZERO,
+            )
+        )
+    runs.sort(key=lambda r: (r.under_floor is None, r.lowest[1]))
     payday = None
     if lowest is not None:
         later = sorted(
@@ -312,4 +434,12 @@ def project(db: Session, today: date | None = None) -> Projection:
         lowest,
         payday,
         alerts(db, today),
+        horizon=horizon,
+        average_over=average_over,
+        floor=floor,
+        held=held.quantize(CENT),
+        include_held=include_held,
+        accounts=runs,
+        first_short=first_short,
+        end_cash=daily[-1][1] if daily else start_cash,
     )
