@@ -252,17 +252,15 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
 
     # ADR-034: a line's source (statement page and the text around it) and deleting a
     # category whose line and rule move to another one.
-    first = client.get("/api/review").json()["groups"][0]
-    line = first["lines"][0]
+    line = group["lines"][0]  # the line just categorized, read before it left the Inbox
     assert line["statement_file_id"] == st["statement_file_id"] and line["page"]
     src = client.get(f"/api/transactions/{line['transaction_id']}/source").json()
     assert any(a["is_line"] for a in src["around"]) and src["bank"] == "capitalone"
     temp = client.post("/api/categories", json={"name": "Temp trips", "parent_id": travel})
     temp_id = temp.json()["category_id"]
-    client.post(
-        "/api/review/resolve",
-        json={"merchant_key": first["merchant_key"], "category_id": temp_id, "save_rule": True},
-    )
+    tid = line["transaction_id"]
+    moved = client.patch(f"/api/transactions/{tid}", json={"category_id": temp_id})
+    assert moved.status_code == 200, moved.text
     assert client.get(f"/api/categories/{temp_id}/uses").json()["total"] >= 1
     gone = client.delete(f"/api/categories/{temp_id}", params={"move_to": travel})
     assert gone.status_code == 200, gone.text
