@@ -42,6 +42,16 @@ const TYPES: { id: TemplateType; label: string }[] = [
   { id: "fee_interest", label: "Fees and interest" },
 ];
 const isIncome = (t: string) => t === "income";
+/** How often an item repeats (ADR-031). */
+export const EVERY: Record<string, string> = {
+  "1": "Monthly",
+  "2": "Every 2 months",
+  "3": "Every 3 months",
+  "4": "Every 4 months",
+  "6": "Every 6 months",
+  "12": "Yearly",
+  "0": "Once",
+};
 const thisMonth = () => localToday().slice(0, 7);
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -73,10 +83,16 @@ function useRefresh() {
     ["recurring", "transactions", "cashflow"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 }
 
-export default function RecurringPage() {
+export default function RecurringPage({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
   const now = thisMonth();
   const year = Number(params.get("year")) || Number(now.slice(0, 4));
+  // Keeps the rest of the address (the Bills page's view, ADR-031).
+  const setYear = (y: number) => {
+    const next = new URLSearchParams(params);
+    next.set("year", String(y));
+    setParams(next);
+  };
   const grid = useQuery({ queryKey: ["recurring", "grid", year], queryFn: () => fetchRecurringGrid(year) });
   useQuery({ queryKey: ["categories"], queryFn: fetchCategories }); // ready for the forms
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
@@ -123,22 +139,30 @@ export default function RecurringPage() {
 
   return (
     <section>
-      <h1 className="font-display text-4xl font-bold leading-tight">
-        {rows.length
-          ? `${monthLong(`${month}-01`)}: ${matched} of ${inMonth.length} recurring items paid`
-          : "Recurring"}
-      </h1>
+      {embedded ? (
+        <h2 className="font-display text-3xl font-bold leading-tight">
+          {rows.length
+            ? `${monthLong(`${month}-01`)}: ${matched} of ${inMonth.length} recurring items paid`
+            : "Recurring"}
+        </h2>
+      ) : (
+        <h1 className="font-display text-4xl font-bold leading-tight">
+          {rows.length
+            ? `${monthLong(`${month}-01`)}: ${matched} of ${inMonth.length} recurring items paid`
+            : "Recurring"}
+        </h1>
+      )}
       <p className="mt-2 text-lg text-muted">
         Salary, rent, fees and payments that repeat each month: what you expect, and the lines that paid it.
       </p>
 
       <div className="mt-6 flex flex-wrap items-end gap-3">
         <div className="flex gap-1" role="group" aria-label="Year">
-          <button className="btn btn-quiet h-11 px-3" onClick={() => setParams({ year: String(year - 1) })}>
+          <button className="btn btn-quiet h-11 px-3" onClick={() => setYear(year - 1)}>
             ← {year - 1}
           </button>
           <span className="flex h-11 items-center px-3 font-display text-xl font-bold">{year}</span>
-          <button className="btn btn-quiet h-11 px-3" onClick={() => setParams({ year: String(year + 1) })}>
+          <button className="btn btn-quiet h-11 px-3" onClick={() => setYear(year + 1)}>
             {year + 1} →
           </button>
         </div>
@@ -151,7 +175,7 @@ export default function RecurringPage() {
             onChange={(e) => {
               if (!e.target.value) return;
               setMonth(e.target.value);
-              if (!e.target.value.startsWith(String(year))) setParams({ year: e.target.value.slice(0, 4) });
+              if (!e.target.value.startsWith(String(year))) setYear(Number(e.target.value.slice(0, 4)));
             }}
           />
         </label>
@@ -759,6 +783,32 @@ function TemplateFields({
         />
       </label>
       <label>
+        <span className="label">Repeats</span>
+        <select
+          className="field"
+          value={value.every_months}
+          onChange={(e) => set("every_months", e.target.value)}
+        >
+          {Object.entries(EVERY).map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span className="label">On day (optional)</span>
+        <input
+          className="field num"
+          type="number"
+          min={1}
+          max={31}
+          step="1"
+          value={value.due_day}
+          onChange={(e) => set("due_day", e.target.value)}
+        />
+      </label>
+      <label>
         <span className="label">Tolerance %</span>
         <input
           className="field num"
@@ -774,7 +824,7 @@ function TemplateFields({
   );
 }
 
-function TemplateForm({
+export function TemplateForm({
   accounts,
   month,
   onDone,
@@ -795,11 +845,17 @@ function TemplateForm({
     account_id: "",
     match_pattern: "",
     tolerance_pct: "10",
+    every_months: "1",
+    due_day: "",
+    end_month: "",
   });
   const set = (k: string, val: string) => setV({ ...v, [k]: val });
   const save = useMutation({
     mutationFn: () =>
       createTemplate({
+        every_months: Number(v.every_months),
+        due_day: v.due_day ? Number(v.due_day) : null,
+        end_month: v.end_month ? `${v.end_month}-01` : null,
         name: v.name.trim(),
         category_id: Number(v.category_id),
         type: v.type as TemplateType,
@@ -836,7 +892,7 @@ function TemplateForm({
         />
       </label>
       <label>
-        <span className="label">Amount each month</span>
+        <span className="label">Amount each time</span>
         <input
           className="field num"
           required
@@ -856,6 +912,15 @@ function TemplateForm({
           required
           value={v.start_month}
           onChange={(e) => set("start_month", e.target.value)}
+        />
+      </label>
+      <label>
+        <span className="label">Last month (optional)</span>
+        <input
+          type="month"
+          className="field"
+          value={v.end_month}
+          onChange={(e) => set("end_month", e.target.value)}
         />
       </label>
       <TemplateFields value={v} set={set} accounts={accounts} />
@@ -894,6 +959,8 @@ function TemplateEditor({
     match_pattern: t.match_pattern ?? "",
     tolerance_pct: String(Number(t.tolerance_pct)),
     end_month: t.end_month?.slice(0, 7) ?? "",
+    every_months: String(t.every_months ?? 1),
+    due_day: t.due_day ? String(t.due_day) : "",
   });
   const set = (k: string, val: string) => setV({ ...v, [k]: val });
   const [confirm, setConfirm] = useState(false);
@@ -942,6 +1009,8 @@ function TemplateEditor({
             match_pattern: v.match_pattern.trim() || null,
             tolerance_pct: v.tolerance_pct || "10",
             end_month: v.end_month ? `${v.end_month}-01` : null,
+            every_months: Number(v.every_months),
+            due_day: v.due_day ? Number(v.due_day) : null,
           });
         }}
       >

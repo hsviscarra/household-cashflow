@@ -79,6 +79,8 @@ const TEMPLATE: RecurringTemplate = {
   source: "manual",
   group: "Housing",
   notes: null,
+  every_months: 1,
+  due_day: null,
 };
 const line = (id: number, description: string, amount: string): Txn => ({
   transaction_id: id,
@@ -315,7 +317,7 @@ describe("Recurring page", () => {
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
     const form = screen.getByRole("form", { name: "New template" });
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: " Phone " } });
-    fireEvent.change(within(form).getByLabelText("Amount each month"), { target: { value: "27.12" } });
+    fireEvent.change(within(form).getByLabelText("Amount each time"), { target: { value: "27.12" } });
     pickCategory(await within(form).findByRole("combobox", { name: "Category" }), "hous", "Housing");
     fireEvent.change(within(form).getByLabelText("Account (optional)"), { target: { value: "5" } });
     fireEvent.change(within(form).getByLabelText("Description contains (optional)"), {

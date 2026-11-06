@@ -506,6 +506,8 @@ export type RecurringTemplate = {
   source: "manual" | "excel";
   group: string;
   notes: string | null;
+  every_months: number; // ADR-031: 1 monthly, 2-12 months, 0 once
+  due_day: number | null;
 };
 export type TemplateInput = {
   name: string;
@@ -519,6 +521,8 @@ export type TemplateInput = {
   match_pattern?: string | null;
   tolerance_pct?: string;
   notes?: string | null;
+  every_months?: number;
+  due_day?: number | null;
 };
 export type TemplatePatch = Partial<Omit<TemplateInput, "amount" | "start_month">> & {
   is_active?: boolean;
@@ -1298,3 +1302,29 @@ export const resolveMany = (merchant_keys: string[], category_id: number | null)
 export const fetchWho = (month?: string | null) => send<Txn[]>("GET", `/api/review/who${query({ month })}`);
 export const setWho = (transaction_id: number, counterparty_id: number) =>
   send<Txn>("POST", "/api/review/who", { transaction_id, counterparty_id });
+
+// ---------- Bills & subscriptions (ADR-031) ----------
+export type BillStatus = "paid" | "due" | "late" | "skipped";
+export type Bill = {
+  template_id: number;
+  name: string;
+  type: TemplateType;
+  group: string;
+  group_color: string | null;
+  category_path: string;
+  account_name: string | null;
+  every_months: number;
+  due_day: number | null;
+  due_day_set: boolean;
+  expected: string;
+  paid: string | null;
+  lines: number;
+  status: BillStatus;
+  avg3: string | null;
+  payments_left: number | null;
+  price_from: string | null;
+  price_changed: string | null;
+  end_month: string | null;
+};
+export type Bills = { month: string; today: string; bills: Bill[] };
+export const fetchBills = (month: string) => send<Bills>("GET", `/api/recurring/bills?month=${month}`);

@@ -271,6 +271,8 @@ class RecurringTemplate(Timestamps, Base):
     __table_args__ = (
         CheckConstraint(_in("type", TXN_TYPES), name="type"),
         CheckConstraint(_in("source", RECURRING_SOURCES), name="source"),
+        CheckConstraint("every_months IN (0, 1, 2, 3, 4, 6, 12)", name="every_months"),
+        CheckConstraint("due_day IS NULL OR (due_day >= 1 AND due_day <= 31)", name="due_day"),
         UniqueConstraint("name"),
         {"schema": "core"},
     )
@@ -295,6 +297,10 @@ class RecurringTemplate(Timestamps, Base):
     excel_group: Mapped[str | None] = mapped_column(Unicode(100))
     excel_label: Mapped[str | None] = mapped_column(Unicode(100))
     notes: Mapped[str | None] = mapped_column(Unicode(400))
+    # How often it repeats (ADR-031): 1 monthly, 2, 3, 4, 6 or 12 months; 0 once.
+    every_months: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # The day of the month it's usually paid; empty = read from the lines it matched.
+    due_day: Mapped[int | None] = mapped_column(Integer)
 
 
 class RecurringAmount(Base):

@@ -1116,3 +1116,38 @@ def test_merchants_products_and_ideas_on_sql_server(tmp_path: object) -> None:
     assert client.get("/api/spending/products", params=month).status_code == 200
     ideas = client.get("/api/spending/ideas", params={**month, "person": "Hernan"})
     assert ideas.status_code == 200
+
+
+def test_bills_and_cadence_on_sql_server() -> None:
+    """ADR-031 on SQL Server: a quarterly item with a due day, generated and listed as a bill;
+    0030 down and up."""
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    _alembic("upgrade", "head")
+    client = TestClient(create_app())
+    cats = client.get("/api/categories").json()
+    leaf = next(c for g in cats for c in g.get("children", []) if c.get("kind") == "expense")
+    body = {
+        "name": "Integration quarterly",
+        "category_id": leaf["category_id"],
+        "type": "expense",
+        "amount": "90",
+        "start_month": "2026-02-01",
+        "every_months": 3,
+        "due_day": 12,
+    }
+    made = client.post("/api/recurring/templates", json=body)
+    assert made.status_code == 201, made.text
+    assert (made.json()["every_months"], made.json()["due_day"]) == (3, 12)
+    for m in ("2026-05-01", "2026-06-01"):
+        client.post("/api/recurring/generate", json={"month": m})
+    may = client.get("/api/recurring/bills", params={"month": "2026-05-01"}).json()["bills"]
+    june = client.get("/api/recurring/bills", params={"month": "2026-06-01"}).json()["bills"]
+    assert any(b["name"] == "Integration quarterly" and b["due_day"] == 12 for b in may)
+    assert all(b["name"] != "Integration quarterly" for b in june)
+    client.delete(f"/api/recurring/templates/{made.json()['template_id']}")
+
+    _alembic("downgrade", "0029")
+    _alembic("upgrade", "head")

@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.47.0] — Bills & subscriptions, one page, any schedule
+
+### Added
+- **Any schedule** (ADR-031): monthly, every 2, 3, 4 or 6 months, yearly or once, an optional
+  day of the month and a last month for installments (migration 0030).
+- **Bills & subscriptions page**: a calendar of the month (paid, due, late), items by group with
+  totals, price changes, the year grid and the subscriptions found in statements, with tiles
+  for committed, paid so far, late and subscriptions per year.
+- **Add a bill** asks how often, on which day and until when.
+
+### Changed
+- Bills and Subscriptions are one entry in the sidebar; `/subscriptions` still opens.
+
 ## [0.46.0] — Transactions you can slice, save and export
 
 ### Added

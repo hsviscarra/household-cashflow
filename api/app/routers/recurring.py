@@ -2,9 +2,11 @@
 
 from collections.abc import Callable
 from datetime import date
-from typing import Annotated
+from decimal import Decimal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -78,6 +80,8 @@ def _template_out(db: Session, t: RecurringTemplate) -> TemplateOut:
         source=t.source,
         group=t.excel_group or (parent.name if parent else cat.name if cat else ""),
         notes=t.notes,
+        every_months=t.every_months,
+        due_day=t.due_day,
     )
 
 
@@ -112,6 +116,8 @@ def create_template(body: TemplateIn, db: DB, request: Request) -> TemplateOut:
             match_pattern=body.match_pattern,
             tolerance_pct=body.tolerance_pct,
             notes=body.notes,
+            every_months=body.every_months,
+            due_day=body.due_day,
             user=_user(request),
         )
     )
@@ -277,3 +283,48 @@ def from_excel(body: FromExcelIn, db: DB, request: Request) -> FromExcelOut:
         lambda: recurring.create_from_excel(db, body.year, body.names, _user(request))
     )
     return FromExcelOut(templates=made, entries=entries, linked=linked)
+
+
+# ---------------------------------------------------------------- bills (ADR-031)
+class BillOut(BaseModel):
+    template_id: int
+    name: str
+    type: str
+    group: str
+    group_color: str | None
+    category_path: str
+    account_name: str | None
+    every_months: int
+    due_day: int | None
+    due_day_set: bool
+    expected: Decimal
+    paid: Decimal | None
+    lines: int
+    status: Literal["paid", "due", "late", "skipped"]
+    avg3: Decimal | None
+    payments_left: int | None
+    price_from: Decimal | None
+    price_changed: date | None
+    end_month: date | None
+
+
+class BillsOut(BaseModel):
+    month: date
+    today: date
+    bills: list[BillOut]
+
+
+@router.get("/bills", response_model=BillsOut)
+def list_bills(
+    db: DB,
+    month: Annotated[date | None, Query(description="Any day of the month; this month")] = None,
+    today: Annotated[date | None, Query(include_in_schema=False)] = None,
+) -> BillsOut:
+    """Bills and subscriptions due in a month: paid, due or late, on which day (ADR-031)."""
+    day = today or date.today()
+    m = recurring.first(month or day)
+    return BillsOut(
+        month=m,
+        today=day,
+        bills=[BillOut(**vars(b)) for b in recurring.bills(db, m, day)],
+    )

@@ -18,7 +18,7 @@ test("recurring: the sheet's rows become templates and the grid reproduces them"
     await expect(page.getByText("History loaded.")).toBeVisible();
   }
 
-  await page.goto("/recurring?year=2026");
+  await page.goto("/recurring?view=grid&year=2026");
   const table = page.getByRole("table", { name: "Recurring items in 2026, by month" });
   const choose = page.getByRole("button", { name: "Choose rows from the 2026 sheet" });
   await expect(table.or(choose)).toBeVisible();

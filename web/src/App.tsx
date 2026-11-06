@@ -13,12 +13,11 @@ import Home from "./pages/Home";
 import PeoplePage from "./pages/People";
 import ProjectionsPage from "./pages/Projections";
 import PurchasesPage from "./pages/Purchases";
-import RecurringPage from "./pages/Recurring";
+import BillsPage from "./pages/Bills";
 import ReportPage from "./pages/Report";
 import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
 import SpendingPage from "./pages/Spending";
-import SubscriptionsPage from "./pages/Subscriptions";
 import StatusPage from "./pages/Status";
 import TransactionsPage from "./pages/Transactions";
 import { useDensity } from "./prefs";
@@ -96,7 +95,6 @@ const NAV_ORDER = [
   "/transactions",
   "/people",
   "/recurring",
-  "/subscriptions",
   "/projections",
   "/report",
   "/status",
@@ -192,11 +190,11 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/transactions": <TransactionsPage />,
   "/review": <ReviewPage />,
   "/people": <PeoplePage />,
-  "/recurring": <RecurringPage />,
+  "/recurring": <BillsPage />,
   "/status": <StatusPage />,
   "/spending": <SpendingPage />,
   "/purchases": <PurchasesPage />,
-  "/subscriptions": <SubscriptionsPage />,
+  "/subscriptions": <BillsPage start="found" />,
   "/debt": <DebtPage />,
   "/projections": <ProjectionsPage />,
   "/report": <ReportPage />,

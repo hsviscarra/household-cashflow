@@ -516,6 +516,9 @@ class TemplateIn(BaseModel):
     match_pattern: str | None = Field(default=None, max_length=200)
     tolerance_pct: Decimal = Field(default=Decimal(10), ge=0, le=100)
     notes: str | None = Field(default=None, max_length=400)
+    # ADR-031: how often (1 monthly, 2-12 months, 0 once) and the usual day.
+    every_months: Literal[0, 1, 2, 3, 4, 6, 12] = 1
+    due_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class TemplatePatch(BaseModel):
@@ -532,6 +535,8 @@ class TemplatePatch(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     notes: str | None = Field(default=None, max_length=400)
+    every_months: Literal[0, 1, 2, 3, 4, 6, 12] | None = None
+    due_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class TemplateOut(BaseModel):
@@ -554,6 +559,8 @@ class TemplateOut(BaseModel):
     source: str
     group: str
     notes: str | None
+    every_months: int = 1
+    due_day: int | None = None
 
 
 class AmountOut(BaseModel):

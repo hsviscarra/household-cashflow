@@ -59,7 +59,7 @@ describe("App shell", () => {
   it("lists every page in the navigation", () => {
     mockApi(okHealth, { name: null, authenticated: false });
     renderAt("/");
-    for (const page of PAGES) {
+    for (const page of PAGES.filter((p) => !p.hidden)) {
       expect(screen.getByRole("link", { name: page.label })).toBeInTheDocument();
     }
   });
