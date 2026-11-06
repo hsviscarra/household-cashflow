@@ -55,10 +55,14 @@ export function useDensity(): [Density, (d: Density) => void] {
 }
 
 /** Which optional columns of a table are shown; every column when nothing is saved. */
-export function useColumns(table: string, all: string[]): [string[], (cols: string[]) => void] {
+export function useColumns(
+  table: string,
+  all: string[],
+  defaults: string[] = all,
+): [string[], (cols: string[]) => void] {
   const { settings, set } = useSettings();
   const saved = asRecord(settings[`table:${table}`]).columns;
-  const shown = Array.isArray(saved) ? all.filter((c) => saved.includes(c)) : all;
+  const shown = all.filter((c) => (Array.isArray(saved) ? saved : defaults).includes(c));
   return [shown, (cols) => set(`table:${table}`, { columns: all.filter((c) => cols.includes(c)) })];
 }
 

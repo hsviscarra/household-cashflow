@@ -16,7 +16,7 @@ from app.ingestion.storage import StatementStore, get_store
 from app.models import Account, ImportBatch, StatementFile, StatementHeader, Transaction
 from app.routers.classify import transaction_out
 from app.schemas import ApplyRulesOut, ApproveOut, BatchOut, TransactionOut
-from app.services import classify, inbox, transfers
+from app.services import classify, inbox, recurring, transfers
 
 router = APIRouter(prefix="/api", tags=["batches"])
 DB = Annotated[Session, Depends(get_session)]
@@ -148,6 +148,12 @@ def list_transactions(
         Literal["Hernan", "Lauren", "Joint"] | None,
         Query(description="Only this person's lines (the Both/Hernan/Lauren switch)"),
     ] = None,
+    counterparty_id: Annotated[
+        int | None, Query(description="Only lines for this person (People, ADR-023)")
+    ] = None,
+    months: Annotated[
+        int, Query(ge=1, le=36, description="With month: this many months up to it (ADR-030)")
+    ] = 1,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> list[TransactionOut]:
     q = (
@@ -157,7 +163,13 @@ def list_transactions(
         .limit(limit)
     )
     if month:
-        q = q.where(Transaction.cash_month == month.replace(day=1))
+        end = month.replace(day=1)
+        q = q.where(
+            Transaction.cash_month >= recurring.add_months(end, 1 - months),
+            Transaction.cash_month <= end,
+        )
+    if counterparty_id:
+        q = q.where(Transaction.counterparty_id == counterparty_id)
     if account_id:
         q = q.where(Transaction.account_id == account_id)
     if source:

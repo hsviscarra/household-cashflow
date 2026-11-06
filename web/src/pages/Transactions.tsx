@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import {
   fetchCategories,
   fetchHistory,
+  fetchPeople,
   fetchTransactions,
   removeSplit,
   splitTransaction,
@@ -14,8 +15,8 @@ import {
 } from "../api";
 import CategoryPicker from "../components/CategoryPicker";
 import { PersonNote, SaveView, TableSettings } from "../components/Personalize";
-import { money, monthLong, num, showAmount } from "../money";
-import { personParam, useColumns, usePerson } from "../prefs";
+import { addMonths, money, monthLong, num, showAmount } from "../money";
+import { personParam, useColumns, usePerson, useSavedViews, type Person } from "../prefs";
 
 const SOURCE_LABEL: Record<string, string> = {
   statement: "Statement",
@@ -40,107 +41,300 @@ function thisMonth() {
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-// Columns a person can hide (ADR-026); the description and the amount always show.
+// Columns a person can choose (ADR-026, ADR-030); the description and the amount always show.
 const COLUMNS: Record<string, string> = {
   date: "Date",
   account: "Account",
   who: "Who",
   category: "Category",
+  note: "Note / person",
+  merchant: "Merchant (cleaned)",
+  post: "Posted date",
+  country: "Country",
+};
+const DEFAULT_COLUMNS = ["date", "account", "who", "category", "note"];
+
+export type Filters = {
+  q: string;
+  todo: boolean;
+  account: string | null;
+  group: string | null;
+  min: number | null;
+  max: number | null;
+  note: boolean;
 };
 
-/** The search box and "needs a category" filter: on the description, merchant, note or category. */
-export function matches(t: Txn, q: string, todo: boolean) {
-  if (todo && (t.parts || t.category_id)) return false;
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const text = [t.description, t.merchant, t.notes, t.category_path, t.account_name]
+const group = (t: Txn) => t.category_path?.split(/\s[/›]\s/)[0] ?? null;
+
+/** The filters: search (description, merchant, note, category, account or amount), needs a
+ * category, account, category group, amount range (without sign) and has a note. */
+export function keep(t: Txn, f: Filters) {
+  if (f.todo && (t.parts || t.category_id)) return false;
+  if (f.account && t.account_name !== f.account) return false;
+  if (f.group && group(t) !== f.group) return false;
+  const size = Math.abs(num(t.amount));
+  if (f.min !== null && size < f.min) return false;
+  if (f.max !== null && size > f.max) return false;
+  if (f.note && !t.notes) return false;
+  const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [t.description, t.merchant, t.notes, t.category_path, t.account_name, size.toFixed(2)]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  return words.every((w) => text.includes(w));
+  return words.every((w) => text.includes(w.replace(/[$,]/g, "")));
 }
+
+/** Kept for the tests and saved views of 0.42: search and "needs a category". */
+export const matches = (t: Txn, q: string, todo: boolean) =>
+  keep(t, { q, todo, account: null, group: null, min: null, max: null, note: false });
 
 /** Lines that count: a split line counts through its parts. */
 export const counted = (t: Txn) => !t.parts;
 
+const cell = (v: string | null | undefined) => {
+  const text = v ?? "";
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+/** The lines shown, as CSV (the columns of the table, every one). */
+export function toCsv(rows: Txn[], names: Map<number, string>) {
+  const head = [
+    "Date",
+    "Posted",
+    "Description",
+    "Merchant",
+    "Account",
+    "Who",
+    "Category",
+    "Note",
+    "Person",
+    "Country",
+    "Amount",
+  ];
+  const body = rows.map((t) =>
+    [
+      t.txn_date,
+      t.post_date,
+      t.description,
+      t.merchant,
+      t.account_name,
+      t.person,
+      t.category_path,
+      t.notes,
+      t.counterparty_id ? names.get(t.counterparty_id) : null,
+      t.country,
+      t.amount,
+    ]
+      .map(cell)
+      .join(","),
+  );
+  return [head.join(","), ...body].join("\n");
+}
+
+function download(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const PERIODS: Record<string, string> = { "1": "This month", "3": "3 months to it", "12": "12 months to it" };
+
 export default function TransactionsPage() {
   const [params, setParams] = useSearchParams();
   const month = /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month")! : thisMonth();
-  const search = params.get("q") ?? "";
-  const todo = params.get("todo") === "1";
+  const months = ["3", "12"].includes(params.get("months") ?? "") ? Number(params.get("months")) : 1;
+  const cp = Number(params.get("cp")) || null;
+  const numOr = (k: string) =>
+    params.get(k) && !Number.isNaN(Number(params.get(k))) ? Number(params.get(k)) : null;
+  const f: Filters = {
+    q: params.get("q") ?? "",
+    todo: params.get("todo") === "1",
+    account: params.get("acct"),
+    group: params.get("cat"),
+    min: numOr("min"),
+    max: numOr("max"),
+    note: params.get("note") === "1",
+  };
   const [person, , ready] = usePerson();
-  const [cols] = useColumns("transactions", Object.keys(COLUMNS));
+  const [cols] = useColumns("transactions", Object.keys(COLUMNS), DEFAULT_COLUMNS);
   const show = (c: string) => cols.includes(c);
   const { data: loaded, error } = useQuery({
-    queryKey: ["transactions", month, person],
-    queryFn: () => fetchTransactions(`${month}-01`, personParam(person)),
+    queryKey: ["transactions", month, person, months, cp],
+    queryFn: () =>
+      fetchTransactions(`${month}-01`, personParam(person), { months, counterparty_id: cp ?? undefined }),
     enabled: ready,
   });
-  const filtering = !!search.trim() || todo;
-  const data = loaded?.filter((t) => matches(t, search, todo));
+  const people = useQuery({ queryKey: ["people"], queryFn: fetchPeople });
+  const names = new Map((people.data ?? []).map((p) => [p.counterparty_id, p.name]));
+  const filtering =
+    !!f.q.trim() || f.todo || !!f.account || !!f.group || f.min !== null || f.max !== null || f.note;
+  const data = loaded?.filter((t) => keep(t, f));
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
-    setParams(next, { replace: key === "q" });
+    setParams(next, { replace: key === "q" || key === "min" || key === "max" });
   };
   useQuery({ queryKey: ["categories"], queryFn: fetchCategories }); // ready for the editors
   const [open, setOpen] = useState<number | null>(null);
 
   const out = (data ?? []).filter((t) => counted(t) && num(t.amount) < 0 && t.type !== "transfer");
   const totalOut = out.reduce((s, t) => s - num(t.amount), 0);
+  const totalShown = (data ?? []).filter(counted).reduce((s, t) => s + num(t.amount), 0);
   const needing = (loaded ?? []).filter(
     (t) => counted(t) && !t.category_id && t.source === "statement",
   ).length;
   // Parts are listed right under the line they split.
   const rows = data ? ordered(data) : [];
+  const accounts = [
+    ...new Set((loaded ?? []).map((t) => t.account_name).filter((a): a is string => !!a)),
+  ].sort();
+  const groups = [...new Set((loaded ?? []).map(group).filter((g): g is string => !!g))].sort();
+  const period =
+    months > 1
+      ? `${monthLong(addMonths(`${month}-01`, 1 - months))} to ${monthLong(`${month}-01`)}`
+      : monthLong(`${month}-01`);
 
   return (
     <section>
-      <h1 className="font-display text-4xl font-bold leading-tight">Transactions</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-4xl font-bold leading-tight">Transactions</h1>
+        {data && data.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() =>
+              download(`transactions-${month}${months > 1 ? `-${months}m` : ""}.csv`, toCsv(rows, names))
+            }
+          >
+            Export {data.length} lines (CSV)
+          </button>
+        )}
+      </div>
       <p className="mt-2 text-lg text-muted">
-        Every loaded line for a month. Edit a category or split a charge; every change is kept in its history.
+        Every loaded line. Filter, choose your columns and save the view; click a line to edit it, split it or
+        add a note. Every change is kept in its history.
       </p>
 
-      <div className="mt-6 flex flex-wrap items-end gap-4">
+      <ViewTabs month={month} />
+
+      <div className="mt-4 flex flex-wrap items-end gap-3" role="group" aria-label="Filters">
         <label>
           <span className="label">Month</span>
           <input
             type="month"
-            className="field w-48"
+            className="field w-44"
             value={month}
             onChange={(e) => e.target.value && setParam("month", e.target.value)}
           />
         </label>
         <label>
+          <span className="label">Period</span>
+          <select
+            className="field w-44"
+            value={String(months)}
+            onChange={(e) => setParam("months", e.target.value === "1" ? null : e.target.value)}
+          >
+            {Object.entries(PERIODS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="label">Account</span>
+          <select
+            className="field w-48"
+            value={f.account ?? ""}
+            onChange={(e) => setParam("acct", e.target.value || null)}
+          >
+            <option value="">Any</option>
+            {accounts.map((a) => (
+              <option key={a}>{a}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="label">Category</span>
+          <select
+            className="field w-48"
+            value={f.group ?? ""}
+            onChange={(e) => setParam("cat", e.target.value || null)}
+          >
+            <option value="">Any</option>
+            {groups.map((g) => (
+              <option key={g}>{g}</option>
+            ))}
+          </select>
+        </label>
+        <fieldset className="flex items-end gap-1">
+          <legend className="label">Amount</legend>
+          <label>
+            <span className="sr-only">From</span>
+            <input
+              className="field num w-24"
+              inputMode="decimal"
+              placeholder="from"
+              value={params.get("min") ?? ""}
+              onChange={(e) => setParam("min", e.target.value.trim() || null)}
+            />
+          </label>
+          <span className="pb-3 text-muted">–</span>
+          <label>
+            <span className="sr-only">Up to</span>
+            <input
+              className="field num w-24"
+              inputMode="decimal"
+              placeholder="up to"
+              value={params.get("max") ?? ""}
+              onChange={(e) => setParam("max", e.target.value.trim() || null)}
+            />
+          </label>
+        </fieldset>
+        <label>
           <span className="label">Search</span>
           <input
             type="search"
             className="field w-64"
-            value={search}
-            placeholder="Merchant, note or category"
+            value={f.q}
+            placeholder="Description, merchant, note, amount"
             onChange={(e) => setParam("q", e.target.value)}
           />
         </label>
         <label className="flex h-11 items-center gap-2">
           <input
             type="checkbox"
-            checked={todo}
+            checked={f.todo}
             onChange={(e) => setParam("todo", e.target.checked ? "1" : null)}
           />
           Needs a category
         </label>
+        <label className="flex h-11 items-center gap-2">
+          <input
+            type="checkbox"
+            checked={f.note}
+            onChange={(e) => setParam("note", e.target.checked ? "1" : null)}
+          />
+          Has a note
+        </label>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SaveView month={monthLong(`${month}-01`)} />
-          <TableSettings table="transactions" columns={COLUMNS} />
+          <TableSettings table="transactions" columns={COLUMNS} defaults={DEFAULT_COLUMNS} />
         </div>
       </div>
-      <PersonNote person={person} />
-      {data && (
-        <p className="mt-4 text-muted">
-          {monthLong(`${month}-01`)}: {data.length} {filtering ? `of ${loaded!.length} ` : ""}lines,{" "}
-          <span className="num">{money(totalOut)}</span> out (card payments and transfers excluded)
+      {cp && (
+        <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-full bg-info-bg px-4 py-1.5 text-sm">
+          Only {names.get(cp) ?? "this person"}’s lines.
+          <button type="button" className="font-semibold underline" onClick={() => setParam("cp", null)}>
+            Everyone
+          </button>
         </p>
       )}
+      <PersonNote person={person} />
 
       {error && (
         <p className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
@@ -157,8 +351,8 @@ export default function TransactionsPage() {
       )}
       {data?.some((t) => t.source === "excel_history") && data.some((t) => t.source === "statement") && (
         <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">
-          {monthLong(`${month}-01`)} is covered by the Excel history, so the totals on the Overview use the
-          workbook. The statement lines below are kept for reference and don’t count twice.
+          {period} is covered by the Excel history, so the totals on Cash flow use the workbook. The statement
+          lines below are kept for reference and don’t count twice.
         </p>
       )}
       {data && !data.length && filtering && !!loaded?.length && (
@@ -166,8 +360,7 @@ export default function TransactionsPage() {
       )}
       {loaded && !loaded.length && (
         <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">
-          Nothing loaded for {monthLong(`${month}-01`)} yet. Upload and approve a statement on the Import
-          page.
+          Nothing loaded for {period} yet. Upload and approve a statement on the Import page.
         </p>
       )}
 
@@ -194,6 +387,7 @@ export default function TransactionsPage() {
                 <span>·</span>
                 <CategoryCell t={t} />
               </div>
+              <NoteCell t={t} names={names} />
               <EditToggle t={t} open={open} setOpen={setOpen} />
               {open === t.transaction_id && (
                 <div className="mt-3">
@@ -207,32 +401,18 @@ export default function TransactionsPage() {
       {data && data.length > 0 && (
         <div className="mt-6 hidden overflow-x-auto rounded-2xl border border-line md:block">
           <table className="w-full text-sm">
-            <caption className="sr-only">Transactions in {monthLong(`${month}-01`)}</caption>
+            <caption className="sr-only">Transactions in {period}</caption>
             <thead className="bg-surface text-muted">
               <tr>
-                {show("date") && (
-                  <th scope="col" className="px-4 py-2 text-left font-semibold">
-                    Date
-                  </th>
-                )}
-                <th scope="col" className="px-4 py-2 text-left font-semibold">
-                  Description
-                </th>
-                {show("account") && (
-                  <th scope="col" className="px-4 py-2 text-left font-semibold">
-                    Account
-                  </th>
-                )}
-                {show("who") && (
-                  <th scope="col" className="px-4 py-2 text-left font-semibold">
-                    Who
-                  </th>
-                )}
-                {show("category") && (
-                  <th scope="col" className="px-4 py-2 text-left font-semibold">
-                    Category
-                  </th>
-                )}
+                {show("date") && <Th>Date</Th>}
+                {show("post") && <Th>Posted</Th>}
+                <Th>Description</Th>
+                {show("merchant") && <Th>Merchant</Th>}
+                {show("category") && <Th>Category</Th>}
+                {show("account") && <Th>Account</Th>}
+                {show("who") && <Th>Who</Th>}
+                {show("note") && <Th>Note / person</Th>}
+                {show("country") && <Th>Country</Th>}
                 <th scope="col" className="px-4 py-2 text-right font-semibold">
                   Amount
                 </th>
@@ -246,22 +426,36 @@ export default function TransactionsPage() {
                 <Fragment key={t.transaction_id}>
                   <tr className={t.parts ? "text-muted" : ""}>
                     {show("date") && <td className="num whitespace-nowrap px-4 py-2">{day(t.txn_date)}</td>}
+                    {show("post") && (
+                      <td className="num whitespace-nowrap px-4 py-2">
+                        {t.post_date ? day(t.post_date) : ""}
+                      </td>
+                    )}
                     <td className={`px-4 py-2 ${t.parent_transaction_id ? "pl-8" : ""}`}>
                       {t.parent_transaction_id && <span aria-hidden>↳ </span>}
                       <span className={t.parts ? "line-through" : ""}>{t.description}</span>
-                      {t.notes && <span className="block text-xs text-muted">{t.notes}</span>}
+                      {!show("note") && t.notes && (
+                        <span className="block text-xs text-muted">{t.notes}</span>
+                      )}
                     </td>
+                    {show("merchant") && <td className="px-4 py-2 text-muted">{t.merchant}</td>}
+                    {show("category") && (
+                      <td className="px-4 py-2">
+                        <CategoryCell t={t} />
+                      </td>
+                    )}
                     {show("account") && (
                       <td className="px-4 py-2 text-muted">
                         {t.account_name ?? SOURCE_LABEL[t.source] ?? t.source}
                       </td>
                     )}
                     {show("who") && <td className="px-4 py-2">{t.person}</td>}
-                    {show("category") && (
+                    {show("note") && (
                       <td className="px-4 py-2">
-                        <CategoryCell t={t} />
+                        <NoteCell t={t} names={names} />
                       </td>
                     )}
+                    {show("country") && <td className="px-4 py-2 text-muted">{t.country}</td>}
                     <td className={`num px-4 py-2 text-right ${t.parts ? "line-through" : ""}`}>
                       {showAmount(t.amount)}
                     </td>
@@ -282,7 +476,76 @@ export default function TransactionsPage() {
           </table>
         </div>
       )}
+      {data && data.length > 0 && (
+        <p className="mt-3 flex flex-wrap justify-between gap-2 text-sm text-muted">
+          <span>
+            {period}: {data.length} {filtering ? `of ${loaded!.length} ` : ""}lines ·{" "}
+            <span className="num">{money(totalOut)}</span> out (card payments and transfers excluded)
+          </span>
+          <span>
+            Total shown <span className="num text-ink">{showAmount(totalShown)}</span>
+          </span>
+        </p>
+      )}
     </section>
+  );
+}
+
+function Th({ children }: { children: React.ReactNode }) {
+  return (
+    <th scope="col" className="px-4 py-2 text-left font-semibold">
+      {children}
+    </th>
+  );
+}
+
+function NoteCell({ t, names }: { t: Txn; names: Map<number, string> }) {
+  const who = t.counterparty_id ? names.get(t.counterparty_id) : null;
+  if (!who && !t.notes) return null;
+  return (
+    <span className="block text-sm">
+      {who && (
+        <Link to={`/transactions?cp=${t.counterparty_id}&months=12`} className="pill pill-muted mr-1">
+          {who}
+        </Link>
+      )}
+      {t.notes && <span className="text-muted">{t.notes}</span>}
+    </span>
+  );
+}
+
+/** Saved views of this page as tabs (ADR-030): "All" and each view saved here. */
+function ViewTabs({ month }: { month: string }) {
+  const { views } = useSavedViews();
+  const [, setPerson] = usePerson();
+  const { search } = useLocation();
+  const mine = views.filter((v) => v.path === "/transactions");
+  const strip = (q: string) => {
+    const p = new URLSearchParams(q);
+    p.delete("month");
+    p.sort();
+    return p.toString();
+  };
+  const here = strip(search);
+  return (
+    <nav aria-label="Saved views" className="mt-6 flex flex-wrap gap-1 border-b border-line">
+      {[{ id: "all", name: "All", search: "", person: null as Person | null }, ...mine].map((v) => {
+        const on = strip(v.search) === here;
+        const q = new URLSearchParams(v.search);
+        if (!q.has("month")) q.set("month", month);
+        return (
+          <Link
+            key={v.id}
+            to={`/transactions?${q.toString()}`}
+            aria-current={on ? "page" : undefined}
+            onClick={() => v.person && setPerson(v.person)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${on ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink"}`}
+          >
+            {v.name}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 

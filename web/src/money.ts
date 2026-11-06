@@ -36,6 +36,12 @@ export const parts = (iso: string) => ({ year: Number(iso.slice(0, 4)), month: N
 export const monthShort = (iso: string) => MONTHS[parts(iso).month - 1];
 export const monthLong = (iso: string) => `${LONG[parts(iso).month - 1]} ${parts(iso).year}`;
 export const monthName = (m: number) => LONG[m - 1];
+/** The first of the month `by` months from `iso` ("2026-10-01", -2 → "2026-08-01"). */
+export const addMonths = (iso: string, by: number) => {
+  const { year, month } = parts(iso);
+  const n = year * 12 + (month - 1) + by;
+  return `${Math.floor(n / 12)}-${String((n % 12) + 1).padStart(2, "0")}-01`;
+};
 
 /** Money out without a sign, money back with + (docs/design-system.md). */
 export const showAmount = (v: string | number) => (num(v) > 0 ? signed(v) : money(Math.abs(num(v))));

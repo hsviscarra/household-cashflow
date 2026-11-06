@@ -75,3 +75,47 @@ def test_transactions_by_person(client: TestClient, db: Session) -> None:
     assert who("Hernan") == ["LINE 0"] and who("Lauren") == ["LINE 1"]
     assert who("Joint") == ["LINE 3", "LINE 2"]  # no person counts as joint
     assert client.get("/api/transactions", params={"person": "x"}).status_code == 422
+
+
+def test_transactions_by_person_and_over_months(client: TestClient, db: Session) -> None:
+    """ADR-030: lines for one person from People, over several months."""
+    from app.models import Counterparty
+
+    account = db.scalar(select(Account).where(Account.kind == "checking"))
+    assert account is not None
+    ruben = Counterparty(name="Rubén")
+    db.add(ruben)
+    db.flush()
+    for i, month in enumerate((7, 8, 9, 10)):
+        db.add(
+            Transaction(
+                natural_key=f"m-{i}",
+                account_id=account.account_id,
+                txn_date=date(2026, month, 3),
+                cash_month=date(2026, month, 1),
+                amount=Decimal("-100"),
+                description_raw=f"TRANSFERENCIA {i}",
+                type="transfer",
+                counterparty_id=ruben.counterparty_id if month != 8 else None,
+                source="statement",
+                status="confirmed",
+            )
+        )
+    db.commit()
+
+    def got(**params: object) -> list[str]:
+        return [t["description"] for t in client.get("/api/transactions", params=params).json()]
+
+    assert got(month="2026-10-01") == ["TRANSFERENCIA 3"]
+    assert got(month="2026-10-01", months=3) == [
+        "TRANSFERENCIA 3",
+        "TRANSFERENCIA 2",
+        "TRANSFERENCIA 1",
+    ]
+    who = ruben.counterparty_id
+    assert got(month="2026-10-01", months=12, counterparty_id=who) == [
+        "TRANSFERENCIA 3",
+        "TRANSFERENCIA 2",
+        "TRANSFERENCIA 0",
+    ]
+    assert client.get("/api/transactions", params={"months": 40}).status_code == 422

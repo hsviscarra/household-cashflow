@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.46.0] — Transactions you can slice, save and export
+
+### Added
+- **Transactions filters** (ADR-030): period (this month, 3 or 12 months), account, category,
+  amount range, has a note, and search that also finds amounts.
+- **Saved views as tabs** on Transactions; opening one also sets who it shows.
+- **Columns**: a note / person column, plus merchant, posted date and country to add.
+- **Export the lines shown** as CSV, and a footer with the total shown.
+- **People link to their lines**: "In Transactions (12 months)" on each person, and a person
+  chip on each line.
+
 ## [0.45.0] — The Inbox does more of the work
 
 ### Added

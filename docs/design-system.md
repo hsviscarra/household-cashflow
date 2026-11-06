@@ -78,6 +78,13 @@ how many lines wait for a category. URLs stay as they were.
   category for all. A selected card gets a primary border and a light info background.
 - Keyboard shortcuts are listed behind a "Keyboard" link (and "?"), never only in a tooltip.
 
+## Transactions (ADR-030)
+
+- Saved views are tabs under the title: a 2px primary underline marks the current one.
+- Filters sit in one wrapping row of labelled fields; Save view and Columns go at its end.
+- A line's person is a muted pill linking to their lines; the note follows in muted text.
+- The footer under the table: lines shown and money out on the left, "Total shown" on the right.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

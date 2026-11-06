@@ -51,9 +51,17 @@ export function PersonNote({ person }: { person: Person }) {
 }
 
 /** Columns for one table, and row size for every table. */
-export function TableSettings({ table, columns }: { table: string; columns: Record<string, string> }) {
+export function TableSettings({
+  table,
+  columns,
+  defaults,
+}: {
+  table: string;
+  columns: Record<string, string>;
+  defaults?: string[];
+}) {
   const all = Object.keys(columns);
-  const [shown, setShown] = useColumns(table, all);
+  const [shown, setShown] = useColumns(table, all, defaults);
   const [density, setDensity] = useDensity();
   return (
     <details className="relative">
