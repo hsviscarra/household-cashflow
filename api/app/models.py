@@ -428,6 +428,22 @@ class Counterparty(Timestamps, Base):
     notes: Mapped[str | None] = mapped_column(Unicode(400))
 
 
+class UserSetting(Base):
+    """One signed-in person's choice (ADR-026): the Both/Hernan/Lauren switch, a table's columns
+    and row size, saved views, Home widgets. The value is JSON the web app owns; nothing here is
+    financial, and each person only reads and writes their own."""
+
+    __tablename__ = "user_setting"
+    __table_args__ = ({"schema": "core"},)
+
+    user_email: Mapped[str] = mapped_column(Unicode(254), primary_key=True)
+    key: Mapped[str] = mapped_column(Unicode(100), primary_key=True)
+    value_json: Mapped[str] = mapped_column(UnicodeText)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TransferNote(Timestamps, Base):
     """A transfer told to the app before (or after) its statement (ADR-023): the statement says
     "TRANSFERENCIA", the note says who and why. Matched to the line with the same signed amount,

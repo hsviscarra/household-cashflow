@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import { fetchHealth, fetchMe, fetchReview } from "./api";
+import { PersonSwitch, SavedViewLinks } from "./components/Personalize";
 import { GROUPS, PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
 import DebtPage from "./pages/Debt";
@@ -19,6 +20,7 @@ import SpendingPage from "./pages/Spending";
 import SubscriptionsPage from "./pages/Subscriptions";
 import StatusPage from "./pages/Status";
 import TransactionsPage from "./pages/Transactions";
+import { useDensity } from "./prefs";
 
 /** The free Azure SQL database pauses after an hour without use and takes up to a minute or two
  * to resume: until then it's "waking up", not down. */
@@ -111,6 +113,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <span aria-hidden="true" className="h-7 w-7 rounded-lg bg-primary" />
         <span className="font-display text-lg font-semibold">Cashflow</span>
       </Link>
+      <PersonSwitch />
       {GROUPS.filter((g) => g !== "More").map((g) => (
         <div key={g} className="flex flex-col gap-0.5">
           {g !== "Home" && (
@@ -138,6 +141,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             ))}
         </div>
       ))}
+      <SavedViewLinks onNavigate={onNavigate} />
       <div className="mt-auto flex flex-col gap-2 px-0 pt-6">
         <Link
           to="/import"
@@ -199,6 +203,11 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const { pathname } = useLocation();
   useEffect(() => setMenu(false), [pathname]);
+  // Row size is one choice for every table (ADR-026); index.css reads it from <html>.
+  const [density] = useDensity();
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+  }, [density]);
   return (
     <div className="min-h-screen bg-canvas text-ink lg:flex">
       <a

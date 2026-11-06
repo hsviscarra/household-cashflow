@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -23,11 +23,13 @@ from app.services import spending
 router = APIRouter(prefix="/api/spending", tags=["spending"])
 DB = Annotated[Session, Depends(get_session)]
 Month = Annotated[date | None, Query(description="Any day of the month; default the latest")]
+# The Both/Hernan/Lauren switch (ADR-026): one person's lines, or everyone's when left out.
+Person = Annotated[Literal["Hernan", "Lauren", "Joint"] | None, Query()]
 
 
 @router.get("", response_model=SpendingOut)
-def get_spending(db: DB, month: Month = None) -> SpendingOut:
-    s = spending.analyze(db, month)
+def get_spending(db: DB, month: Month = None, person: Person = None) -> SpendingOut:
+    s = spending.analyze(db, month, person)
     return SpendingOut(
         month=s.month,
         months=s.months,

@@ -13,7 +13,9 @@ import {
   type Txn,
 } from "../api";
 import CategoryPicker from "../components/CategoryPicker";
+import { PersonNote, SaveView, TableSettings } from "../components/Personalize";
 import { money, monthLong, num, showAmount } from "../money";
+import { personParam, useColumns, usePerson } from "../prefs";
 
 const SOURCE_LABEL: Record<string, string> = {
   statement: "Statement",
@@ -38,22 +40,57 @@ function thisMonth() {
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
+// Columns a person can hide (ADR-026); the description and the amount always show.
+const COLUMNS: Record<string, string> = {
+  date: "Date",
+  account: "Account",
+  who: "Who",
+  category: "Category",
+};
+
+/** The search box and "needs a category" filter: on the description, merchant, note or category. */
+export function matches(t: Txn, q: string, todo: boolean) {
+  if (todo && (t.parts || t.category_id)) return false;
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [t.description, t.merchant, t.notes, t.category_path, t.account_name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
 /** Lines that count: a split line counts through its parts. */
 export const counted = (t: Txn) => !t.parts;
 
 export default function TransactionsPage() {
   const [params, setParams] = useSearchParams();
   const month = /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month")! : thisMonth();
-  const { data, error } = useQuery({
-    queryKey: ["transactions", month],
-    queryFn: () => fetchTransactions(`${month}-01`),
+  const search = params.get("q") ?? "";
+  const todo = params.get("todo") === "1";
+  const [person, , ready] = usePerson();
+  const [cols] = useColumns("transactions", Object.keys(COLUMNS));
+  const show = (c: string) => cols.includes(c);
+  const { data: loaded, error } = useQuery({
+    queryKey: ["transactions", month, person],
+    queryFn: () => fetchTransactions(`${month}-01`, personParam(person)),
+    enabled: ready,
   });
+  const filtering = !!search.trim() || todo;
+  const data = loaded?.filter((t) => matches(t, search, todo));
+  const setParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setParams(next, { replace: key === "q" });
+  };
   useQuery({ queryKey: ["categories"], queryFn: fetchCategories }); // ready for the editors
   const [open, setOpen] = useState<number | null>(null);
 
   const out = (data ?? []).filter((t) => counted(t) && num(t.amount) < 0 && t.type !== "transfer");
   const totalOut = out.reduce((s, t) => s - num(t.amount), 0);
-  const needing = (data ?? []).filter((t) => counted(t) && !t.category_id && t.source === "statement").length;
+  const needing = (loaded ?? []).filter(
+    (t) => counted(t) && !t.category_id && t.source === "statement",
+  ).length;
   // Parts are listed right under the line they split.
   const rows = data ? ordered(data) : [];
 
@@ -71,16 +108,39 @@ export default function TransactionsPage() {
             type="month"
             className="field w-48"
             value={month}
-            onChange={(e) => e.target.value && setParams({ month: e.target.value })}
+            onChange={(e) => e.target.value && setParam("month", e.target.value)}
           />
         </label>
-        {data && (
-          <p className="pb-2 text-muted">
-            {monthLong(`${month}-01`)}: {data.length} lines, <span className="num">{money(totalOut)}</span>{" "}
-            out (card payments and transfers excluded)
-          </p>
-        )}
+        <label>
+          <span className="label">Search</span>
+          <input
+            type="search"
+            className="field w-64"
+            value={search}
+            placeholder="Merchant, note or category"
+            onChange={(e) => setParam("q", e.target.value)}
+          />
+        </label>
+        <label className="flex h-11 items-center gap-2">
+          <input
+            type="checkbox"
+            checked={todo}
+            onChange={(e) => setParam("todo", e.target.checked ? "1" : null)}
+          />
+          Needs a category
+        </label>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <SaveView month={monthLong(`${month}-01`)} />
+          <TableSettings table="transactions" columns={COLUMNS} />
+        </div>
       </div>
+      <PersonNote person={person} />
+      {data && (
+        <p className="mt-4 text-muted">
+          {monthLong(`${month}-01`)}: {data.length} {filtering ? `of ${loaded!.length} ` : ""}lines,{" "}
+          <span className="num">{money(totalOut)}</span> out (card payments and transfers excluded)
+        </p>
+      )}
 
       {error && (
         <p className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
@@ -101,7 +161,10 @@ export default function TransactionsPage() {
           workbook. The statement lines below are kept for reference and don’t count twice.
         </p>
       )}
-      {data && !data.length && (
+      {data && !data.length && filtering && !!loaded?.length && (
+        <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">No lines match these filters.</p>
+      )}
+      {loaded && !loaded.length && (
         <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">
           Nothing loaded for {monthLong(`${month}-01`)} yet. Upload and approve a statement on the Import
           page.
@@ -147,21 +210,29 @@ export default function TransactionsPage() {
             <caption className="sr-only">Transactions in {monthLong(`${month}-01`)}</caption>
             <thead className="bg-surface text-muted">
               <tr>
-                <th scope="col" className="px-4 py-2 text-left font-semibold">
-                  Date
-                </th>
+                {show("date") && (
+                  <th scope="col" className="px-4 py-2 text-left font-semibold">
+                    Date
+                  </th>
+                )}
                 <th scope="col" className="px-4 py-2 text-left font-semibold">
                   Description
                 </th>
-                <th scope="col" className="px-4 py-2 text-left font-semibold">
-                  Account
-                </th>
-                <th scope="col" className="px-4 py-2 text-left font-semibold">
-                  Who
-                </th>
-                <th scope="col" className="px-4 py-2 text-left font-semibold">
-                  Category
-                </th>
+                {show("account") && (
+                  <th scope="col" className="px-4 py-2 text-left font-semibold">
+                    Account
+                  </th>
+                )}
+                {show("who") && (
+                  <th scope="col" className="px-4 py-2 text-left font-semibold">
+                    Who
+                  </th>
+                )}
+                {show("category") && (
+                  <th scope="col" className="px-4 py-2 text-left font-semibold">
+                    Category
+                  </th>
+                )}
                 <th scope="col" className="px-4 py-2 text-right font-semibold">
                   Amount
                 </th>
@@ -174,19 +245,23 @@ export default function TransactionsPage() {
               {rows.map((t) => (
                 <Fragment key={t.transaction_id}>
                   <tr className={t.parts ? "text-muted" : ""}>
-                    <td className="num whitespace-nowrap px-4 py-2">{day(t.txn_date)}</td>
+                    {show("date") && <td className="num whitespace-nowrap px-4 py-2">{day(t.txn_date)}</td>}
                     <td className={`px-4 py-2 ${t.parent_transaction_id ? "pl-8" : ""}`}>
                       {t.parent_transaction_id && <span aria-hidden>↳ </span>}
                       <span className={t.parts ? "line-through" : ""}>{t.description}</span>
                       {t.notes && <span className="block text-xs text-muted">{t.notes}</span>}
                     </td>
-                    <td className="px-4 py-2 text-muted">
-                      {t.account_name ?? SOURCE_LABEL[t.source] ?? t.source}
-                    </td>
-                    <td className="px-4 py-2">{t.person}</td>
-                    <td className="px-4 py-2">
-                      <CategoryCell t={t} />
-                    </td>
+                    {show("account") && (
+                      <td className="px-4 py-2 text-muted">
+                        {t.account_name ?? SOURCE_LABEL[t.source] ?? t.source}
+                      </td>
+                    )}
+                    {show("who") && <td className="px-4 py-2">{t.person}</td>}
+                    {show("category") && (
+                      <td className="px-4 py-2">
+                        <CategoryCell t={t} />
+                      </td>
+                    )}
                     <td className={`num px-4 py-2 text-right ${t.parts ? "line-through" : ""}`}>
                       {showAmount(t.amount)}
                     </td>
@@ -196,7 +271,7 @@ export default function TransactionsPage() {
                   </tr>
                   {open === t.transaction_id && (
                     <tr>
-                      <td colSpan={7} className="bg-surface px-4 py-4">
+                      <td colSpan={3 + cols.length} className="bg-surface px-4 py-4">
                         <TxnEditor t={t} onDone={() => setOpen(null)} />
                       </td>
                     </tr>

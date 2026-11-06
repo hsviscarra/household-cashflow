@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,14 +92,21 @@ const LINES = [
   },
 ];
 let urls: string[];
+let settings: Record<string, unknown>;
 let body: unknown;
 
 beforeEach(() => {
   urls = [];
+  settings = {};
   body = SPENDING;
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string) => {
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/me/settings")) {
+        if (init?.method === "PUT")
+          settings = { ...settings, ...{ person: JSON.parse(String(init.body)).value } };
+        return Promise.resolve(new Response(JSON.stringify({ user: "local", settings })));
+      }
       urls.push(url);
       const out = url.startsWith("/api/spending/lines") ? LINES : body;
       return Promise.resolve(new Response(JSON.stringify(out)));
@@ -211,10 +218,25 @@ describe("Spending page", () => {
     const second = renderAt();
     expect(await screen.findByText(/No spending loaded yet/)).toBeInTheDocument();
     second.unmount();
-    vi.mocked(fetch).mockImplementationOnce(() =>
-      Promise.resolve(new Response(JSON.stringify({ detail: "boom" }), { status: 500 })),
+    body = { detail: "boom" };
+    vi.mocked(fetch).mockImplementation((url) =>
+      Promise.resolve(
+        String(url).startsWith("/api/me/settings")
+          ? new Response(JSON.stringify({ user: "local", settings: {} }))
+          : new Response(JSON.stringify({ detail: "boom" }), { status: 500 }),
+      ),
     );
     renderAt();
     expect(await screen.findByText("Could not load spending: boom")).toBeInTheDocument();
+  });
+
+  it("follows the Both/Hernan/Lauren switch, with a way back to both", async () => {
+    settings = { person: "Lauren" };
+    renderAt("/spending?month=2026-09");
+    expect(await screen.findByText("Showing Lauren’s lines only.")).toBeInTheDocument();
+    expect(urls[0]).toBe("/api/spending?month=2026-09-01&person=Lauren");
+    fireEvent.click(screen.getByRole("button", { name: "Show both" }));
+    await waitFor(() => expect(urls).toContain("/api/spending?month=2026-09-01"));
+    expect(screen.queryByText("Showing Lauren’s lines only.")).not.toBeInTheDocument();
   });
 });

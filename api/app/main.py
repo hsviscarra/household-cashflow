@@ -21,6 +21,7 @@ from app.routers import (
     inbox,
     investments,
     invoices,
+    me,
     networth,
     people,
     projections,
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(classify.router)
     app.include_router(transfers.router)
     app.include_router(people.router)
+    app.include_router(me.router)
     app.include_router(recurring.router)
     app.include_router(status.router)
     app.include_router(spending.router)

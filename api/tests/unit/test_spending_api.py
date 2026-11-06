@@ -156,3 +156,14 @@ def test_a_statement_month_with_breakdowns_and_drill_down(client: TestClient, db
         ("CONECEL", "PAGO CONECEL")
     ]
     assert lines(fixed=True)[0]["account_name"] == "Produbanco Ahorros Hernan"
+
+    # The Both/Hernan/Lauren switch (ADR-026): one person's lines only, everywhere on the page.
+    lauren = client.get("/api/spending", params={"month": "2026-06-01", "person": "Lauren"}).json()
+    assert Decimal(lauren["total"]["amount"]) == Decimal(-15)
+    assert [x["key"] for x in lauren["by_person"]] == ["Lauren"]
+    assert [g["name"] for g in lauren["groups"]] == ["Groceries"]
+    assert Decimal(lauren["trend"][-1]["amount"]) == Decimal(-15)
+    hernan = client.get("/api/spending", params={"month": "2026-06-01", "person": "Hernan"}).json()
+    assert Decimal(hernan["total"]["amount"]) == Decimal("217.12")
+    assert Decimal(hernan["total"]["prev"]) == Decimal("107.12")
+    assert client.get("/api/spending", params={"person": "Rubén"}).status_code == 422
