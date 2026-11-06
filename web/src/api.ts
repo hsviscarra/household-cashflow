@@ -20,6 +20,12 @@ async function getJson<T>(path: string): Promise<T> {
 export const fetchHealth = () => getJson<Health>("/api/health");
 export const fetchMe = () => getJson<Me>("/api/me");
 
+// ---------- per-person settings (ADR-026) ----------
+export type Settings = { user: string; settings: Record<string, unknown> };
+export const fetchSettings = () => send<Settings>("GET", "/api/me/settings");
+export const putSetting = (key: string, value: unknown) =>
+  send<Settings>("PUT", `/api/me/settings/${encodeURIComponent(key)}`, { value });
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -376,7 +382,8 @@ export const approveBatch = (id: number) =>
 export const applyRules = (id: number) =>
   send<{ categorized: number; batch: Batch }>("POST", `/api/batches/${id}/apply-rules`);
 export const rejectBatch = (id: number) => send<Batch>("POST", `/api/batches/${id}/reject`);
-export const fetchTransactions = (month: string) => send<Txn[]>("GET", `/api/transactions?month=${month}`);
+export const fetchTransactions = (month: string, person?: string) =>
+  send<Txn[]>("GET", `/api/transactions?month=${month}${person ? `&person=${person}` : ""}`);
 
 // ---------- classification (F9) ----------
 export type Suggestion = {
@@ -690,8 +697,13 @@ export type SpendFilter = {
   country?: string;
   fixed?: boolean;
 };
-export const fetchSpending = (month?: string | null) =>
-  send<Spending>("GET", `/api/spending${month ? `?month=${month}` : ""}`);
+export const fetchSpending = (month?: string | null, person?: string) => {
+  const q = new URLSearchParams();
+  if (month) q.set("month", month);
+  if (person) q.set("person", person);
+  const qs = q.toString();
+  return send<Spending>("GET", `/api/spending${qs ? `?${qs}` : ""}`);
+};
 export const fetchSpendLines = (month: string, f: SpendFilter) => {
   const q = new URLSearchParams({ month });
   Object.entries(f).forEach(([k, v]) => v !== undefined && q.set(k, String(v)));

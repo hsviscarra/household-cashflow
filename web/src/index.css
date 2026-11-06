@@ -144,3 +144,9 @@ body {
 .kpi-value {
   @apply mt-1 font-display text-3xl font-semibold;
 }
+
+/* Row size, one choice per person for every table (ADR-026): set on <html> by the app. */
+[data-density="compact"] table :is(td, th) {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}

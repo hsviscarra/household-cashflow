@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.42.0] — Your own settings, the person switch and saved views
+
+### Added
+- **Both / Hernan / Lauren** (ADR-026): a switch at the top of the sidebar. Spending and
+  Transactions show only that person's lines, with a note and a "Show both" link; the choice is
+  remembered for each of you, on every device.
+- **Columns and rows**: choose the columns of the Transactions table, and comfortable or compact
+  rows for every table.
+- **Saved views**: "Save view" on Transactions and Spending keeps the filters and who it shows
+  under a name in the sidebar; opening it brings both back.
+- **Transactions search** on the description, merchant, note or category, and a "Needs a
+  category" filter.
+
 ## [0.41.0] — A new look and a sidebar
 
 ### Changed

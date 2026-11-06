@@ -8,8 +8,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.models import v_spending_line as v
@@ -76,18 +77,28 @@ def months(db: Session) -> list[date]:
     return list(db.scalars(select(v.c.cash_month).distinct().order_by(v.c.cash_month.desc())))
 
 
-def _by_category(db: Session, month: date) -> dict[tuple[int, int], tuple[Decimal, int]]:
+def _who(q: Select[Any], person: str | None) -> Select[Any]:
+    """Only one person's lines (the Both/Hernan/Lauren switch, ADR-026); None keeps everyone."""
+    return q if person is None else q.where(v.c.person == person)
+
+
+def _by_category(
+    db: Session, month: date, person: str | None = None
+) -> dict[tuple[int, int], tuple[Decimal, int]]:
     q = (
         select(v.c.group_id, v.c.category_id, func.sum(v.c.amount), func.count())
         .where(v.c.cash_month == month)
         .group_by(v.c.group_id, v.c.category_id)
     )
-    return {(int(g), int(c)): (Decimal(str(t)), int(n)) for g, c, t, n in db.execute(q)}
+    return {
+        (int(g), int(c)): (Decimal(str(t)), int(n)) for g, c, t, n in db.execute(_who(q, person))
+    }
 
 
-def _slices(db: Session, month: date, column: str) -> list[Slice]:
+def _slices(db: Session, month: date, column: str, person: str | None = None) -> list[Slice]:
     col = v.c[column]
     q = select(col, func.sum(v.c.amount), func.count()).where(v.c.cash_month == month).group_by(col)
+    q = _who(q, person)
     out = [
         Slice(_label(column, key), Decimal(str(total)), int(n)) for key, total, n in db.execute(q)
     ]
@@ -100,11 +111,11 @@ def _label(column: str, key: object) -> str:
     return str(key) if key else "Unknown"
 
 
-def analyze(db: Session, month: date | None = None) -> Spending:
+def analyze(db: Session, month: date | None = None, person: str | None = None) -> Spending:
     available = months(db)
     month = first(month) if month else (available[0] if available else first(date.today()))
     prev_month, year_ago = add_months(month, -1), add_months(month, -12)
-    now, prev, ago = (_by_category(db, m) for m in (month, prev_month, year_ago))
+    now, prev, ago = (_by_category(db, m, person) for m in (month, prev_month, year_ago))
 
     names = {
         (r.group_id, r.category_id): r
@@ -146,7 +157,9 @@ def analyze(db: Session, month: date | None = None) -> Spending:
         last_year=sum((g.last_year for g in ordered), ZERO),
         transactions=sum(g.transactions for g in ordered),
     )
-    sources = set(db.scalars(select(v.c.source).where(v.c.cash_month == month).distinct()))
+    sources = set(
+        db.scalars(_who(select(v.c.source).where(v.c.cash_month == month).distinct(), person))
+    )
     source = "excel" if "excel_history" in sources else "statements" if sources else "none"
     return Spending(
         month=month,
@@ -154,15 +167,17 @@ def analyze(db: Session, month: date | None = None) -> Spending:
         source=source,
         total=total,
         groups=ordered,
-        by_person=_slices(db, month, "person"),
-        by_country=_slices(db, month, "country"),
-        fixed=_slices(db, month, "is_fixed"),
-        merchants=top_merchants(db, month) if source == "statements" else [],
-        trend=trend(db, month),
+        by_person=_slices(db, month, "person", person),
+        by_country=_slices(db, month, "country", person),
+        fixed=_slices(db, month, "is_fixed", person),
+        merchants=top_merchants(db, month, person=person) if source == "statements" else [],
+        trend=trend(db, month, person=person),
     )
 
 
-def top_merchants(db: Session, month: date, limit: int = TOP_MERCHANTS) -> list[Merchant]:
+def top_merchants(
+    db: Session, month: date, limit: int = TOP_MERCHANTS, person: str | None = None
+) -> list[Merchant]:
     """The biggest merchants of a statement month, grouped like the review queue (reference
     numbers and confirmation codes dropped, F9); refunds reduce them."""
     q = (
@@ -171,7 +186,7 @@ def top_merchants(db: Session, month: date, limit: int = TOP_MERCHANTS) -> list[
         .group_by(v.c.merchant, v.c.group_name)
     )
     found: dict[str, Merchant] = {}
-    for merchant, group_name, total, n in db.execute(q):
+    for merchant, group_name, total, n in db.execute(_who(q, person)):
         key = classify.merchant_key(str(merchant)) or str(merchant)
         m = found.get(key)
         if m is None:
@@ -183,14 +198,17 @@ def top_merchants(db: Session, month: date, limit: int = TOP_MERCHANTS) -> list[
     return [m for m in ranked if m.amount > 0][:limit]
 
 
-def trend(db: Session, month: date, count: int = TREND_MONTHS) -> list[tuple[date, Decimal]]:
+def trend(
+    db: Session, month: date, count: int = TREND_MONTHS, person: str | None = None
+) -> list[tuple[date, Decimal]]:
     start = add_months(month, -(count - 1))
     totals: dict[date, Decimal] = defaultdict(Decimal)
-    for m, total in db.execute(
+    q = (
         select(v.c.cash_month, func.sum(v.c.amount))
         .where(v.c.cash_month >= start, v.c.cash_month <= month)
         .group_by(v.c.cash_month)
-    ):
+    )
+    for m, total in db.execute(_who(q, person)):
         totals[m] = Decimal(str(total))
     return [(add_months(start, i), totals[add_months(start, i)]) for i in range(count)]
 

@@ -13,6 +13,8 @@ import {
 import { MonthBars } from "../components/charts";
 import { money, monthLong, monthShort, num, parts } from "../money";
 import { ExportLinks } from "../components/ExportLinks";
+import { PersonNote, SaveView } from "../components/Personalize";
+import { personParam, usePerson } from "../prefs";
 
 type Drill = { title: string; filter: SpendFilter; from: "category" | "who" | "merchants" } | null;
 
@@ -59,7 +61,12 @@ export default function SpendingPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get("month");
   const month = raw && /^\d{4}-\d{2}$/.test(raw) ? `${raw}-01` : null;
-  const q = useQuery({ queryKey: ["spending", month], queryFn: () => fetchSpending(month) });
+  const [person, , ready] = usePerson();
+  const q = useQuery({
+    queryKey: ["spending", month, person],
+    queryFn: () => fetchSpending(month, personParam(person)),
+    enabled: ready,
+  });
   const [drill, setDrill] = useState<Drill>(null);
   const [open, setOpen] = useState<number | null>(null);
   const s = q.data;
@@ -78,14 +85,16 @@ export default function SpendingPage() {
         Overview’s spending view.
       </p>
       {s && s.source !== "none" && (
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <ExportLinks
             dataset="spending_lines"
             label={`${monthLong(s.month)} lines`}
             month={s.month.slice(0, 7)}
           />
+          <SaveView month={monthLong(s.month)} />
         </div>
       )}
+      <PersonNote person={person} />
       {q.error && (
         <p className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
           Could not load spending: {(q.error as Error).message}
@@ -434,9 +443,12 @@ function Breakdown({
 }
 
 function Lines({ month, drill, onClose }: { month: string; drill: NonNullable<Drill>; onClose: () => void }) {
+  const [person] = usePerson();
+  const who = personParam(person);
+  const filter = who && !drill.filter.person ? { person: who, ...drill.filter } : drill.filter;
   const q = useQuery({
-    queryKey: ["spending", "lines", month, drill.filter],
-    queryFn: () => fetchSpendLines(month, drill.filter),
+    queryKey: ["spending", "lines", month, filter],
+    queryFn: () => fetchSpendLines(month, filter),
   });
   const total = (q.data ?? []).reduce((sum, l) => sum + num(l.amount), 0);
   return (

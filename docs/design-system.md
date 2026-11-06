@@ -41,6 +41,15 @@ A left sidebar (a menu button on phones and tablets) with the pages in groups: H
 statements, Settings, who's signed in and the database status at the bottom. The Inbox shows
 how many lines wait for a category. URLs stay as they were.
 
+## Personal settings (ADR-026)
+
+- The Both / Hernan / Lauren switch sits at the top of the sidebar as a segmented control
+  (radio buttons). A page that follows it says so when one person is shown ("Showing Lauren's
+  lines only. Show both").
+- Tables with a column chooser put "Columns & rows" and "Save view" at the right of their
+  filters. Compact rows halve the vertical cell padding; nothing else changes size.
+- Saved views are listed in the sidebar under "Saved views", each with a remove (×) button.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

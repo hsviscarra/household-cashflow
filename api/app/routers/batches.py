@@ -1,7 +1,7 @@
 """Read a statement into staging, preview, approve or discard; list transactions (F4)."""
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -134,6 +134,10 @@ def list_transactions(
     ] = None,
     account_id: int | None = None,
     source: str | None = None,
+    person: Annotated[
+        Literal["Hernan", "Lauren", "Joint"] | None,
+        Query(description="Only this person's lines (the Both/Hernan/Lauren switch)"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> list[TransactionOut]:
     q = (
@@ -148,6 +152,10 @@ def list_transactions(
         q = q.where(Transaction.account_id == account_id)
     if source:
         q = q.where(Transaction.source == source)
+    if person == "Joint":
+        q = q.where((Transaction.person == "Joint") | Transaction.person.is_(None))
+    elif person:
+        q = q.where(Transaction.person == person)
     paths = category_paths(db)
     found = list(db.execute(q))
     parts = classify.part_counts(db, [t.transaction_id for t, _ in found])
