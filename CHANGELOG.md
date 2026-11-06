@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.44.0] — Spending: blocks, merchants, products and ways to save
+
+### Added
+- **Spending views** (ADR-028): Groups as blocks sized by amount (click one to see its
+  merchants), Merchants (visits, spent, average ticket, invoices), Products from the invoices
+  (unit price against three months before, a cheaper store and what it would have saved), and
+  Fixed vs variable.
+- **Spending tiles**: spent, fixed, variable and not yet explained (lines without a category).
+- **Ways to save**, read from the month's lines: bank fees and interest, delivery apps, small
+  frequent charges, new merchants, groups above their usual, and products cheaper elsewhere.
+- Purchases links to the product prices.
+
+### Changed
+- The Top merchants list became the Merchants view.
+
 ## [0.43.0] — Home and Cash flow
 
 ### Added

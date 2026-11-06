@@ -108,12 +108,83 @@ beforeEach(() => {
         return Promise.resolve(new Response(JSON.stringify({ user: "local", settings })));
       }
       urls.push(url);
-      const out = url.startsWith("/api/spending/lines") ? LINES : body;
+      const out = url.startsWith("/api/spending/lines")
+        ? LINES
+        : url.startsWith("/api/spending/merchants")
+          ? MERCHANTS
+          : url.startsWith("/api/spending/products")
+            ? PRODUCTS
+            : url.startsWith("/api/spending/ideas")
+              ? IDEAS
+              : body;
       return Promise.resolve(new Response(JSON.stringify(out)));
     }),
   );
 });
 afterEach(() => vi.unstubAllGlobals());
+
+const MERCHANTS = [
+  {
+    merchant: "SUPERMAXI",
+    group_id: 1,
+    group_name: "Groceries",
+    amount: "300.00",
+    visits: 3,
+    avg_ticket: "100.00",
+    invoices: 2,
+  },
+  {
+    merchant: "RAPPI",
+    group_id: 1,
+    group_name: "Groceries",
+    amount: "40.00",
+    visits: 2,
+    avg_ticket: "20.00",
+    invoices: 0,
+  },
+];
+const PRODUCTS = [
+  {
+    product_key: "LECHE",
+    description: "Leche 1L",
+    product_group: "Dairy & Eggs",
+    times: 3,
+    quantity: "3",
+    amount: "3.30",
+    unit_price: "1.10",
+    before: "0.95",
+    change: "0.1579",
+    stores: ["SUPERMAXI"],
+    cheaper_store: "AKI",
+    cheaper_price: "0.80",
+    could_save: "0.90",
+  },
+  {
+    product_key: "PAN",
+    description: "Pan",
+    product_group: null,
+    times: 1,
+    quantity: "1",
+    amount: "2.00",
+    unit_price: "2.00",
+    before: null,
+    change: null,
+    stores: ["SUPERMAXI"],
+    cheaper_store: null,
+    cheaper_price: null,
+    could_save: "0",
+  },
+];
+const IDEAS = [
+  {
+    key: "delivery",
+    title: "Delivery apps: 2 orders",
+    detail: "RAPPI.",
+    amount: "40.00",
+    count: 2,
+    link: "/spending?month=2026-09&view=merchants",
+  },
+];
 
 function renderAt(path = "/spending") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -168,7 +239,7 @@ describe("Spending page", () => {
   });
 
   it("breaks the month down by person, country, fixed and merchant", async () => {
-    renderAt();
+    renderAt("/spending?view=fixed");
     const person = await screen.findByRole("region", { name: "By person" });
     expect(person).toHaveTextContent("Shared");
     expect(person).toHaveTextContent("73%");
@@ -186,9 +257,40 @@ describe("Spending page", () => {
       within(screen.getByRole("region", { name: "By country" })).getByRole("button", { name: /Ecuador/ }),
     );
     expect(urls).toContain("/api/spending/lines?month=2026-09-01&country=EC");
-    const merchants = screen.getByRole("list", { name: "Top merchants" });
-    fireEvent.click(within(merchants).getByRole("button", { name: /SUPERMAXI/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Merchants" }));
+    const merchants = await screen.findByRole("region", { name: /^Merchants in/ });
+    expect(await within(merchants).findByText("2 invoices")).toBeInTheDocument();
+    expect(within(merchants).getByText("none")).toBeInTheDocument();
+    expect(within(merchants).getByText("340.00")).toBeInTheDocument(); // the total
+    fireEvent.click(within(merchants).getByRole("button", { name: "SUPERMAXI" }));
     expect(await screen.findByRole("region", { name: "Lines: SUPERMAXI" })).toBeInTheDocument();
+  });
+
+  it("shows groups as blocks that open their merchants, products and ways to save", async () => {
+    renderAt("/spending?month=2026-09");
+    const map = await screen.findByRole("group", { name: /Spending by group/ });
+    fireEvent.click(within(map).getAllByRole("button")[0]);
+    const path = await screen.findByRole("navigation", { name: "Drill path" });
+    expect(within(path).getByText("All spending")).toBeInTheDocument();
+    expect(urls.some((u) => u.startsWith("/api/spending/merchants?month=2026-09-01&group_id="))).toBe(true);
+    fireEvent.click(within(path).getByRole("button", { name: "All spending" }));
+    expect(screen.queryByRole("navigation", { name: "Drill path" })).not.toBeInTheDocument();
+
+    const ideas = await screen.findByRole("region", { name: /Ways to save/ });
+    expect(within(ideas).getByRole("link", { name: "Look →" })).toHaveAttribute(
+      "href",
+      "/spending?month=2026-09&view=merchants",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Products" }));
+    const products = await screen.findByRole("region", { name: /by product, from the invoices/ });
+    expect(await within(products).findByText("+16%")).toBeInTheDocument();
+    expect(within(products).getByText("would have saved")).toHaveTextContent("would have saved 0.90");
+    fireEvent.change(within(products).getByLabelText("Product group"), {
+      target: { value: "Not grouped yet" },
+    });
+    expect(within(products).queryByText("Leche 1L")).not.toBeInTheDocument();
+    expect(within(products).getByText("Pan")).toBeInTheDocument();
   });
 
   it("moves between months from the picker, the buttons and the chart", async () => {
@@ -210,9 +312,6 @@ describe("Spending page", () => {
     body = { ...SPENDING, source: "excel", merchants: [] };
     const { unmount } = renderAt();
     expect(await screen.findByText("From the Cash Flow sheet: categories, no merchants")).toBeInTheDocument();
-    expect(
-      screen.getByText("Months from the Cash Flow sheet have category rows, not merchants."),
-    ).toBeInTheDocument();
     unmount();
     body = { ...SPENDING, source: "none", months: [], groups: [] };
     const second = renderAt();
