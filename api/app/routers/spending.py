@@ -2,9 +2,11 @@
 
 from dataclasses import asdict
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -18,7 +20,7 @@ from app.schemas import (
     SpendSliceOut,
     SpendTotalOut,
 )
-from app.services import spending
+from app.services import shopping, spending
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])
 DB = Annotated[Session, Depends(get_session)]
@@ -78,3 +80,71 @@ def get_lines(
         fixed=fixed,
     )
     return [SpendLineOut(**asdict(x)) for x in found]
+
+
+# ---------- one level deeper (ADR-028): merchants, products and ways to save ----------
+
+
+class MerchantRowOut(BaseModel):
+    merchant: str
+    group_id: int
+    group_name: str
+    amount: Decimal
+    visits: int
+    avg_ticket: Decimal
+    invoices: int
+
+
+class ProductRowOut(BaseModel):
+    product_key: str
+    description: str
+    product_group: str | None
+    times: int
+    quantity: Decimal
+    amount: Decimal
+    unit_price: Decimal
+    before: Decimal | None
+    change: Decimal | None
+    stores: list[str]
+    cheaper_store: str | None
+    cheaper_price: Decimal | None
+    could_save: Decimal
+
+
+class IdeaOut(BaseModel):
+    key: str
+    title: str
+    detail: str
+    amount: Decimal
+    count: int
+    link: str | None
+
+
+@router.get("/merchants", response_model=list[MerchantRowOut])
+def get_merchants(
+    db: DB,
+    month: date,
+    person: Person = None,
+    group_id: int | None = None,
+    category_id: int | None = None,
+) -> list[MerchantRowOut]:
+    """A month's merchants with visits, average ticket and how many invoices back them."""
+    rows = shopping.merchants(db, month, person, group_id, category_id)
+    return [
+        MerchantRowOut(**{k: v for k, v in asdict(r).items() if k != "transaction_ids"})
+        for r in rows
+    ]
+
+
+@router.get("/products", response_model=list[ProductRowOut])
+def get_products(
+    db: DB, month: date, product_group: str | None = None, store: str | None = None
+) -> list[ProductRowOut]:
+    """A month's products from the SRI invoices, with the price before and a cheaper store."""
+    return [ProductRowOut(**asdict(p)) for p in shopping.products(db, month, product_group, store)]
+
+
+@router.get("/ideas", response_model=list[IdeaOut])
+def get_ideas(db: DB, month: date, person: Person = None) -> list[IdeaOut]:
+    """Ways to save, read from the month's own lines."""
+    return [IdeaOut(**asdict(i)) for i in shopping.ideas(db, month, person)]

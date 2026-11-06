@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import {
   fetchPurchases,
@@ -78,7 +78,11 @@ export default function PurchasesPage() {
       </h1>
       <p className="mt-2 max-w-3xl text-lg text-muted">
         Product by product, from the electronic invoices that reached your Gmail or were uploaded here.
-        Purchases without an invoice to your cédula don’t appear.
+        Purchases without an invoice to your cédula don’t appear.{" "}
+        <Link to={`/spending?month=${month}&view=products`} className="text-primary underline">
+          Compare unit prices and stores
+        </Link>
+        .
       </p>
 
       <div className="mt-6 flex flex-wrap items-end gap-4">

@@ -13,8 +13,10 @@ import {
 import { MonthBars } from "../components/charts";
 import { money, monthLong, monthShort, num, parts } from "../money";
 import { ExportLinks } from "../components/ExportLinks";
+import KpiCard from "../components/KpiCard";
 import { PersonNote, SaveView } from "../components/Personalize";
 import { personParam, usePerson } from "../prefs";
+import { GroupMap, Ideas, MerchantTable, ProductTable, VIEWS, ViewSwitch, type View } from "./SpendingParts";
 
 type Drill = { title: string; filter: SpendFilter; from: "category" | "who" | "merchants" } | null;
 
@@ -70,11 +72,23 @@ export default function SpendingPage() {
   const [drill, setDrill] = useState<Drill>(null);
   const [open, setOpen] = useState<number | null>(null);
   const s = q.data;
+  const view: View = (params.get("view") as View) in VIEWS ? (params.get("view") as View) : "groups";
+  const g = params.get("g") === null ? null : Number(params.get("g"));
+  const set = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    Object.entries(patch).forEach(([k, v]) => (v === null ? next.delete(k) : next.set(k, v)));
+    setParams(next);
+  };
   const go = (m: string) => {
     setDrill(null);
     setOpen(null);
-    setParams({ month: m.slice(0, 7) });
+    set({ month: m.slice(0, 7), g: null });
   };
+  const who = personParam(person);
+  const group = s?.groups.find((x) => x.group_id === g);
+  const fixed = s?.fixed.find((x) => x.key === "fixed");
+  const variable = s?.fixed.find((x) => x.key === "variable");
+  const unexplained = s?.groups.find((x) => x.group_id === 0);
   const idx = s ? s.months.indexOf(s.month) : -1;
 
   return (
@@ -140,98 +154,155 @@ export default function SpendingPage() {
             {s.source === "excel" && (
               <span className="pill pill-muted">From the Cash Flow sheet: categories, no merchants</span>
             )}
+            <div className="ml-auto">
+              <ViewSwitch
+                view={view}
+                onChange={(v) => {
+                  setDrill(null);
+                  set({ view: v === "groups" ? null : v, pg: null });
+                }}
+              />
+            </div>
           </div>
 
           <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Tile label="Spent" value={money(s.total.amount)} />
-            <Tile
-              label={`vs ${monthShort(prevMonth(s.month))}`}
-              value={change(s.total.amount, s.total.prev)}
+            <KpiCard
+              label="Spent"
+              value={money(s.total.amount)}
+              note={`${change(s.total.amount, s.total.prev)} vs ${monthShort(prevMonth(s.month))} · ${s.total.transactions} lines`}
             />
-            <Tile
-              label={`vs ${monthShort(s.month)} ${parts(s.month).year - 1}`}
-              value={change(s.total.amount, s.total.last_year)}
+            <KpiCard
+              label="Fixed"
+              value={money(fixed?.amount ?? 0)}
+              note={`${fixed?.transactions ?? 0} lines: mortgage, daycare, insurance, staff`}
             />
-            <Tile label="Lines" value={String(s.total.transactions)} />
+            <KpiCard
+              label="Variable"
+              value={money(variable?.amount ?? 0)}
+              note={`${variable?.transactions ?? 0} lines: where savings usually are`}
+            />
+            <KpiCard
+              label="Not yet explained"
+              value={money(unexplained?.amount ?? 0)}
+              note={`${unexplained?.transactions ?? 0} lines without a category`}
+              tone={unexplained && num(unexplained.amount) > 0 ? "attention" : undefined}
+            />
           </dl>
+          <p className="mt-2 text-sm text-muted">
+            vs {monthShort(s.month)} {parts(s.month).year - 1}: {change(s.total.amount, s.total.last_year)}
+          </p>
 
-          <h2 className="mt-10 font-display text-2xl font-bold">By category</h2>
-          <CategoryTable s={s} open={open} setOpen={setOpen} setDrill={setDrill} />
-          {drill?.from === "category" && (
-            <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />
-          )}
-
-          <h2 className="mt-10 font-display text-2xl font-bold">Who, where, fixed or variable</h2>
-          <div className="mt-3 grid gap-4 md:grid-cols-3">
-            <Breakdown
-              title="By person"
-              slices={s.by_person}
-              names={PERSON}
-              total={s.total.amount}
-              onPick={(x) =>
-                setDrill({ title: `${PERSON[x.key] ?? x.key}`, filter: { person: x.key }, from: "who" })
-              }
-            />
-            <Breakdown
-              title="By country"
-              slices={s.by_country}
-              names={COUNTRY}
-              total={s.total.amount}
-              onPick={(x) =>
-                setDrill({ title: COUNTRY[x.key] ?? x.key, filter: { country: x.key }, from: "who" })
-              }
-            />
-            <Breakdown
-              title="Fixed or variable"
-              slices={s.fixed}
-              names={FIXED}
-              total={s.total.amount}
-              onPick={(x) =>
-                setDrill({
-                  title: `${FIXED[x.key]} spending`,
-                  filter: { fixed: x.key === "fixed" },
-                  from: "who",
-                })
-              }
-            />
-          </div>
-          {drill?.from === "who" && <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />}
-
-          <h2 className="mt-10 font-display text-2xl font-bold">Top merchants</h2>
-          {s.merchants.length ? (
-            <ol
-              className="mt-3 divide-y divide-line rounded-2xl border border-line"
-              aria-label="Top merchants"
-            >
-              {s.merchants.map((m, i) => (
-                <li key={m.merchant} className="flex items-center justify-between gap-3 px-4 py-2">
-                  <button
-                    className="min-w-0 text-left underline-offset-2 hover:underline"
-                    onClick={() =>
-                      setDrill({ title: m.merchant, filter: { merchant: m.merchant }, from: "merchants" })
-                    }
-                  >
-                    <span className="num mr-2 text-muted">{i + 1}.</span>
-                    <span className="font-medium">{m.merchant}</span>
-                    <span className="text-sm text-muted">
-                      {" "}
-                      · {m.group_name} · {m.transactions} {m.transactions === 1 ? "line" : "lines"}
+          {view === "groups" && (
+            <>
+              <GroupMap
+                s={s}
+                onPick={(id) => {
+                  setOpen(id);
+                  set({ g: String(id) });
+                }}
+              />
+              {group && s.source !== "excel" && (
+                <>
+                  <nav aria-label="Drill path" className="mt-6 flex flex-wrap items-center gap-2 text-sm">
+                    <button
+                      type="button"
+                      className="font-semibold text-primary underline"
+                      onClick={() => set({ g: null })}
+                    >
+                      All spending
+                    </button>
+                    <span aria-hidden className="text-muted">
+                      ›
                     </span>
-                  </button>
-                  <span className="num shrink-0">{money(m.amount)}</span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="mt-2 text-muted">
-              {s.source === "excel"
-                ? "Months from the Cash Flow sheet have category rows, not merchants."
-                : "No merchants this month."}
-            </p>
+                    <strong aria-current="location">{group.name}</strong>
+                  </nav>
+                  <MerchantTable
+                    month={s.month}
+                    person={who}
+                    groupId={group.group_id}
+                    title={`${group.name}: ${money(group.amount)} in ${monthLong(s.month)}`}
+                    onOpen={(m) => setDrill({ title: m, filter: { merchant: m }, from: "merchants" })}
+                  />
+                  {drill?.from === "merchants" && (
+                    <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />
+                  )}
+                </>
+              )}
+              <h2 className="mt-10 font-display text-2xl font-bold">By category</h2>
+              <CategoryTable s={s} open={open} setOpen={setOpen} setDrill={setDrill} />
+              {drill?.from === "category" && (
+                <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />
+              )}
+            </>
           )}
-          {drill?.from === "merchants" && (
-            <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />
+
+          {view === "merchants" && (
+            <>
+              <MerchantTable
+                month={s.month}
+                person={who}
+                groupId={group?.group_id}
+                title={group ? `${group.name} merchants` : `Merchants in ${monthLong(s.month)}`}
+                onOpen={(m) => setDrill({ title: m, filter: { merchant: m }, from: "merchants" })}
+              />
+              {group && (
+                <button type="button" className="btn btn-quiet mt-2" onClick={() => set({ g: null })}>
+                  Every group
+                </button>
+              )}
+              {drill?.from === "merchants" && (
+                <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />
+              )}
+            </>
           )}
+
+          {view === "products" && (
+            <ProductTable month={s.month} group={params.get("pg")} onGroup={(pg) => set({ pg })} />
+          )}
+
+          {view === "fixed" && (
+            <>
+              <h2 className="mt-10 font-display text-2xl font-bold">Who, where, fixed or variable</h2>
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                <Breakdown
+                  title="By person"
+                  slices={s.by_person}
+                  names={PERSON}
+                  total={s.total.amount}
+                  onPick={(x) =>
+                    setDrill({ title: `${PERSON[x.key] ?? x.key}`, filter: { person: x.key }, from: "who" })
+                  }
+                />
+                <Breakdown
+                  title="By country"
+                  slices={s.by_country}
+                  names={COUNTRY}
+                  total={s.total.amount}
+                  onPick={(x) =>
+                    setDrill({ title: COUNTRY[x.key] ?? x.key, filter: { country: x.key }, from: "who" })
+                  }
+                />
+                <Breakdown
+                  title="Fixed or variable"
+                  slices={s.fixed}
+                  names={FIXED}
+                  total={s.total.amount}
+                  onPick={(x) =>
+                    setDrill({
+                      title: `${FIXED[x.key]} spending`,
+                      filter: { fixed: x.key === "fixed" },
+                      from: "who",
+                    })
+                  }
+                />
+              </div>
+              {drill?.from === "who" && (
+                <Lines month={s.month} drill={drill} onClose={() => setDrill(null)} />
+              )}
+            </>
+          )}
+
+          <Ideas month={s.month} person={who} />
 
           <h2 className="mt-10 font-display text-2xl font-bold">The last 12 months</h2>
           <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
@@ -271,15 +342,6 @@ export default function SpendingPage() {
         </>
       )}
     </section>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl bg-surface px-4 py-3">
-      <dt className="text-sm text-muted">{label}</dt>
-      <dd className="num mt-1 font-display text-2xl font-bold">{value}</dd>
-    </div>
   );
 }
 

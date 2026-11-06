@@ -61,6 +61,15 @@ how many lines wait for a category. URLs stay as they were.
 - **Home widgets** are cards in two columns (Needs you and the numbers span both); Customize
   lists them with up, down and hide.
 
+## Spending (ADR-028)
+
+- **Treemap**: blocks in each group's color with white text, 10px radius, a 2px ground gap;
+  label, amount and line count when the block has room. Each block is a button.
+- **View switch**: a segmented control (Groups, Merchants, Products, Fixed vs variable) at the
+  right of the month controls.
+- **Ways to save**: the amount in good ink on the left, the title in bold, the detail muted and
+  a "Look →" link.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

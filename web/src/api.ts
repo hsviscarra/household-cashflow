@@ -1227,3 +1227,45 @@ export const fetchFlows = (month?: string | null, person?: string) =>
   send<Flows>("GET", `/api/cashflow/flows${query({ month, person })}`);
 export const fetchFlowLines = (month: string, f: FlowFilter) =>
   send<FlowLine[]>("GET", `/api/cashflow/lines${query({ month, ...f })}`);
+
+// ---------- Spending, one level deeper (ADR-028) ----------
+export type MerchantRow = {
+  merchant: string;
+  group_id: number;
+  group_name: string;
+  amount: string;
+  visits: number;
+  avg_ticket: string;
+  invoices: number;
+};
+export type ProductRow = {
+  product_key: string;
+  description: string;
+  product_group: string | null;
+  times: number;
+  quantity: string;
+  amount: string;
+  unit_price: string;
+  before: string | null;
+  change: string | null;
+  stores: string[];
+  cheaper_store: string | null;
+  cheaper_price: string | null;
+  could_save: string;
+};
+export type Idea = {
+  key: string;
+  title: string;
+  detail: string;
+  amount: string;
+  count: number;
+  link: string | null;
+};
+export const fetchMerchants = (
+  month: string,
+  f: { person?: string; group_id?: number; category_id?: number },
+) => send<MerchantRow[]>("GET", `/api/spending/merchants${query({ month, ...f })}`);
+export const fetchProducts = (month: string, product_group?: string) =>
+  send<ProductRow[]>("GET", `/api/spending/products${query({ month, product_group })}`);
+export const fetchIdeas = (month: string, person?: string) =>
+  send<Idea[]>("GET", `/api/spending/ideas${query({ month, person })}`);

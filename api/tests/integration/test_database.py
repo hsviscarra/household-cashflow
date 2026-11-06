@@ -1082,3 +1082,35 @@ def test_cash_flows_and_settings_on_sql_server(tmp_path: object) -> None:
 
     _alembic("downgrade", "0028")
     _alembic("upgrade", "head")
+
+
+def test_merchants_products_and_ideas_on_sql_server(tmp_path: object) -> None:
+    """ADR-028 on SQL Server: merchants (with invoices looked up by line), products and ways to
+    save answer, with the group and person filters."""
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from app.ingestion.storage import LocalStore, get_store
+    from app.main import create_app
+    from tests.fixtures import statements as s
+
+    _alembic("upgrade", "head")
+    app = create_app()
+    app.dependency_overrides[get_store] = lambda: LocalStore(Path(str(tmp_path)))
+    client = TestClient(app)
+    files = [("files", ("bofa28.pdf", s.bofa_full(), "application/pdf"))]
+    st = client.post("/api/statements", files=files).json()[0]["statement"]
+    b = client.post(f"/api/statements/{st['statement_file_id']}/read").json()
+    if b.get("batch_id") and b.get("tieout_ok"):
+        client.post(f"/api/batches/{b['batch_id']}/approve")
+
+    month = {"month": "2026-08-01"}
+    rows = client.get("/api/spending/merchants", params=month).json()
+    assert rows and all(r["visits"] >= 0 for r in rows)
+    group = rows[0]["group_id"]
+    by_group = client.get("/api/spending/merchants", params={**month, "group_id": group})
+    assert by_group.status_code == 200 and by_group.json()
+    assert client.get("/api/spending/products", params=month).status_code == 200
+    ideas = client.get("/api/spending/ideas", params={**month, "person": "Hernan"})
+    assert ideas.status_code == 200
