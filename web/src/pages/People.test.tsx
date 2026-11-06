@@ -219,6 +219,9 @@ describe("People & transfers", () => {
     const card = within(list).getByText("Rubén Miranda").closest("li")!;
     expect(within(card).getByText(/4 lines · received 12,430.00 · paid 3,150.00/)).toBeTruthy();
     expect(within(card).getByText(/balance: Holding for Rubén Miranda/)).toBeTruthy();
+    expect(
+      within(card).getByRole("link", { name: "In Transactions (12 months)" }).getAttribute("href"),
+    ).toMatch(/^\/transactions\?cp=\d+&months=12$/);
     fireEvent.click(within(card).getByRole("button", { name: "Show lines" }));
     await within(card).findByText(/TRANSFER RUBEN MIRANDA/);
 

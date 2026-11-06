@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   createNote,
@@ -503,6 +504,9 @@ function PersonCard({ p, groups, notify }: { p: Person; groups: CategoryGroup[];
         <button className="btn btn-quiet" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? "Hide lines" : "Show lines"}
         </button>
+        <Link to={`/transactions?cp=${p.counterparty_id}&months=12`} className="btn btn-quiet">
+          In Transactions (12 months)
+        </Link>
         <button className="btn btn-quiet" onClick={() => setEditing(true)}>
           Edit
         </button>

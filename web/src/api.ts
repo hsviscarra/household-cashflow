@@ -355,6 +355,7 @@ export type Txn = {
   transfer_group_id?: number | null;
   transfer_with?: TransferLeg | null; // the other side of a matched transfer (F10)
   recurring_entry_id?: number | null; // the recurring entry this line pays (F11)
+  counterparty_id?: number | null; // whose money it is or who it was for (ADR-023)
 };
 export type TransferLeg = {
   transaction_id: number;
@@ -382,8 +383,15 @@ export const approveBatch = (id: number) =>
 export const applyRules = (id: number) =>
   send<{ categorized: number; batch: Batch }>("POST", `/api/batches/${id}/apply-rules`);
 export const rejectBatch = (id: number) => send<Batch>("POST", `/api/batches/${id}/reject`);
-export const fetchTransactions = (month: string, person?: string) =>
-  send<Txn[]>("GET", `/api/transactions?month=${month}${person ? `&person=${person}` : ""}`);
+export const fetchTransactions = (
+  month: string,
+  person?: string,
+  f: { months?: number; counterparty_id?: number } = {},
+) =>
+  send<Txn[]>(
+    "GET",
+    `/api/transactions?month=${month}${person ? `&person=${person}` : ""}${f.months && f.months > 1 ? `&months=${f.months}&limit=2000` : ""}${f.counterparty_id ? `&counterparty_id=${f.counterparty_id}` : ""}`,
+  );
 
 // ---------- classification (F9) ----------
 export type Suggestion = {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Txn } from "../api";
 import { PersonSwitch, SavedViewLinks } from "../components/Personalize";
-import TransactionsPage, { matches } from "./Transactions";
+import TransactionsPage, { keep, matches, toCsv, type Filters } from "./Transactions";
 
 const base: Txn = {
   transaction_id: 1,
@@ -149,7 +149,9 @@ describe("Transactions page", () => {
       expect(within(table).queryByRole("columnheader", { name: "Who" })).not.toBeInTheDocument(),
     );
     expect(within(table).getByRole("columnheader", { name: "Date" })).toBeInTheDocument();
-    await waitFor(() => expect(settings["table:transactions"]).toEqual({ columns: ["date", "category"] }));
+    await waitFor(() =>
+      expect(settings["table:transactions"]).toEqual({ columns: ["date", "category", "note"] }),
+    );
 
     fireEvent.click(screen.getByRole("radio", { name: "compact" }));
     await waitFor(() => expect(settings.density).toBe("compact"));
@@ -164,7 +166,8 @@ describe("Transactions page", () => {
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Lauren to sort" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Saved “Lauren to sort” in the sidebar.")).toBeInTheDocument();
-    const link = await screen.findByRole("link", { name: "Lauren to sort" });
+    const sidebar = screen.getByRole("navigation", { name: "Main" });
+    const link = await within(sidebar).findByRole("link", { name: "Lauren to sort" });
     expect(link).toHaveAttribute("href", "/transactions?todo=1"); // the month left out
     const views = settings.views as { person: string }[];
     expect(views).toHaveLength(1);
@@ -180,5 +183,85 @@ describe("Transactions page", () => {
       expect(screen.queryByRole("link", { name: "Lauren to sort" })).not.toBeInTheDocument(),
     );
     expect(settings.views).toEqual([]);
+  });
+});
+
+const NONE: Filters = { q: "", todo: false, account: null, group: null, min: null, max: null, note: false };
+
+describe("ADR-030: filters, tabs, periods, people and CSV", () => {
+  it("filters by account, category group, amount, note and amount search", () => {
+    expect(keep(base, { ...NONE, account: "Produbanco Hernan" })).toBe(true);
+    expect(keep(base, { ...NONE, account: "Capital One" })).toBe(false);
+    expect(keep(base, { ...NONE, group: "Groceries" })).toBe(true);
+    expect(keep(TXNS[1], { ...NONE, group: "Groceries" })).toBe(false);
+    expect(keep(base, { ...NONE, min: 50, max: 100 })).toBe(true);
+    expect(keep(base, { ...NONE, min: 81 })).toBe(false);
+    expect(keep(base, { ...NONE, max: 79.99 })).toBe(false);
+    expect(keep(base, { ...NONE, note: true })).toBe(false);
+    expect(keep(TXNS[1], { ...NONE, note: true })).toBe(true);
+    expect(keep(base, { ...NONE, q: "$80.00" })).toBe(true);
+    expect(keep(base, { ...NONE, q: "81" })).toBe(false);
+  });
+
+  it("writes the lines shown as CSV, quoting what needs it", () => {
+    const csv = toCsv([{ ...TXNS[1], notes: 'lunch, "work"', counterparty_id: 7 }], new Map([[7, "Rubén"]]));
+    const [head, row] = csv.split("\n");
+    expect(head).toBe("Date,Posted,Description,Merchant,Account,Who,Category,Note,Person,Country,Amount");
+    expect(row).toBe(
+      '2026-10-03,,UBER EATS,UBER EATS,Produbanco Hernan,Lauren,,"lunch, ""work""",Rubén,EC,-20.00',
+    );
+  });
+
+  it("filters on the page, totals what's shown and keeps filters in the address", async () => {
+    renderAt();
+    const table = await screen.findByRole("table");
+    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), { target: { value: "Groceries" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(screen.getByText(/1 of 2 lines/)).toBeInTheDocument();
+    expect(screen.getByText("Total shown").parentElement).toHaveTextContent("Total shown 80.00");
+    expect(screen.getByRole("status", { name: "location" }).textContent).toContain("cat=Groceries");
+    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "50" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "" } });
+    fireEvent.click(screen.getByLabelText("Has a note"));
+    expect(within(screen.getByRole("table")).getByText("UBER EATS")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).queryByText("SUPERMAXI QUITO")).not.toBeInTheDocument();
+  });
+
+  it("asks for 12 months and one person, and links people to their lines", async () => {
+    renderAt("/transactions?month=2026-10&months=12&cp=7");
+    await screen.findByRole("table");
+    expect(urls).toContain("/api/transactions?month=2026-10-01&months=12&limit=2000&counterparty_id=7");
+    expect(screen.getAllByText(/November 2025 to October 2026/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Everyone" }));
+    expect(screen.getByRole("status", { name: "location" }).textContent).not.toContain("cp=");
+  });
+
+  it("shows saved views of this page as tabs", async () => {
+    settings = {
+      views: [
+        { id: "1", name: "Lauren to sort", path: "/transactions", search: "?todo=1", person: "Lauren" },
+        { id: "2", name: "Spending", path: "/spending", search: "", person: "Both" },
+      ],
+    };
+    renderAt("/transactions?month=2026-10&todo=1");
+    const tabs = await screen.findByRole("navigation", { name: "Saved views" });
+    await within(tabs).findByRole("link", { name: "Lauren to sort" });
+    expect(
+      within(tabs)
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual(["All", "Lauren to sort"]);
+    expect(within(tabs).getByRole("link", { name: "Lauren to sort" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(tabs).getByRole("link", { name: "All" })).toHaveAttribute(
+      "href",
+      "/transactions?month=2026-10",
+    );
+    fireEvent.click(within(tabs).getByRole("link", { name: "Lauren to sort" }));
+    await waitFor(() => expect(settings.person).toBe("Lauren"));
   });
 });

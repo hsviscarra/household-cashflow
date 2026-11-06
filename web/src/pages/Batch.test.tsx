@@ -431,7 +431,7 @@ describe("Transactions", () => {
     renderAt("/transactions?month=2026-09");
     const table = await screen.findByRole("table", { name: "Transactions in September 2026" });
     expect(within(table).getByText("UBER EATS SAN JOSE")).toBeInTheDocument();
-    expect(screen.getByText(/2 lines/)).toHaveTextContent("12.50 out");
+    expect(screen.getByText(/: 2 lines ·/)).toHaveTextContent("12.50 out");
     expect(within(table).getByText("+500.00")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Transactions (list)" })).toHaveTextContent(
       "Capital One Venture",
