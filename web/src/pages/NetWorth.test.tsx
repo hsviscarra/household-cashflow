@@ -4,7 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BalanceSheet, LoanSchedule, SheetItem } from "../api";
-import BalanceSheetSection, { sheetHeadline } from "./NetWorth";
+import BalanceSheetSection, {
+  freshness,
+  maybeDuplicate,
+  monthlyDebt,
+  sheetHeadline,
+  whatIf,
+} from "./NetWorth";
 
 const item = (over: Partial<SheetItem>): SheetItem => ({
   key: "holding-1",
@@ -398,7 +404,11 @@ describe("loan amortization table", () => {
     expect(within(card).getByText(/Interest this year/)).toHaveTextContent(
       "Interest this year 750.00 · still to pay 30.00 interest and 5.00 insurance and charges over 2 months",
     );
-    expect(within(card).queryByText(/Paying/)).toBeNull();
+    expect(within(card).queryByText(/payments this year/)).toBeNull();
+    // What if (ADR-032): 100 more a month doesn't shorten 2 payments; 2,000 more does.
+    expect(within(card).getByText(/still ends with the last payment/)).toBeInTheDocument();
+    fireEvent.change(within(card).getByLabelText("Extra a month on Mortgage"), { target: { value: "2000" } });
+    expect(card).toHaveTextContent("ends it 1 month sooner (1 payments instead of 2)");
     expect(within(card).getByText("Upload a newer amortization table")).toBeInTheDocument();
     fireEvent.click(within(card).getByRole("button", { name: "Payments" }));
     const list = await within(card).findByRole("list", { name: "Payments for Mortgage" });
@@ -435,5 +445,82 @@ describe("loan amortization table", () => {
     expect(within(card).getByText(/Interest this year/)).toHaveTextContent("over 0 months");
     fireEvent.click(within(card).getByRole("button", { name: "Payments" }));
     expect(await within(card).findByText("Could not load the payments: boom")).toBeInTheDocument();
+  });
+});
+
+describe("ADR-032: freshness, duplicates, debt a month and what if", () => {
+  const ON = "2026-11-06";
+  it("says when a value is out of date, by kind", () => {
+    expect(freshness(item({ holding_class: "cash", as_of: "2026-10-01" }), ON)).toEqual({
+      stale: false,
+      age: 36,
+    });
+    expect(freshness(item({ holding_class: "cash", as_of: "2026-08-31" }), ON).stale).toBe(true);
+    expect(freshness(item({ holding_class: "investment", as_of: "2026-10-20" }), ON).stale).toBe(true);
+    expect(freshness(item({ holding_class: "property", as_of: "2026-01-10" }), ON).stale).toBe(false);
+    expect(freshness(item({ holding_class: "personal_loan", as_of: "2020-01-01" }), ON).stale).toBe(false);
+    expect(freshness(item({ holding_class: "card", as_of: null }), ON)).toEqual({ stale: true, age: null });
+  });
+
+  it("flags an old workbook value next to a fresh one of the same kind", () => {
+    const old = item({
+      key: "x",
+      name: "Produbanco (workbook)",
+      holding_class: "cash",
+      source: "excel",
+      as_of: "2026-04-30",
+    });
+    const bank = item({
+      key: "y",
+      name: "Produbanco Hernan",
+      holding_class: "cash",
+      source: "statement",
+      as_of: "2026-10-31",
+    });
+    expect(maybeDuplicate(old, [old, bank], ON)).toBe("Produbanco Hernan");
+    expect(maybeDuplicate(bank, [old, bank], ON)).toBeNull();
+    expect(maybeDuplicate(old, [old], ON)).toBeNull();
+  });
+
+  it("adds loan payments and installments a month", () => {
+    const loan = item({ loan: { monthly_payment: "505.19", paid_this_year: "0", payments_this_year: 0 } });
+    const buy = item({
+      purchase: {
+        target: "1",
+        paid: "0",
+        remaining: "1",
+        installment: "3075.36",
+        installments_left: 16,
+        full_price: null,
+        at_delivery: null,
+        lines: "0",
+      },
+    });
+    expect(monthlyDebt([loan, buy, { ...loan, is_active: false }])).toBeCloseTo(3580.55);
+  });
+
+  it("works out how much sooner a loan ends with more each month", () => {
+    // 37,521 left over 129 months with 20,342 of interest: about 450 a month.
+    const s = { balance: "37521.37", interest_left: "20342", left: 129 };
+    const r = whatIf(s, 100)!;
+    expect(r.months).toBeLessThan(129);
+    expect(r.sooner).toBe(129 - r.months);
+    expect(r.saved).toBeGreaterThan(0);
+    expect(whatIf(s, 0)).toBeNull();
+    expect(whatIf({ ...s, balance: null }, 100)).toBeNull();
+  });
+
+  it("shows only what's out of date, with a way back", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(SHEET)))),
+    );
+    renderIt();
+    const button = await screen.findByRole("button", { name: /^Update values \(\d+ out of date\)$/ });
+    fireEvent.click(button);
+    expect(screen.getByText(/Showing the \d+ values? out of date/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show everything" }));
+    expect(screen.queryByText(/Showing the \d+ values? out of date/)).not.toBeInTheDocument();
+    expect(screen.getByText("Debt payments a month")).toBeInTheDocument();
   });
 });
