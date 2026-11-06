@@ -8,6 +8,7 @@ import {
   approveBatch,
   fetchBatch,
   fetchBatchReview,
+  fetchStagedSource,
   fetchCategories,
   rejectBatch,
   resolveBatchMerchant,
@@ -411,6 +412,7 @@ function NeedsCategory({ batchId }: { batchId: number }) {
         resolve={(body) => resolveBatchMerchant(batchId, body)}
         ask={() => suggestBatch(batchId)}
         accept={() => acceptBatchSuggestions(batchId)}
+        source={{ scope: `batch-${batchId}`, fetch: (stg) => fetchStagedSource(batchId, stg) }}
       />
     </section>
   );

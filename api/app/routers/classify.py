@@ -13,15 +13,19 @@ from sqlalchemy.orm import Session
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
-from app.models import Account, Category, ImportBatch, Transaction
+from app.ingestion.storage import StatementStore, get_store
+from app.models import Account, Category, ImportBatch, StgTransaction, Transaction
 from app.schemas import (
     AcceptedOut,
     ChangeOut,
+    LineSourceOut,
     ResolveIn,
     ResolveOut,
     ReviewGroupOut,
     ReviewLineOut,
     ReviewOut,
+    SimilarOut,
+    SourceTextOut,
     SplitIn,
     SuggestionOut,
     SuggestOut,
@@ -29,7 +33,7 @@ from app.schemas import (
     TransactionPatch,
     TransferLegOut,
 )
-from app.services import classify, inbox, transfers
+from app.services import classify, inbox, line_source, transfers
 from app.services import suggest as suggestions
 
 router = APIRouter(prefix="/api", tags=["classification"])
@@ -224,6 +228,39 @@ def remove_split(transaction_id: int, db: DB, request: Request) -> Response:
     if not classify.unsplit(db, row, _user(request)):
         raise HTTPException(404, "This line isn't split.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+Store = Annotated[StatementStore, Depends(get_store)]
+
+
+def _source_out(db: Session, src: line_source.Source) -> LineSourceOut:
+    paths = category_paths(db)
+    data = vars(src) | {
+        "around": [SourceTextOut(**vars(t)) for t in src.around],
+        "similar": [
+            SimilarOut(
+                **vars(x),
+                category_path=paths.get(x.category_id) if x.category_id else None,
+            )
+            for x in src.similar
+        ],
+    }
+    return LineSourceOut(**data)
+
+
+@router.get("/transactions/{transaction_id}/source", response_model=LineSourceOut)
+def transaction_source(transaction_id: int, db: DB, store: Store) -> LineSourceOut:
+    """Everything the statement says about a line, the text around it and earlier lines of the
+    same merchant (ADR-034)."""
+    return _source_out(db, line_source.of_transaction(db, store, _row(db, transaction_id)))
+
+
+@router.get("/batches/{batch_id}/lines/{stg_id}/source", response_model=LineSourceOut)
+def staged_source(batch_id: int, stg_id: int, db: DB, store: Store) -> LineSourceOut:
+    row = db.get(StgTransaction, stg_id)
+    if row is None or row.batch_id != batch_id:
+        raise HTTPException(404, f"Line {stg_id} not found in this statement.")
+    return _source_out(db, line_source.of_staged(db, store, row))
 
 
 @router.get("/transactions/{transaction_id}/history", response_model=list[ChangeOut])

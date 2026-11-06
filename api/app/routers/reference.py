@@ -19,11 +19,13 @@ from app.schemas import (
     CategoryIn,
     CategoryOut,
     CategoryPatch,
+    CategoryUsesOut,
     RuleIn,
     RuleOut,
     RulePatch,
     RuleTestOut,
 )
+from app.services import categories as category_service
 from app.services import classify
 from app.services import rules as rule_engine
 
@@ -142,6 +144,34 @@ def update_category(category_id: int, body: CategoryPatch, db: DB) -> Category:
         setattr(category, field, value)
     _commit(db, "A category with that name already exists there.")
     return category
+
+
+@router.get("/categories/{category_id}/uses", response_model=CategoryUsesOut)
+def category_uses(category_id: int, db: DB) -> CategoryUsesOut:
+    """What uses a category, before deleting it (ADR-034)."""
+    _get(db, Category, category_id, "Category")
+    u = category_service.uses(db, category_id)
+    return CategoryUsesOut(**vars(u), total=u.total)
+
+
+@router.delete("/categories/{category_id}", response_model=CategoryUsesOut)
+def delete_category(
+    category_id: int,
+    db: DB,
+    request: Request,
+    move_to: Annotated[
+        int | None, Query(description="Where its lines, rules and bills go; needed when used")
+    ] = None,
+) -> CategoryUsesOut:
+    """Delete a category; what uses it moves to `move_to` (same kind). Groups go once empty."""
+    category = _get(db, Category, category_id, "Category")
+    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    try:
+        moved = category_service.delete(db, category, move_to, user)
+    except category_service.CategoryError as exc:
+        db.rollback()
+        raise HTTPException(exc.status, str(exc)) from exc
+    return CategoryUsesOut(**vars(moved), total=moved.total)
 
 
 def _move(db: Session, category: Category, parent_id: int | None) -> None:

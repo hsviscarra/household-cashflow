@@ -1,12 +1,25 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
-import type { CategoryGroup, Many, MatchType, Resolved, ResolveInput, Review, ReviewGroup } from "../api";
+import {
+  statementPageUrl,
+  type CategoryGroup,
+  type LineSource,
+  type Many,
+  type MatchType,
+  type Resolved,
+  type ResolveInput,
+  type Review,
+  type ReviewGroup,
+  type ReviewLine,
+} from "../api";
 import { categoryOptions } from "../categories";
 import { money, num, showAmount } from "../money";
 import CategoryPicker from "./CategoryPicker";
 
 export type Notify = (message: string, tone?: "good" | "bad") => void;
+/** Reads where a line came from; `scope` keeps loaded and staged lines apart in the cache. */
+export type LineSourceFn = { scope: string; fetch: (id: number) => Promise<LineSource> };
 
 // Views a categorized line can change: refreshed after every save.
 const REFRESH = ["review", "transactions", "cashflow", "rules", "batch", "batch-review"];
@@ -15,6 +28,14 @@ export const LIKELY = 0.8;
 
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+/** "Tue, Oct 14, 2026": the full date, so a line can be found on the statement (ADR-034). */
+export const fullDay = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
 /** "likely 85%", "maybe 60%", "unsure 30%": the number plus a word, never color alone. */
 export function confidenceLabel(confidence: string): string {
@@ -34,6 +55,8 @@ export function MerchantQueue(props: {
   accept: () => Promise<{ merchants: number; lines: number; also_by_rule: number }>;
   /** Several merchants at once (ADR-029): to one category, or (null) each to its suggestion. */
   many?: (keys: string[], categoryId: number | null) => Promise<Many>;
+  /** Where a line came from (ADR-034): the statement text around it and more. */
+  source?: LineSourceFn;
   label?: string;
 }) {
   const qc = useQueryClient();
@@ -231,6 +254,7 @@ export function MerchantQueue(props: {
             groups={props.groups}
             notify={notify}
             resolve={props.resolve}
+            source={props.source}
             selected={props.many ? selected.has(g.merchant_key) : undefined}
             onSelect={props.many ? () => toggle(g.merchant_key) : undefined}
           />
@@ -246,6 +270,7 @@ export function MerchantCard({
   groups,
   notify,
   resolve,
+  source,
   selected,
   onSelect,
 }: {
@@ -253,6 +278,7 @@ export function MerchantCard({
   groups: CategoryGroup[];
   notify: Notify;
   resolve: (body: ResolveInput) => Promise<Resolved>;
+  source?: LineSourceFn;
   selected?: boolean;
   onSelect?: () => void;
 }) {
@@ -338,12 +364,13 @@ export function MerchantCard({
       </div>
       <ul className="mt-2 divide-y divide-line text-sm">
         {group.lines.map((ln) => (
-          <li
+          <LineRow
             key={ln.transaction_id}
-            className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5"
-          >
-            <span className="flex items-baseline gap-2">
-              {n > 1 && (
+            ln={ln}
+            merchant={group.merchant_key}
+            source={source}
+            check={
+              n > 1 ? (
                 <input
                   type="checkbox"
                   className="h-5 w-5 self-center"
@@ -351,21 +378,9 @@ export function MerchantCard({
                   checked={!picked || picked.has(ln.transaction_id)}
                   onChange={() => toggle(ln.transaction_id)}
                 />
-              )}
-              <span>
-                <span className="num">{day(ln.txn_date)}</span>
-                <span className="text-muted">
-                  {" "}
-                  · {ln.account_name ?? "—"}
-                  {ln.person ? ` · ${ln.person}` : ""}
-                </span>
-                {ln.description !== group.merchant_key && (
-                  <span className="block font-mono text-xs text-muted">{ln.description}</span>
-                )}
-              </span>
-            </span>
-            <span className="num">{showAmount(ln.amount)}</span>
-          </li>
+              ) : null
+            }
+          />
         ))}
       </ul>
       {n > 1 && (
@@ -498,5 +513,167 @@ export function MerchantCard({
         )}
       </form>
     </li>
+  );
+}
+
+/** One line of a merchant: the full date, the account, a link to the statement page and, on
+ * request, everything the statement says about it (ADR-034). */
+function LineRow({
+  ln,
+  merchant,
+  source,
+  check,
+}: {
+  ln: ReviewLine;
+  merchant: string;
+  source?: LineSourceFn;
+  check: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const posted = ln.post_date && ln.post_date !== ln.txn_date ? ln.post_date : null;
+  return (
+    <li className="py-1.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <span className="flex items-baseline gap-2">
+          {check}
+          <span>
+            <span className="num font-medium">{fullDay(ln.txn_date)}</span>
+            {posted && <span className="text-muted"> · posted {day(posted)}</span>}
+            <span className="text-muted">
+              {" "}
+              · {ln.account_name ?? "—"}
+              {ln.person ? ` · ${ln.person}` : ""}
+            </span>
+            {ln.description !== merchant && (
+              <span className="block font-mono text-xs text-muted">{ln.description}</span>
+            )}
+          </span>
+        </span>
+        <span className="num">{showAmount(ln.amount)}</span>
+      </div>
+      {(ln.statement_file_id || source) && (
+        <div className="mt-0.5 flex flex-wrap gap-x-4 pl-7 text-xs">
+          {ln.statement_file_id && (
+            <a
+              className="text-primary underline"
+              href={statementPageUrl(ln.statement_file_id, ln.page)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open the statement{ln.page ? `, page ${ln.page}` : ""}
+            </a>
+          )}
+          {source && (
+            <button
+              type="button"
+              className="text-primary underline"
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
+            >
+              {open ? "Hide details" : "More details"}
+            </button>
+          )}
+        </div>
+      )}
+      {open && source && <LineDetails id={ln.transaction_id} source={source} />}
+    </li>
+  );
+}
+
+const SECTION: Record<string, string> = {
+  payment: "Payment",
+  purchase: "Purchase",
+  fee: "Fee",
+  interest: "Interest",
+  credit: "Money in",
+  debit: "Money out",
+  transfer: "Transfer",
+};
+
+function LineDetails({ id, source }: { id: number; source: LineSourceFn }) {
+  const q = useQuery({ queryKey: ["line-source", source.scope, id], queryFn: () => source.fetch(id) });
+  if (q.error) return <p className="mt-2 pl-7 text-xs text-danger-ink">{(q.error as Error).message}</p>;
+  const d = q.data;
+  if (!d) return <p className="mt-2 pl-7 text-xs text-muted">Reading the statement…</p>;
+  const facts: [string, string | null][] = [
+    ["Date", fullDay(d.txn_date)],
+    ["Posted", d.post_date ? fullDay(d.post_date) : null],
+    [
+      "Account",
+      d.account_name ? `${d.account_name}${d.account_last4 ? ` ····${d.account_last4}` : ""}` : null,
+    ],
+    ["Card", d.cardholder ? `····${d.cardholder}` : null],
+    ["Kind on the statement", d.section ? (SECTION[d.section] ?? d.section) : null],
+    ["Reference", d.pay_reference],
+    ["Note", d.notes],
+    [
+      "Statement",
+      d.file_name
+        ? `${d.file_name}${d.period_start && d.period_end ? ` (${day(d.period_start)} to ${fullDay(d.period_end)})` : ""}`
+        : null,
+    ],
+    ["Where", d.page ? `page ${d.page}, line ${d.line_no}` : null],
+  ];
+  return (
+    <div
+      className="mt-2 ml-7 space-y-3 rounded-xl bg-surface p-3 text-xs"
+      aria-label={`Details of ${fullDay(d.txn_date)}`}
+    >
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[max-content_1fr]">
+        {facts
+          .filter(([, v]) => v)
+          .map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-muted">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+      </dl>
+      {(d.note_from || d.note || d.note_person) && (
+        <p className="rounded-lg bg-info-bg px-2 py-1.5">
+          <strong>From the transfer email:</strong> {d.note_from ? `${d.note_from}` : ""}
+          {d.note_person ? ` (${d.note_person})` : ""}
+          {d.note ? ` · “${d.note}”` : ""}
+        </p>
+      )}
+      {d.around.length > 0 && (
+        <div>
+          <p className="text-muted">
+            On the statement (the line in bold, account and ID numbers cut to their last 4):
+          </p>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-ground p-2 font-mono leading-relaxed whitespace-pre-wrap">
+            {d.around.map((a) => (
+              <span key={a.line_no} className={a.is_line ? "block font-bold text-ink" : "block text-muted"}>
+                {a.text || " "}
+              </span>
+            ))}
+          </pre>
+        </div>
+      )}
+      {d.unreadable && (
+        <p className="text-attention-ink">
+          The statement file couldn’t be read to show the text around the line.
+        </p>
+      )}
+      {!d.around.length && d.text && (
+        <p>
+          <span className="text-muted">On the statement: </span>
+          <span className="font-mono">{d.text}</span>
+        </p>
+      )}
+      {d.similar.length > 0 && (
+        <div>
+          <p className="text-muted">The same merchant before:</p>
+          <ul className="mt-1 space-y-0.5" aria-label="The same merchant before">
+            {d.similar.map((x, i) => (
+              <li key={i}>
+                {fullDay(x.txn_date)} · <span className="num">{showAmount(x.amount)}</span> →{" "}
+                <strong>{x.category_path ?? "—"}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

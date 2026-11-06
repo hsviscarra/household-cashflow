@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Account, CategoryGroup, Rule } from "../api";
-import Settings, { usage } from "./Settings";
+import Settings, { usage, usesText } from "./Settings";
 import { pickCategory } from "../test/pick";
 
 // Small in-memory stand-in for the F1 API, so the page is tested against real request shapes.
@@ -141,6 +141,36 @@ function fakeFetch(input: string, init?: RequestInit) {
       db.categories.find((g) => g.category_id === body.parent_id)!.children.push(c);
     }
     return json(c);
+  }
+  const usesOf = path.match(/^\/api\/categories\/(\d+)\/uses$/);
+  if (usesOf) {
+    const id = Number(usesOf[1]);
+    const lines =
+      db.categories.flatMap((g) => [g, ...g.children]).find((x) => x.category_id === id)?.lines ?? 0;
+    return json({
+      lines,
+      rules: lines ? 1 : 0,
+      bills: 0,
+      budgets: 0,
+      other: 0,
+      total: lines ? lines + 1 : 0,
+    });
+  }
+  if (one && method === "DELETE") {
+    const id = Number(one[1]);
+    const c = db.categories.flatMap((g) => [g, ...g.children]).find((x) => x.category_id === id)!;
+    const lines = c.lines ?? 0;
+    if (lines && !url.searchParams.get("move_to")) return json({ detail: "choose a category" }, 409);
+    db.categories = db.categories.filter((g) => g.category_id !== id);
+    db.categories.forEach((g) => (g.children = g.children.filter((x) => x.category_id !== id)));
+    return json({
+      lines,
+      rules: lines ? 1 : 0,
+      bills: 0,
+      budgets: 0,
+      other: 0,
+      total: lines ? lines + 1 : 0,
+    });
   }
   if (path === "/api/merchant-rules" && method === "GET") return json(db.rules);
   if (path === "/api/merchant-rules/test") {
@@ -334,6 +364,49 @@ describe("Settings: finding and organizing categories", () => {
     const sent = calls.find((c) => c.method === "PATCH")?.body as Record<string, unknown>;
     expect(sent.parent_id).toBe(30);
     expect(await screen.findByRole("button", { name: /1 subcategory in Groceries/ })).toBeInTheDocument();
+  });
+
+  it("deletes a category: groups once empty, used ones after moving their lines", async () => {
+    renderSettings("categories");
+    // A group with a subcategory can't go yet.
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Dining" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Dining…" }));
+    expect(screen.getByRole("group", { name: "Delete Dining" })).toHaveTextContent(
+      "Dining has 1 subcategory: delete them",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // A used subcategory: its 12 lines and 1 rule move to the category chosen.
+    fireEvent.click(screen.getByRole("button", { name: /1 subcategory in Dining/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Food Delivery" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Food Delivery…" }));
+    const box = await screen.findByRole("group", { name: "Delete Food Delivery" });
+    expect(await within(box).findByText(/is used by 12 lines and 1 rule/)).toBeInTheDocument();
+    const to = within(box).getByLabelText("Move them to");
+    expect(
+      within(to)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a category", "Dining", "Groceries"]);
+    fireEvent.change(to, { target: { value: "30" } });
+    fireEvent.click(within(box).getByRole("button", { name: "Move and delete" }));
+    expect(
+      await screen.findByText("Deleted Food Delivery; 12 lines and 1 rule moved to Groceries."),
+    ).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/categories/11?move_to=30")).toBe(true);
+
+    // An unused group goes straight away.
+    fireEvent.click(screen.getByRole("button", { name: "Edit Groceries" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Groceries…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete it" }));
+    expect(await screen.findByText("Deleted Groceries.")).toBeInTheDocument();
+    expect(usesText({ lines: 0, rules: 0, bills: 2, budgets: 1, other: 0, total: 3 })).toBe(
+      "2 bills and 1 budget",
+    );
+    expect(usesText({ lines: 1, rules: 2, bills: 0, budgets: 0, other: 1, total: 4 })).toBe(
+      "1 line, 2 rules and 1 other link",
+    );
   });
 
   it("describes usage in words", () => {

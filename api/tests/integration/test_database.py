@@ -250,6 +250,24 @@ def test_classification_on_sql_server(tmp_path: object) -> None:
     ).json()
     assert done["categorized"] == 1 and done["rule_id"]
 
+    # ADR-034: a line's source (statement page and the text around it) and deleting a
+    # category whose line and rule move to another one.
+    first = client.get("/api/review").json()["groups"][0]
+    line = first["lines"][0]
+    assert line["statement_file_id"] == st["statement_file_id"] and line["page"]
+    src = client.get(f"/api/transactions/{line['transaction_id']}/source").json()
+    assert any(a["is_line"] for a in src["around"]) and src["bank"] == "capitalone"
+    temp = client.post("/api/categories", json={"name": "Temp trips", "parent_id": travel})
+    temp_id = temp.json()["category_id"]
+    client.post(
+        "/api/review/resolve",
+        json={"merchant_key": first["merchant_key"], "category_id": temp_id, "save_rule": True},
+    )
+    assert client.get(f"/api/categories/{temp_id}/uses").json()["total"] >= 1
+    gone = client.delete(f"/api/categories/{temp_id}", params={"move_to": travel})
+    assert gone.status_code == 200, gone.text
+    assert client.get(f"/api/categories/{temp_id}/uses").status_code == 404
+
     txns = client.get("/api/transactions", params={"month": "2026-09-01"}).json()
     uber = next(t for t in txns if t["amount"] == "-12.5000")
     groceries = next(c for c in cats if c["name"] == "Groceries")["children"][0]["category_id"]

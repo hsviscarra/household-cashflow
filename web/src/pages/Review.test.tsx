@@ -125,6 +125,9 @@ beforeEach(() => {
             description: "TRANSFERENCIA CTAS TERCEROS BCA ENL",
             account_name: "Produbanco Ahorros Hernan",
             person: "Hernan",
+            post_date: "2026-07-09",
+            statement_file_id: 9,
+            page: 2,
           },
         ],
         suggestion: {
@@ -255,6 +258,47 @@ beforeEach(() => {
       if (url === "/api/categories") return json(CATEGORIES);
       if (url.startsWith("/api/transactions?")) return json(txns);
       if (url.endsWith("/history")) return json([]);
+      if (url === "/api/transactions/1/source")
+        return json({
+          transaction_id: 1,
+          txn_date: "2026-07-08",
+          post_date: "2026-07-09",
+          amount: "570.00",
+          description: "TRANSFERENCIA CTAS TERCEROS BCA ENL",
+          account_name: "Produbanco Ahorros Hernan",
+          account_last4: "4321",
+          person: "Hernan",
+          pay_reference: "AGOSTO",
+          notes: null,
+          statement_file_id: 9,
+          file_name: "jul.pdf",
+          bank: "produbanco",
+          period_start: "2026-07-01",
+          period_end: "2026-07-31",
+          page: 2,
+          line_no: 14,
+          section: "credit",
+          cardholder: null,
+          text: "08 Jul TRANSFERENCIA CTAS TERCEROS BCA ENL 570.00",
+          around: [
+            { line_no: 13, text: "07 Jul DEBITO VISA 12.00", is_line: false },
+            { line_no: 14, text: "08 Jul TRANSFERENCIA CTAS TERCEROS BCA ENL 570.00", is_line: true },
+            { line_no: 15, text: "DE: MARIA PEREZ CTA ••••5678", is_line: false },
+          ],
+          note_from: "MARIA PEREZ",
+          note_person: null,
+          note: "Arriendo julio",
+          similar: [
+            {
+              txn_date: "2026-06-08",
+              amount: "570.00",
+              description: "TRANSFERENCIA CTAS TERCEROS BCA ENL",
+              category_id: 1,
+              category_path: "Office Rent",
+            },
+          ],
+          unreadable: false,
+        });
       if (url === "/api/transactions/11" && method === "PATCH") {
         txns = txns.map((t) =>
           t.transaction_id === 11
@@ -357,6 +401,36 @@ describe("Review: one merchant, two categories", () => {
 });
 
 describe("Review", () => {
+  it("shows the full date, a link to the statement page and what the statement says", async () => {
+    renderAt("/review?month=2026-07");
+    expect(await screen.findByText("Wed, Jul 8, 2026")).toBeInTheDocument();
+    expect(screen.getByText(/posted Jul 9/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the statement, page 2" })).toHaveAttribute(
+      "href",
+      "/api/statements/9/file#page=2",
+    );
+    expect(screen.getByText(/the next statements categorize this merchant on their own/)).toBeInTheDocument();
+    const more = screen.getAllByRole("button", { name: "More details" })[0];
+    fireEvent.click(more);
+    const box = await screen.findByLabelText("Details of Wed, Jul 8, 2026");
+    expect(box).toHaveTextContent("Produbanco Ahorros Hernan ····4321");
+    expect(box).toHaveTextContent("ReferenceAGOSTO");
+    expect(box).toHaveTextContent("Kind on the statementMoney in");
+    expect(box).toHaveTextContent("jul.pdf (Jul 1 to Fri, Jul 31, 2026)");
+    expect(box).toHaveTextContent("page 2, line 14");
+    expect(box).toHaveTextContent("From the transfer email: MARIA PEREZ · “Arriendo julio”");
+    expect(within(box).getByText("08 Jul TRANSFERENCIA CTAS TERCEROS BCA ENL 570.00")).toHaveClass(
+      "font-bold",
+    );
+    expect(within(box).getByText("DE: MARIA PEREZ CTA ••••5678")).toBeInTheDocument();
+    expect(within(box).getByRole("list", { name: "The same merchant before" })).toHaveTextContent(
+      "Mon, Jun 8, 2026 · +570.00 → Office Rent",
+    );
+    expect(more).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(more);
+    expect(screen.queryByLabelText("Details of Wed, Jul 8, 2026")).toBeNull();
+  });
+
   it("labels confidence with a word and a number", () => {
     expect(confidenceLabel("0.850")).toBe("likely, 85%");
     expect(confidenceLabel("0.6")).toBe("maybe, 60%");
