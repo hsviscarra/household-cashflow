@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.45.0] — The Inbox does more of the work
+
+### Added
+- **Autopilot** (ADR-029): after a statement is approved on its own, Claude's suggestions at 90%
+  or more are accepted with a rule. The Inbox lists what it did in the last 30 days, with
+  **Undo**. `AUTO_ACCEPT_CONFIDENCE` sets the bar (0 turns it off).
+- **Many at once**: select merchants and accept their suggestions or give them one category.
+- **Keyboard**: j/k to move, a to accept, c to choose a category, x to select, ? for help.
+- **Who was it for?**: transfers that only say "TRANSFERENCIA" or "ZELLE" get a person with one
+  choice.
+
 ## [0.44.0] — Spending: blocks, merchants, products and ways to save
 
 ### Added

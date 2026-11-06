@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Review, Txn } from "../api";
+import type { AutoState, Review, Txn } from "../api";
 import ReviewPage, { confidenceLabel } from "./Review";
 import { pickCategory } from "../test/pick";
 import TransactionsPage from "./Transactions";
@@ -73,9 +73,42 @@ const txn = (over: Partial<Txn>): Txn => ({
 });
 let txns: Txn[];
 let unmatched: Txn[];
+let auto: AutoState;
+let who: Txn[];
+const PEOPLE = [
+  {
+    counterparty_id: 7,
+    name: "Rubén",
+    patterns: null,
+    category_id: null,
+    category_path: null,
+    holding_id: null,
+    notes: null,
+    is_active: true,
+    lines: 0,
+    paid: "0",
+    received: "0",
+    balance: null,
+  },
+];
 
 beforeEach(() => {
   calls = [];
+  auto = {
+    threshold: "0.90",
+    on: true,
+    rules: [
+      {
+        rule_id: 41,
+        pattern: "NETFLIX",
+        category_id: 2,
+        category_path: "Subscriptions",
+        lines: 2,
+        accepted_at: "2026-11-05T10:00:00",
+        is_active: true,
+      },
+    ],
+  };
   review = {
     month: null,
     uncategorized_lines: 3,
@@ -159,6 +192,15 @@ beforeEach(() => {
       },
     }),
   ];
+  who = [
+    txn({
+      transaction_id: 30,
+      txn_date: "2026-07-20",
+      description: "TRANSFERENCIA DIRECTA 0099",
+      amount: "-250.00",
+      type: "transfer",
+    }),
+  ];
   unmatched = [
     txn({
       transaction_id: 20,
@@ -190,6 +232,21 @@ beforeEach(() => {
       }
       if (url.startsWith("/api/review/suggest"))
         return json({ asked: 1, suggested: 1, model: "claude-haiku-5-5" });
+      if (url === "/api/review/auto") return json(auto);
+      if (url.startsWith("/api/review/auto/") && method === "POST") {
+        auto = { ...auto, rules: [] };
+        return json({ lines: 2 });
+      }
+      if (url.startsWith("/api/review/who") && method === "GET") return json(who);
+      if (url === "/api/review/who" && method === "POST") {
+        who = [];
+        return json(txns[0]);
+      }
+      if (url === "/api/people") return json(PEOPLE);
+      if (url === "/api/review/resolve-many") {
+        review = { ...review, groups: [], uncategorized_lines: 0 };
+        return json({ merchants: 2, lines: 3, also_by_rule: 0, skipped: 1 });
+      }
       if (url === "/api/review/resolve") {
         review = { ...review, groups: review.groups.slice(1), uncategorized_lines: 2 };
         return json({ categorized: 1, rule_id: 77, also_by_rule: 2, waiting_by_rule: 3 });
@@ -350,7 +407,7 @@ describe("Review", () => {
 
   it("asks Claude about merchants without a suggestion", async () => {
     renderAt("/review");
-    fireEvent.click(await screen.findByRole("button", { name: "Ask Claude about 1 merchants" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask Claude about 1 merchant" }));
     expect(await screen.findByText(/Claude suggested a category for 1 of 1 merchants/)).toBeInTheDocument();
   });
 
@@ -436,5 +493,92 @@ describe("Transactions editing", () => {
       { amount: "-70.00", category_id: 3 },
       { amount: "-30.00", category_id: 1 },
     ]);
+  });
+});
+
+describe("Inbox: autopilot, many at once, keys and who", () => {
+  it("shows autopilot's rules and undoes one", async () => {
+    renderAt("/review");
+    expect(
+      await screen.findByRole("heading", { name: /Autopilot is on: Claude’s suggestions at 90% or more/ }),
+    ).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Accepted on their own" });
+    expect(list).toHaveTextContent("NETFLIX → Subscriptions · 2 lines · Nov 5");
+    fireEvent.click(within(list).getByRole("button", { name: "Undo NETFLIX → Subscriptions" }));
+    expect(await screen.findByText("Rule turned off; 2 lines are back in the Inbox.")).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/api/review/auto/41/undo" && c.method === "POST")).toBe(true);
+  });
+
+  it("says when autopilot is off", async () => {
+    auto = { threshold: "0.90", on: false, rules: [] };
+    renderAt("/review");
+    expect(await screen.findByText(/Autopilot is off/)).toBeInTheDocument();
+  });
+
+  it("categorizes several merchants together, or accepts their suggestions", async () => {
+    renderAt("/review");
+    const bar = await screen.findByRole("region", { name: "Selected merchants" });
+    fireEvent.click(within(bar).getByLabelText("Select all"));
+    expect(within(bar).getByText("2 selected")).toBeInTheDocument();
+    fireEvent.click(within(bar).getByRole("button", { name: "✓ Accept 1 suggestion" }));
+    expect(
+      await screen.findByText(/2 merchants done: 3 lines categorized and a rule saved for each\. 1 skipped/),
+    ).toBeInTheDocument();
+    const sent = calls.find((c) => c.url === "/api/review/resolve-many")?.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ category_id: null, save_rule: true });
+    expect((sent.merchant_keys as string[]).length).toBe(2);
+  });
+
+  it("picks one category for the selected merchants", async () => {
+    renderAt("/review");
+    const visa = await screen.findByRole("listitem", { name: "DEBITO VISA" });
+    fireEvent.click(within(visa).getByLabelText("Select DEBITO VISA"));
+    const bar = screen.getByRole("region", { name: "Selected merchants" });
+    pickCategory(
+      within(bar).getByRole("combobox", { name: "Category for the selected merchants" }),
+      "super",
+      "Groceries / Supermarket",
+    );
+    fireEvent.click(within(bar).getByRole("button", { name: "Categorize 1" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/review/resolve-many")).toBe(true));
+    const sent = calls.find((c) => c.url === "/api/review/resolve-many")?.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ merchant_keys: ["DEBITO VISA"], category_id: 3 });
+  });
+
+  it("moves with j and k, accepts with a, selects with x", async () => {
+    renderAt("/review");
+    const list = await screen.findByRole("list", { name: "Merchants to review" });
+    const [first, second] = within(list)
+      .getAllByRole("listitem")
+      .filter((li) => li.parentElement === list);
+    fireEvent.keyDown(window, { key: "j" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(window, { key: "j" });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(window, { key: "k" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(window, { key: "x" });
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "?" });
+    expect(screen.getByText(/accept the suggestion/)).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "a" });
+    await waitFor(() => expect(calls.some((c) => c.url === "/api/review/resolve")).toBe(true));
+    fireEvent.keyDown(window, { key: "c" });
+    // Typing in a field is left alone.
+    const box = within(list).getAllByRole("combobox")[0];
+    box.focus();
+    fireEvent.keyDown(box, { key: "j" });
+    expect(box).toHaveFocus();
+  });
+
+  it("asks who a transfer was for", async () => {
+    renderAt("/review");
+    const who = await screen.findByRole("list", { name: "Transfers without a person" });
+    const pick = await within(who).findByLabelText(/Who was Jul 20/);
+    await waitFor(() => expect(within(pick).getByRole("option", { name: "Rubén" })).toBeInTheDocument());
+    fireEvent.change(pick, { target: { value: "7" } });
+    expect(await screen.findByText("Marked as Rubén’s.")).toBeInTheDocument();
+    const sent = calls.find((c) => c.url === "/api/review/who" && c.method === "POST")?.body;
+    expect(sent).toEqual({ transaction_id: 30, counterparty_id: 7 });
   });
 });

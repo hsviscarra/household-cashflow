@@ -1,18 +1,19 @@
 """Classification (F9): the review queue, categorizing a merchant (and saving a rule), Claude's
 suggestions, editing a line, splits and each line's change history."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
-from app.models import Account, ImportBatch, Transaction
+from app.models import Account, Category, ImportBatch, Transaction
 from app.schemas import (
     AcceptedOut,
     ChangeOut,
@@ -28,7 +29,7 @@ from app.schemas import (
     TransactionPatch,
     TransferLegOut,
 )
-from app.services import classify, transfers
+from app.services import classify, inbox, transfers
 from app.services import suggest as suggestions
 
 router = APIRouter(prefix="/api", tags=["classification"])
@@ -314,3 +315,106 @@ def batch_accept_suggestions(
         db, _user(request), min_confidence=min_confidence, batch_id=batch_id
     )
     return AcceptedOut(**vars(done))
+
+
+# ---------------- ADR-029: the Inbox doing more of the work ----------------
+class AutoRuleOut(BaseModel):
+    rule_id: int
+    pattern: str
+    category_id: int
+    category_path: str
+    lines: int
+    accepted_at: datetime
+    is_active: bool
+
+
+class AutoOut(BaseModel):
+    threshold: Decimal
+    on: bool
+    rules: list[AutoRuleOut]
+
+
+class UndoneOut(BaseModel):
+    lines: int
+
+
+class ManyIn(BaseModel):
+    merchant_keys: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=200
+    )
+    category_id: int | None = None  # None: each merchant to its suggestion
+    save_rule: bool = True
+
+
+class ManyOut(BaseModel):
+    merchants: int
+    lines: int
+    also_by_rule: int
+    skipped: int
+
+
+class WhoIn(BaseModel):
+    transaction_id: int
+    counterparty_id: int
+
+
+def _inbox_fail(exc: inbox.InboxError) -> HTTPException:
+    return HTTPException(exc.status, str(exc))
+
+
+@router.get("/review/auto", response_model=AutoOut)
+def recently_auto(db: DB) -> AutoOut:
+    """Rules saved on their own from Claude's sure suggestions in the last 30 days."""
+    from app.config import get_settings
+
+    paths = category_paths(db)
+    threshold = get_settings().auto_accept_confidence
+    return AutoOut(
+        threshold=threshold,
+        on=threshold > 0 and suggestions.available(),
+        rules=[
+            AutoRuleOut(**vars(r), category_path=paths.get(r.category_id, "?"))
+            for r in inbox.recent_auto(db)
+        ],
+    )
+
+
+@router.post("/review/auto/{rule_id}/undo", response_model=UndoneOut)
+def undo_auto(rule_id: int, db: DB, request: Request) -> UndoneOut:
+    """Turn the rule off and put its lines back in the Inbox."""
+    try:
+        return UndoneOut(lines=inbox.undo_auto(db, rule_id, _user(request)))
+    except inbox.InboxError as exc:
+        db.rollback()
+        raise _inbox_fail(exc) from exc
+
+
+@router.post("/review/resolve-many", response_model=ManyOut)
+def resolve_many(body: ManyIn, db: DB, request: Request) -> ManyOut:
+    """Several merchants at once: to one category, or each to its suggestion."""
+    if body.category_id is not None and db.get(Category, body.category_id) is None:
+        raise HTTPException(404, f"Category {body.category_id} not found.")
+    done = inbox.resolve_many(
+        db, body.merchant_keys, body.category_id, _user(request), body.save_rule
+    )
+    return ManyOut(**vars(done))
+
+
+@router.get("/review/who", response_model=list[TransactionOut])
+def who(db: DB, month: Month = None) -> list[TransactionOut]:
+    """Transfers that don't say who they were for (last 90 days, or a month)."""
+    names = {a.account_id: a.name for a in db.scalars(select(Account))}
+    paths = category_paths(db)
+    return [
+        transaction_out(t, names.get(t.account_id or 0), paths) for t in inbox.who_lines(db, month)
+    ]
+
+
+@router.post("/review/who", response_model=TransactionOut)
+def set_who(body: WhoIn, db: DB, request: Request) -> TransactionOut:
+    try:
+        row = inbox.set_who(db, body.transaction_id, body.counterparty_id, _user(request))
+    except inbox.InboxError as exc:
+        db.rollback()
+        raise _inbox_fail(exc) from exc
+    return _one_out(db, row)

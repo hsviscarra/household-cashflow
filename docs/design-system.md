@@ -70,6 +70,14 @@ how many lines wait for a category. URLs stay as they were.
 - **Ways to save**: the amount in good ink on the left, the title in bold, the detail muted and
   a "Look →" link.
 
+## Inbox (ADR-029)
+
+- The autopilot panel is a surface box at the top: one bold sentence saying whether it's on,
+  then the rules it saved with an Undo button each.
+- A selection bar sticks to the top while scrolling: select all, accept suggestions, one
+  category for all. A selected card gets a primary border and a light info background.
+- Keyboard shortcuts are listed behind a "Keyboard" link (and "?"), never only in a tooltip.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note
