@@ -5,6 +5,8 @@ import { useSearchParams } from "react-router-dom";
 import {
   createAccount,
   createCategory,
+  deleteCategory,
+  fetchCategoryUses,
   createRule,
   deleteRule,
   fetchAccounts,
@@ -19,6 +21,7 @@ import {
   type Category,
   type CategoryGroup,
   type CategoryKind,
+  type CategoryUses,
   type MatchType,
   type Rule,
   type RuleInput,
@@ -592,13 +595,16 @@ function GroupCard({
   return (
     <Panel>
       {editingId === g.category_id ? (
-        <CategoryForm
-          category={g}
-          withColor
-          busy={update.isPending}
-          onCancel={() => setEditingId(null)}
-          onSubmit={(body) => saveEdit(g, body)}
-        />
+        <>
+          <CategoryForm
+            category={g}
+            withColor
+            busy={update.isPending}
+            onCancel={() => setEditingId(null)}
+            onSubmit={(body) => saveEdit(g, body)}
+          />
+          <DeleteCategory category={g} subs={g.children.length} sameKind={sameKind} notify={notify} />
+        </>
       ) : (
         <CategoryLine category={g} heading total={lines} onEdit={() => setEditingId(g.category_id)} />
       )}
@@ -618,13 +624,16 @@ function GroupCard({
             {subs.map((c) => (
               <li key={c.category_id} className="py-2 pl-6">
                 {editingId === c.category_id ? (
-                  <CategoryForm
-                    category={c}
-                    groups={sameKind}
-                    busy={update.isPending}
-                    onCancel={() => setEditingId(null)}
-                    onSubmit={(body) => saveEdit(c, body)}
-                  />
+                  <>
+                    <CategoryForm
+                      category={c}
+                      groups={sameKind}
+                      busy={update.isPending}
+                      onCancel={() => setEditingId(null)}
+                      onSubmit={(body) => saveEdit(c, body)}
+                    />
+                    <DeleteCategory category={c} subs={0} sameKind={sameKind} notify={notify} />
+                  </>
                 ) : (
                   <CategoryLine category={c} onEdit={() => setEditingId(c.category_id)} />
                 )}
@@ -635,6 +644,128 @@ function GroupCard({
         </div>
       )}
     </Panel>
+  );
+}
+
+/** "12 lines, 1 rule and 2 bills" */
+export function usesText(u: CategoryUses): string {
+  const part = (n: number, one: string, many = `${one}s`) => (n ? `${n} ${n === 1 ? one : many}` : "");
+  const parts = [
+    part(u.lines, "line"),
+    part(u.rules, "rule"),
+    part(u.bills, "bill"),
+    part(u.budgets, "budget"),
+    part(u.other, "other link", "other links"),
+  ].filter(Boolean);
+  return parts.length > 1
+    ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+    : (parts[0] ?? "nothing");
+}
+
+/** Delete a category (ADR-034): straight away when unused; otherwise its lines, rules and bills
+ * move to another category of the same kind first. A group goes once it has no subcategories. */
+function DeleteCategory({
+  category: c,
+  subs,
+  sameKind,
+  notify,
+}: {
+  category: Category;
+  subs: number;
+  sameKind: CategoryGroup[];
+  notify: Notify;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [moveTo, setMoveTo] = useState("");
+  const uses = useQuery({
+    queryKey: ["category-uses", c.category_id],
+    queryFn: () => fetchCategoryUses(c.category_id),
+    enabled: asking && !subs,
+  });
+  const remove = useSave(
+    (to: number | null) => deleteCategory(c.category_id, to),
+    [["categories"], ["rules"], ["review"], ["transactions"], ["cashflow"], ["spending"]],
+    notify,
+  );
+  const targets = sameKind.flatMap((g) => [
+    ...(g.category_id === c.category_id ? [] : [{ id: g.category_id, label: g.name }]),
+    ...g.children
+      .filter((x) => x.category_id !== c.category_id)
+      .map((x) => ({ id: x.category_id, label: `${g.name} / ${x.name}` })),
+  ]);
+  if (!asking)
+    return (
+      <button type="button" className="btn btn-quiet mt-3 text-danger-ink" onClick={() => setAsking(true)}>
+        Delete {c.name}…
+      </button>
+    );
+  const u = uses.data;
+  const go = (to: number | null) =>
+    remove.mutate(to, {
+      onSuccess: (moved) =>
+        notify(
+          moved.total
+            ? `Deleted ${c.name}; ${usesText(moved)} moved to ${targets.find((t) => t.id === to)?.label}.`
+            : `Deleted ${c.name}.`,
+        ),
+    });
+  return (
+    <div
+      className="mt-3 rounded-xl border border-line bg-ground p-3 text-sm"
+      role="group"
+      aria-label={`Delete ${c.name}`}
+    >
+      {subs > 0 ? (
+        <p>
+          {c.name} has {subs} {subs === 1 ? "subcategory" : "subcategories"}: delete them, or move them to
+          another group (Edit → In the group), first.
+        </p>
+      ) : !u ? (
+        <p className="text-muted">Checking what uses {c.name}…</p>
+      ) : u.total === 0 ? (
+        <p>
+          Nothing uses {c.name}.{" "}
+          <button
+            type="button"
+            className="btn btn-secondary ml-2 h-9 px-3"
+            disabled={remove.isPending}
+            onClick={() => go(null)}
+          >
+            Delete it
+          </button>
+        </p>
+      ) : (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (moveTo) go(Number(moveTo));
+          }}
+        >
+          <p className="w-full">
+            {c.name} is used by {usesText(u)}. They move to the category you choose, with each line’s change
+            kept in its history, so no amount is lost.
+          </p>
+          <label className="min-w-56 flex-1">
+            <span className="label">Move them to</span>
+            <select className="field" required value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+              <option value="">Choose a category</option>
+              {targets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="btn btn-secondary" disabled={remove.isPending || !moveTo}>
+            Move and delete
+          </button>
+        </form>
+      )}
+      <button type="button" className="btn btn-quiet mt-2 h-9 px-3" onClick={() => setAsking(false)}>
+        Keep it
+      </button>
+    </div>
   );
 }
 

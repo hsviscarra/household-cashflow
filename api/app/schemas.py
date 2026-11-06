@@ -95,6 +95,17 @@ class CategoryOut(_Out):
     rules: int = 0
 
 
+class CategoryUsesOut(BaseModel):
+    """What uses a category, or what moved when it was deleted (ADR-034)."""
+
+    lines: int
+    rules: int
+    bills: int
+    budgets: int
+    other: int
+    total: int
+
+
 class CategoryGroup(CategoryOut):
     children: list[CategoryOut]
 
@@ -409,6 +420,9 @@ class ReviewLineOut(BaseModel):
     description: str
     account_name: str | None
     person: str | None
+    post_date: date | None = None
+    statement_file_id: int | None = None
+    page: int | None = None
 
 
 class ReviewGroupOut(BaseModel):
@@ -1285,3 +1299,47 @@ class ProductGroupOut(BaseModel):
 
 class SuggestedOut(BaseModel):
     products: int
+
+
+# ---------------- where a line came from (ADR-034) ----------------
+class SourceTextOut(BaseModel):
+    line_no: int
+    text: str
+    is_line: bool
+
+
+class SimilarOut(BaseModel):
+    txn_date: date
+    amount: Decimal
+    description: str
+    category_id: int | None
+    category_path: str | None
+
+
+class LineSourceOut(BaseModel):
+    transaction_id: int
+    txn_date: date
+    post_date: date | None
+    amount: Decimal
+    description: str
+    account_name: str | None
+    account_last4: str | None
+    person: str | None
+    pay_reference: str | None
+    notes: str | None
+    statement_file_id: int | None
+    file_name: str | None
+    bank: str | None
+    period_start: date | None
+    period_end: date | None
+    page: int | None
+    line_no: int | None
+    section: str | None
+    cardholder: str | None
+    text: str | None
+    around: list[SourceTextOut]
+    note_from: str | None
+    note_person: str | None
+    note: str | None
+    similar: list[SimilarOut]
+    unreadable: bool

@@ -108,6 +108,15 @@ how many lines wait for a category. URLs stay as they were.
 - The ten answers are cards in two columns: the question small and muted, the answer large in
   the display font, colored good or attention by tone (never color only: the sentence says it).
 
+## Inbox details (ADR-034)
+
+- A line's date is written in full; "Open the statement" and "More details" are small underlined
+  primary links under it. Details sit in a surface box: facts as a two-column list, the
+  statement's text in monospace on the ground color with the line itself in bold, the transfer
+  email in an info box.
+- Delete lives inside the edit form as a quiet button in danger ink; the confirmation is a
+  bordered box that says what moves where, never a browser dialog.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

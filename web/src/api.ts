@@ -130,6 +130,18 @@ export const createRule = (r: RuleInput) => send<Rule>("POST", "/api/merchant-ru
 export const updateRule = (id: number, r: Partial<RuleInput & { is_active: boolean }>) =>
   send<Rule>("PATCH", `/api/merchant-rules/${id}`, r);
 export const deleteRule = (id: number) => send<void>("DELETE", `/api/merchant-rules/${id}`);
+/** What uses a category, or what moved when it was deleted (ADR-034). */
+export type CategoryUses = {
+  lines: number;
+  rules: number;
+  bills: number;
+  budgets: number;
+  other: number;
+  total: number;
+};
+export const fetchCategoryUses = (id: number) => send<CategoryUses>("GET", `/api/categories/${id}/uses`);
+export const deleteCategory = (id: number, moveTo?: number | null) =>
+  send<CategoryUses>("DELETE", `/api/categories/${id}${moveTo ? `?move_to=${moveTo}` : ""}`);
 export const testRule = (a: { description: string; amount?: string }) =>
   send<{ description: string; rule: Rule | null }>(
     "GET",
@@ -408,6 +420,9 @@ export type ReviewLine = {
   description: string;
   account_name: string | null;
   person: string | null;
+  post_date?: string | null;
+  statement_file_id?: number | null; // open the statement at this page (ADR-034)
+  page?: number | null;
 };
 export type ReviewGroup = {
   merchant_key: string;
@@ -477,6 +492,48 @@ export const splitTransaction = (id: number, parts: PartInput[]) =>
   send<Txn[]>("PUT", `/api/transactions/${id}/split`, { parts });
 export const removeSplit = (id: number) => send<void>("DELETE", `/api/transactions/${id}/split`);
 export const fetchHistory = (id: number) => send<Change[]>("GET", `/api/transactions/${id}/history`);
+
+// ---------- where a line came from (ADR-034) ----------
+export type LineSource = {
+  transaction_id: number;
+  txn_date: string;
+  post_date: string | null;
+  amount: Money;
+  description: string;
+  account_name: string | null;
+  account_last4: string | null;
+  person: string | null;
+  pay_reference: string | null;
+  notes: string | null;
+  statement_file_id: number | null;
+  file_name: string | null;
+  bank: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  page: number | null;
+  line_no: number | null;
+  section: string | null;
+  cardholder: string | null;
+  text: string | null;
+  around: { line_no: number; text: string; is_line: boolean }[];
+  note_from: string | null;
+  note_person: string | null;
+  note: string | null;
+  similar: {
+    txn_date: string;
+    amount: Money;
+    description: string;
+    category_id: number | null;
+    category_path: string | null;
+  }[];
+  unreadable: boolean;
+};
+export const fetchLineSource = (id: number) => send<LineSource>("GET", `/api/transactions/${id}/source`);
+export const fetchStagedSource = (batchId: number, stgId: number) =>
+  send<LineSource>("GET", `/api/batches/${batchId}/lines/${stgId}/source`);
+/** The statement PDF, opened at a page when the browser's viewer supports it. */
+export const statementPageUrl = (id: number, page?: number | null) =>
+  `/api/statements/${id}/file${page ? `#page=${page}` : ""}`;
 
 // ---------- transfers (F10) ----------
 export const fetchUnmatchedTransfers = (month?: string | null) =>

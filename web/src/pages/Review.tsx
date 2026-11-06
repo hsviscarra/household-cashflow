@@ -6,6 +6,7 @@ import {
   acceptSuggestions,
   fetchAuto,
   fetchCategories,
+  fetchLineSource,
   fetchPeople,
   fetchReview,
   fetchUnmatchedTransfers,
@@ -39,8 +40,9 @@ export default function ReviewPage() {
     <section>
       <h1 className="font-display text-4xl font-bold leading-tight">Inbox</h1>
       <p className="mt-2 text-lg text-muted">
-        Lines no rule could categorize, grouped by merchant. Choose a category once; saving a rule categorizes
-        this merchant from now on. Select several to do them together.
+        Lines no rule could categorize, grouped by merchant. Choose a category once: with “Use for this
+        merchant from now on” ticked (it is, unless you untick lines), a rule is saved and the next statements
+        categorize this merchant on their own. Open the statement or More details to see what a line was.
       </p>
       <AutoPanel notify={(m, t) => setStatus({ message: m, tone: t ?? "good" })} />
 
@@ -105,6 +107,7 @@ export default function ReviewPage() {
               ask={() => suggestCategories(monthDay)}
               accept={() => acceptSuggestions(monthDay)}
               many={resolveMany}
+              source={{ scope: "loaded", fetch: fetchLineSource }}
             />
           )}
         </>

@@ -22,6 +22,7 @@ from app.models import (
     ImportBatch,
     MerchantRule,
     MerchantSuggestion,
+    RawLine,
     StgTransaction,
     Transaction,
 )
@@ -106,6 +107,9 @@ class ReviewLine:
     account_name: str | None
     person: str | None
     account_id: int | None = None
+    post_date: date | None = None
+    statement_file_id: int | None = None  # where to open the statement (ADR-034)
+    page: int | None = None
 
 
 @dataclass
@@ -138,9 +142,12 @@ def uncategorized(db: Session, month: date | None = None) -> list[Transaction]:
 def review_groups(db: Session, month: date | None = None) -> list[ReviewGroup]:
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
     groups: dict[str, ReviewGroup] = {}
-    for t in uncategorized(db, month):
+    rows = uncategorized(db, month)
+    pages = _pages(db, [t.raw_line_id for t in rows if t.raw_line_id])
+    for t in rows:
         key = merchant_key(t.description_raw)
         group = groups.setdefault(key, ReviewGroup(key))
+        file_id, page = pages.get(t.raw_line_id or 0, (t.statement_file_id, None))
         group.lines.append(
             ReviewLine(
                 t.transaction_id,
@@ -150,9 +157,25 @@ def review_groups(db: Session, month: date | None = None) -> list[ReviewGroup]:
                 accounts.get(t.account_id) if t.account_id else None,
                 t.person,
                 t.account_id,
+                t.post_date,
+                file_id,
+                page,
             )
         )
     return _with_suggestions(db, groups)
+
+
+def _pages(db: Session, raw_line_ids: list[int]) -> dict[int, tuple[int, int]]:
+    """raw_line_id -> (statement file, page), in chunks (SQL Server allows ~2,100 parameters)."""
+    out: dict[int, tuple[int, int]] = {}
+    for i in range(0, len(raw_line_ids), 1000):
+        chunk = raw_line_ids[i : i + 1000]
+        q = select(RawLine.raw_line_id, RawLine.statement_file_id, RawLine.page).where(
+            RawLine.raw_line_id.in_(chunk)
+        )
+        for rid, fid, page in db.execute(q):
+            out[rid] = (fid, page)
+    return out
 
 
 def staged_uncategorized(db: Session, batch_id: int) -> list[StgTransaction]:
@@ -175,7 +198,9 @@ def batch_groups(db: Session, batch_id: int) -> list[ReviewGroup]:
     grouped by merchant, so they can be categorized before the statement is loaded."""
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
     groups: dict[str, ReviewGroup] = {}
-    for s in staged_uncategorized(db, batch_id):
+    staged = staged_uncategorized(db, batch_id)
+    pages = _pages(db, [s.raw_line_id for s in staged])
+    for s in staged:
         key = merchant_key(s.description_raw)
         groups.setdefault(key, ReviewGroup(key)).lines.append(
             ReviewLine(
@@ -186,6 +211,8 @@ def batch_groups(db: Session, batch_id: int) -> list[ReviewGroup]:
                 accounts.get(s.account_id),
                 s.person,
                 s.account_id,
+                s.post_date,
+                *pages.get(s.raw_line_id, (None, None)),
             )
         )
     return _with_suggestions(db, groups)

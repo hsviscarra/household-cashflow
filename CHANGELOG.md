@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.50.0] — What a line was, and deleting a category
+
+### Added
+- **Inbox context** (ADR-034): the full date and posting date on each line, **Open the statement,
+  page N**, and **More details**: the card, reference, statement period, the statement's text
+  around the line (long numbers cut to the last four), the transfer email's sender and note, and
+  how the same merchant was categorized before. Also on a statement waiting for approval.
+- **Delete a category** in Settings: unused ones go at once; used ones move their lines, rules,
+  bills and budgets to a category you choose first, with each line's change in its history.
+  `GET /api/categories/{id}/uses`, `DELETE /api/categories/{id}?move_to=`.
+
+### Changed
+- The Inbox explains that saving with "Use for this merchant from now on" categorizes the
+  merchant automatically in the next statements.
+
 ## [0.49.0] — Forecast and the month in ten answers
 
 ### Added
