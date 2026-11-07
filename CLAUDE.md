@@ -6,7 +6,9 @@ Private household finance app. Read `README.md`, `docs/adr/`, `docs/definition-o
 ## Rules
 - Never commit real statements, workbooks, account numbers, cédulas or `.env`. Fixtures are synthetic.
 - One roadmap feature at a time (F0 to F19); a feature is finished only when the Definition of Done holds.
-- Branch `feat/Fxx-short-name`, Conventional Commit messages, draft PR early, Hernan merges.
+- Branch `feat/Fxx-short-name`, Conventional Commit messages. Claude opens the PR and squash-merges it
+  once every CI check passes (Hernan asked, Nov 2026), then checks the deploy; ask him first only for
+  decisions that are his (schema changes outside the plan, anything that can't be undone).
 - Keep changes minimal and targeted; no structural rewrites without asking.
 - Ask before changing the database schema outside a migration planned for the current feature.
 

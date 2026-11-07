@@ -126,3 +126,19 @@ Set `INBOX_TOKEN` in `.env` and run `docker compose up --build`. Then post a fil
 curl -H "Authorization: Bearer $INBOX_TOKEN" -F file=@statement.pdf -F sender=me \
   http://localhost:8000/api/inbox
 ```
+
+
+## The weekly digest (ADR-038)
+
+On Mondays the daily run also emails a short digest: lines to categorize, bills due this week,
+cash running short, unusual charges, last month's missing statements and invoices to sort out.
+
+To turn it on after updating the script:
+1. Open the project at script.google.com, select all of `Code.gs`, and paste the new
+   `infra/gmail/Code.gs` over it. Save.
+2. Choose `testDigest` in the function list and press **Run**. Google asks once to let the script
+   send email as you; allow it. The digest arrives in a few seconds.
+3. Optional: in Project Settings → Script properties add `DIGEST_TO` with the addresses to send
+   it to, comma-separated (for example yours and Lauren's). Without it, it goes to this Gmail.
+
+Nothing else changes: the existing daily trigger sends it every Monday morning.
