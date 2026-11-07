@@ -38,7 +38,7 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import classify, inbox, people, recurring, transfers
+from app.services import bank_sync, classify, inbox, people, recurring, transfers
 from app.services import rules as rule_engine
 
 log = logging.getLogger(__name__)
@@ -372,10 +372,11 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
     )
     cats = {c.category_id: c for c in db.scalars(select(Category))}
     new = [s for s in staged if s.natural_key not in existing]
+    loaded: list[Transaction] = []
     try:
         for s in new:
             cat = cats.get(s.category_id) if s.category_id else None
-            db.add(
+            loaded.append(
                 Transaction(
                     natural_key=s.natural_key,
                     account_id=s.account_id,
@@ -403,6 +404,10 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
                     status="confirmed",
                 )
             )
+        db.add_all(loaded)
+        db.flush()
+        # Lines the bank sync brought before this statement give their place to it (ADR-044).
+        absorbed = bank_sync.absorb(db, loaded, user)
         batch.status = "approved"
         batch.decided_by = user
         batch.decided_at = datetime.now(UTC).replace(tzinfo=None)
@@ -419,6 +424,8 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
                         "statement_file_id": batch.statement_file_id,
                         "loaded": len(new),
                         "skipped_duplicates": len(staged) - len(new),
+                        "bank_sync_matched": absorbed[0],
+                        "bank_sync_removed": absorbed[1],
                     }
                 ),
             )

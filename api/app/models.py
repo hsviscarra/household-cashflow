@@ -31,7 +31,9 @@ COUNTRIES = ("US", "EC")
 CATEGORY_KINDS = ("income", "expense", "savings", "transfer")
 MATCH_TYPES = ("contains", "starts_with", "regex")
 TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest", "debt_payment")
-TXN_SOURCES = ("statement", "manual", "excel_history")
+TXN_SOURCES = ("statement", "manual", "excel_history", "bank_sync")
+# Lines that come from a bank: a statement, or the daily bank sync before its statement (ADR-044).
+FROM_BANKS = ("statement", "bank_sync")
 TXN_STATUSES = ("pending", "confirmed", "matched")
 # How a line got its category (F9): a merchant rule, the statement section, Hernan's choice, an
 # accepted Claude suggestion, the Excel history, a split of a parent line, or a matched transfer
@@ -122,6 +124,8 @@ class Account(Timestamps, Base):
     country: Mapped[str] = mapped_column(Unicode(2))
     # Last four digits only; full account and card numbers are never stored.
     last4: Mapped[str | None] = mapped_column(Unicode(4))
+    # The SimpleFIN account this one is fed by (ADR-044): an opaque id, not an account number.
+    sync_id: Mapped[str | None] = mapped_column(Unicode(100))  # unique when set (0035)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     # Closed or suspended on this day (a card cancelled in September): month status stops
     # expecting statements after it, while its earlier statements still load.

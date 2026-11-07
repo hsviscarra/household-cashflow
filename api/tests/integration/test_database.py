@@ -1066,6 +1066,15 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     assert rule.json()["set_person"] == "Lauren"
     assert client.get("/api/merchant-rules/suggestions").status_code == 200
 
+    # ADR-044: bank sync links and status (migration 0035); no SimpleFIN in CI.
+    sync = client.get("/api/bank-sync").json()
+    some, other = (a["account_id"] for a in sync["accounts"][:2])
+    linked = client.put("/api/bank-sync/link", json={"sync_id": "CI-ACT", "account_id": some})
+    assert linked.status_code == 200, linked.text
+    moved = client.put("/api/bank-sync/link", json={"sync_id": "CI-ACT", "account_id": other})
+    assert moved.status_code == 200, moved.text
+    client.put("/api/bank-sync/link", json={"sync_id": "CI-ACT", "account_id": None})
+
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()
     reader.get_reader_engine.cache_clear()

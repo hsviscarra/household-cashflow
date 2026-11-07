@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.ingestion import transfer_email
 from app.models import (
+    FROM_BANKS,
     Account,
     BalanceSnapshot,
     Category,
@@ -96,7 +97,7 @@ def tag_lines(db: Session, user: str, person: Counterparty | None = None) -> int
         return 0
     rows = db.scalars(
         select(Transaction).where(
-            Transaction.source == "statement",
+            Transaction.source.in_(FROM_BANKS),
             Transaction.counterparty_id.is_(None),
             Transaction.parent_transaction_id.is_(None),
         )
@@ -269,7 +270,7 @@ def match_note(db: Session, note: TransferNote, user: str) -> Transaction | None
         return db.get(Transaction, note.transaction_id)
     taken = select(TransferNote.transaction_id).where(TransferNote.transaction_id.is_not(None))
     q = select(Transaction).where(
-        Transaction.source == "statement",
+        Transaction.source.in_(FROM_BANKS),
         Transaction.amount == note.amount,
         Transaction.txn_date >= note.txn_date - WINDOW,
         Transaction.txn_date <= note.txn_date + WINDOW,

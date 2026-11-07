@@ -136,6 +136,38 @@ export const updateCategory = (
 ) => send<Category>("PATCH", `/api/categories/${id}`, c);
 
 export const fetchRules = () => send<Rule[]>("GET", "/api/merchant-rules");
+export type SyncAccount = {
+  sync_id: string;
+  org: string;
+  name: string;
+  balance: string;
+  balance_date: string;
+  account_id: number | null;
+  movements: number;
+};
+export type BankSync = {
+  configured: boolean;
+  due: boolean;
+  last_run: {
+    at: string;
+    by: string;
+    added: number;
+    already: number;
+    covered: number;
+    unlinked: number;
+    accounts: SyncAccount[];
+    errors: string[];
+  } | null;
+  pending_lines: number;
+  accounts: { account_id: number; name: string; institution: string; sync_id: string | null }[];
+  ran?: boolean;
+  added?: number;
+};
+export const fetchBankSync = () => send<BankSync>("GET", "/api/bank-sync");
+export const runBankSync = (auto = false) =>
+  send<BankSync>("POST", `/api/bank-sync/run${auto ? "?auto=true" : ""}`);
+export const linkBankSync = (b: { sync_id: string; account_id: number | null }) =>
+  send<BankSync>("PUT", "/api/bank-sync/link", b);
 export const fetchRuleSuggestions = () =>
   send<RuleSuggestion[]>("GET", "/api/merchant-rules/suggestions");
 export const createRule = (r: RuleInput) => send<Rule>("POST", "/api/merchant-rules", r);
