@@ -22,5 +22,9 @@ az containerapp secret set -g "$RG" -n "$APP" \
   --secrets "invoice-buyers=Hernan:$HERNAN,Lauren:$LAUREN" -o none
 az containerapp update -g "$RG" -n "$APP" \
   --set-env-vars INVOICE_BUYERS=secretref:invoice-buyers -o none
+# A changed secret reaches the app only on a restart; the first run's update already started a
+# new revision, a re-run (the setting already there) doesn't, so restart the latest one.
+REVISION=$(az containerapp show -g "$RG" -n "$APP" --query properties.latestRevisionName -o tsv)
+az containerapp revision restart -g "$RG" -n "$APP" --revision "$REVISION" -o none
 echo "Done: new invoices are assigned to Hernan or Lauren as they arrive."
 echo "Invoices already in the app keep their person; choose it on Gastos personales."
