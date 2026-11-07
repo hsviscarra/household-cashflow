@@ -53,6 +53,10 @@ param mcpToken string = ''
 param inboxToken string = ''
 
 @secure()
+@description('Whose invoice (ADR-036): "Hernan:<cédula>,Lauren:<cédula>". Empty = chosen by hand.')
+param invoiceBuyers string = ''
+
+@secure()
 @description('Password of the read-only database login the MCP endpoint uses (F18).')
 param readerPassword string = ''
 
@@ -176,7 +180,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           { name: 'mcp-token', value: mcpToken }
           { name: 'reader-password', value: readerPassword }
         ],
-        empty(inboxToken) ? [] : [ { name: 'inbox-token', value: inboxToken } ])
+        empty(inboxToken) ? [] : [ { name: 'inbox-token', value: inboxToken } ],
+        empty(invoiceBuyers) ? [] : [ { name: 'invoice-buyers', value: invoiceBuyers } ])
     }
     template: {
       containers: [
@@ -194,7 +199,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               { name: 'MCP_TOKEN', secretRef: 'mcp-token' }
               { name: 'READER_PASSWORD', secretRef: 'reader-password' }
             ],
-            empty(inboxToken) ? [] : [ { name: 'INBOX_TOKEN', secretRef: 'inbox-token' } ])
+            empty(inboxToken) ? [] : [ { name: 'INBOX_TOKEN', secretRef: 'inbox-token' } ],
+            empty(invoiceBuyers) ? [] : [ { name: 'INVOICE_BUYERS', secretRef: 'invoice-buyers' } ])
         }
       ]
       scale: { minReplicas: 0, maxReplicas: 1 }

@@ -44,3 +44,23 @@ amount on nearby days aren't matched automatically.
 
 Claude can answer "what did we spend on baby things in October?" with the `purchases` tool of
 the household-cashflow connection.
+
+## Gastos personales (ADR-036)
+
+The **Gastos personales** page (Plan) adds up each person's deductible invoices for the tax year,
+against the cap their cargas familiares allow, and estimates the 18% rebate.
+
+- **Whose invoice.** Run `./infra/azure/setup-buyers.sh` once: it asks for both cédulas and keeps
+  them only as a Container App secret (`INVOICE_BUYERS`). New invoices are then assigned to Hernan
+  or Lauren as they're read; the database keeps the name, never the number. Invoices already in the
+  app take the person of the card line that paid them, or the one you choose on the page.
+- **Category.** SRI's six: Vivienda, Educación (arte y cultura), Salud, Alimentación, Vestimenta,
+  Turismo. Guessed from the line that paid it (Supermarket → Alimentación, Pharmacy → Salud…) or
+  the products; "All from this issuer" saves the choice for every invoice from that RUC.
+  "Not deductible" leaves an invoice out.
+- **Cargas.** Set them per person and year on the page; they raise the cap (7 baskets with none,
+  9, 11, 14, 17, then 20; 100 for a catastrophic, rare or orphan illness).
+- **The annex.** "Numbers for the annex (CSV)" lists RUC, provider, category, invoices, base and
+  total per issuer. Amounts are before IVA; confirm with your accountant before filing.
+- **A new year.** Add the SRI's basic basket (canasta básica familiar) for the year to `CANASTA`
+  in `api/app/services/gastos.py`; until then the page shows totals without a cap.

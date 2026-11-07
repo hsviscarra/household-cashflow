@@ -1447,3 +1447,58 @@ export type Bill = {
 };
 export type Bills = { month: string; today: string; bills: Bill[] };
 export const fetchBills = (month: string) => send<Bills>("GET", `/api/recurring/bills?month=${month}`);
+
+// ---------- gastos personales (ADR-036) ----------
+export type GpCategory = "vivienda" | "educacion" | "salud" | "alimentacion" | "vestimenta" | "turismo";
+export type GastosPerson = {
+  person: "Hernan" | "Lauren";
+  cargas: number;
+  catastrophic: boolean;
+  cap: Money | null;
+  total: Money;
+  deductible: Money;
+  rebate: Money;
+  by_category: { category: GpCategory; label: string; invoices: number; amount: Money }[];
+  to_classify: number;
+  not_deductible: number;
+};
+export type GastosSummary = {
+  year: number;
+  canasta: Money | null;
+  rate: Money;
+  people: GastosPerson[];
+  unassigned: number;
+  unassigned_amount: Money;
+  labels: Record<GpCategory, string>;
+};
+export type GastosInvoice = {
+  invoice_id: number;
+  issue_date: string;
+  issuer_ruc: string;
+  issuer_name: string;
+  number: string;
+  subtotal: Money;
+  total: Money;
+  person: "Hernan" | "Lauren" | null;
+  person_source: "invoice" | "paid" | null;
+  category: GpCategory | "none" | null;
+  category_source: "chosen" | "issuer" | "paid" | "products" | null;
+  transaction_id: number | null;
+  paid_as: string | null;
+};
+export type GastosChoice = {
+  person?: "Hernan" | "Lauren" | null;
+  category?: GpCategory | "none" | null;
+  remember_issuer?: boolean;
+};
+export const fetchGastos = (year: number) => send<GastosSummary>("GET", `/api/gastos/${year}`);
+export const fetchGastosInvoices = (year: number, filter: "to_classify" | "nobody" | "all") =>
+  send<GastosInvoice[]>(
+    "GET",
+    `/api/gastos/${year}/invoices${filter === "to_classify" ? "?status=to_classify" : filter === "nobody" ? "?person=none" : ""}`,
+  );
+export const chooseGastos = (invoiceId: number, body: GastosChoice) =>
+  send<GastosInvoice>("PUT", `/api/invoices/${invoiceId}/gastos`, body);
+export const setGastosProfile = (year: number, person: string, cargas: number, catastrophic: boolean) =>
+  send<{ cap: Money | null }>("PUT", `/api/gastos/${year}/profile/${person}`, { cargas, catastrophic });
+export const gastosCsvUrl = (year: number, person: string) => `/api/gastos/${year}/${person}.csv`;

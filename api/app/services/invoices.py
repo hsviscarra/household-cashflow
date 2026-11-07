@@ -26,6 +26,7 @@ from defusedxml.common import DefusedXmlException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import (
     PRODUCT_GROUPS,
     Invoice,
@@ -81,6 +82,7 @@ class Parsed:
     tax: Decimal
     total: Decimal
     lines: list[Line] = field(default_factory=list)
+    person: str | None = None  # the buyer, by name (ADR-036); the ID itself isn't kept
 
 
 # ---------------------------------------------------------------- reading
@@ -185,7 +187,22 @@ def parse(xml: bytes) -> Parsed:
         tax=tax,
         total=total,
         lines=lines,
+        person=buyer_person(_text(info_f, "identificacionComprador")),
     )
+
+
+def buyer_person(buyer_id: str) -> str | None:
+    """'1712345678' -> 'Hernan' when INVOICE_BUYERS names that ID; anything else -> None.
+    A RUC ending in 001 matches its cédula (a person invoiced to their RUC)."""
+    wanted = re.sub(r"\D", "", buyer_id or "")
+    if not wanted:
+        return None
+    for pair in get_settings().invoice_buyers.split(","):
+        name, _, ident = pair.partition(":")
+        ident = re.sub(r"\D", "", ident)
+        if ident and name.strip() and wanted in (ident, ident + "001"):
+            return name.strip()[:20]
+    return None
 
 
 # ---------------------------------------------------------------- product groups
@@ -324,6 +341,7 @@ def store(db: Session, p: Parsed, user: str) -> Stored:
         tax=p.tax,
         total=p.total,
         received_by=user[:320],
+        person=p.person,
         lines=[
             InvoiceLine(
                 line_no=ln.line_no,

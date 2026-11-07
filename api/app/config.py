@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # views only). Created or updated at start-up; empty = the endpoint uses the app's login
     # (local development and tests only).
     reader_password: str = ""
+    # Whose invoice is it (ADR-036): "Hernan:<cédula>,Lauren:<cédula>". Compared with the
+    # buyer's ID while an invoice XML is read; only the name is stored, never the ID.
+    invoice_buyers: str = ""
     # Backups (F17): the jobs write to this container (Azure) or folder (local runs).
     backups_container: str = "backups"
     backups_dir: str = "data/backups"
