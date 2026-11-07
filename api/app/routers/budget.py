@@ -51,6 +51,17 @@ class PlanIn(BaseModel):
     rollover: bool = False
 
 
+class SinkingFundOut(BaseModel):
+    template_id: int
+    name: str
+    every_months: int
+    amount: Decimal
+    monthly: Decimal
+    next_due: date
+    months_to_go: int
+    should_have: Decimal
+
+
 class StartedOut(BaseModel):
     added: int
 
@@ -83,3 +94,9 @@ def set_plan(group_id: int, body: PlanIn, db: DB, request: Request) -> None:
 def start_from_average(month: Month, db: DB, request: Request) -> StartedOut:
     """Every group with spending and no budget yet: its 3-month average from this month on."""
     return StartedOut(added=budget.start_from_average(db, _month(month), _user(request)))
+
+
+@router.get("/{month}/yearly-bills", response_model=list[SinkingFundOut])
+def yearly_bills(month: Month, db: DB) -> list[SinkingFundOut]:
+    """Bills that come every 2 to 12 months, as a monthly amount to set aside (ADR-041)."""
+    return [SinkingFundOut(**asdict(f)) for f in budget.sinking_funds(db, _month(month))]
