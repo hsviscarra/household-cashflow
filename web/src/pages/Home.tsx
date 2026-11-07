@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import {
   fetchBalanceSheet,
+  fetchGoals,
   fetchFlows,
   fetchPeople,
   fetchProjection,
@@ -17,6 +18,7 @@ import { PersonNote } from "../components/Personalize";
 import { localToday, money, monthLong, monthShort, num, pct } from "../money";
 import { personParam, usePerson, useSettings } from "../prefs";
 import { rows } from "./CashFlow";
+import { paceLine } from "./Goals";
 
 // Home (ADR-027): what needs you, the month in numbers, where it went, what's coming, goals and
 // the Inbox, as widgets each person can hide and reorder ("Customize"), saved with their settings.
@@ -374,19 +376,44 @@ function Coming() {
 function Goals() {
   const sheet = useQuery({ queryKey: ["networth"], queryFn: fetchBalanceSheet });
   const people = useQuery({ queryKey: ["people"], queryFn: fetchPeople });
+  const saving = useQuery({ queryKey: ["goals"], queryFn: fetchGoals });
   const items = sheet.data?.items ?? [];
-  const goals = items.filter((i) => i.is_active && i.purchase);
+  const mine = (saving.data?.goals ?? []).filter((g) => g.is_active);
+  const linked = new Set(mine.map((g) => g.item_key));
+  // A purchase followed by a saving goal shows once, as the goal (ADR-040).
+  const goals = items.filter((i) => i.is_active && i.purchase && !linked.has(i.key));
   const held = (people.data ?? [])
     .filter((p) => p.holding_id && p.is_active)
     .map((p) => ({ name: p.name, item: items.find((i) => i.holding_id === p.holding_id) }))
     .filter((h) => h.item && num(h.item.value) !== 0);
   return (
-    <Card id="goals" title="Goals" link={["/debt", "Net worth"]}>
+    <Card id="goals" title="Goals" link={["/goals", "All goals"]}>
       {!sheet.data && <p className="text-muted">{sheet.error ? "Net worth isn’t available." : "Loading…"}</p>}
-      {sheet.data && !goals.length && !held.length && (
-        <p className="text-muted">No purchases or goals yet. Add one on Net worth.</p>
+      {sheet.data && !goals.length && !held.length && !mine.length && (
+        <p className="text-muted">No goals yet. Add one on Goals.</p>
       )}
       <ul className="space-y-4">
+        {mine.map((g) => (
+          <li key={`goal-${g.goal_id}`}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <strong>{g.name}</strong>
+              <span className="num text-sm text-muted">
+                {money(g.current)} of {money(g.target_amount)} · {pct(num(g.share))}
+              </span>
+            </div>
+            <div
+              className="mt-1 h-2 rounded-full bg-surface"
+              role="progressbar"
+              aria-label={`${g.name}: saved`}
+              aria-valuenow={Math.round(num(g.share) * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div className="h-2 rounded-full bg-flow-in" style={{ width: `${num(g.share) * 100}%` }} />
+            </div>
+            <p className="mt-1 text-sm text-muted">{paceLine(g)}</p>
+          </li>
+        ))}
         {goals.map((g) => {
           const p = g.purchase!;
           const share = num(p.target) ? Math.min(1, num(p.paid) / num(p.target)) : 0;

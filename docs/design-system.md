@@ -135,6 +135,13 @@ how many lines wait for a category. URLs stay as they were.
   far it got ("Getting 20 of 45 from the SRI…"); the outcome goes in the page's status line and
   the results list.
 
+## Goals (ADR-040)
+
+- A card per goal in two columns: name, where the money is and the date in muted text, a status
+  pill (Reached and On pace in good, Behind in attention, Date passed in danger, No date muted),
+  saved of target as a display number, a bar in primary (warn when behind or late) and one pace
+  sentence. Paused goals show at 60% opacity.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

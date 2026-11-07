@@ -1004,3 +1004,25 @@ class GpProfile(Base):
     year: Mapped[int] = mapped_column(Integer, primary_key=True)
     cargas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
     catastrophic: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
+class Goal(Base):
+    """A saving goal (ADR-040): reach target_amount (by target_date), with the money in a bank
+    account or balance-sheet item (item_key, "account-12" or "holding-5") or, without one, the
+    amount saved typed by hand; monthly_amount is what's planned to go in each month."""
+
+    __tablename__ = "goal"
+    __table_args__ = (CheckConstraint("target_amount > 0", name="target"), {"schema": "core"})
+
+    goal_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Unicode(100))
+    target_amount: Mapped[Decimal] = mapped_column(Money)
+    target_date: Mapped[date | None] = mapped_column(Date)
+    item_key: Mapped[str | None] = mapped_column(Unicode(40))
+    saved_amount: Mapped[Decimal | None] = mapped_column(Money)
+    monthly_amount: Mapped[Decimal | None] = mapped_column(Money)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    notes: Mapped[str | None] = mapped_column(Unicode(400))
+    created_by: Mapped[str] = mapped_column(Unicode(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
