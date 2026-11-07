@@ -1540,3 +1540,40 @@ export const setBudget = (groupId: number, fromMonth: string, amount: string, ro
   send<void>("PUT", `/api/budget/groups/${groupId}`, { from_month: fromMonth, amount, rollover });
 export const startBudgetFromAverage = (month: string) =>
   send<{ added: number }>("POST", `/api/budget/${month}/start-from-average`);
+
+// ---------- saving goals (ADR-040) ----------
+export type Goal = {
+  goal_id: number;
+  name: string;
+  target_amount: Money;
+  target_date: string | null;
+  item_key: string | null;
+  place_name: string | null;
+  saved_amount: Money | null;
+  monthly_amount: Money | null;
+  is_active: boolean;
+  notes: string | null;
+  current: Money;
+  as_of: string | null;
+  share: Money;
+  left: Money;
+  months_left: number | null;
+  needed_monthly: Money | null;
+  projected: Money | null;
+  status: "reached" | "on_pace" | "behind" | "late" | "open";
+};
+export type GoalPlace = { key: string; name: string; value: Money | null; as_of: string | null };
+export type GoalInput = {
+  name?: string;
+  target_amount?: string;
+  target_date?: string | null;
+  item_key?: string | null;
+  saved_amount?: string | null;
+  monthly_amount?: string | null;
+  is_active?: boolean;
+  notes?: string | null;
+};
+export const fetchGoals = () => send<{ goals: Goal[]; places: GoalPlace[] }>("GET", "/api/goals");
+export const createGoal = (body: GoalInput) => send<Goal>("POST", "/api/goals", body);
+export const updateGoal = (id: number, body: GoalInput) => send<Goal>("PATCH", `/api/goals/${id}`, body);
+export const deleteGoal = (id: number) => send<void>("DELETE", `/api/goals/${id}`);

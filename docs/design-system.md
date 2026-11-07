@@ -143,6 +143,13 @@ how many lines wait for a category. URLs stay as they were.
   track in primary, warn or danger-ink with a thin ink mark at today's share of the month.
 - Changing a budget opens an inline form in the card (amount from this month on, rollover).
 
+## Goals (ADR-040)
+
+- A card per goal in two columns: name, where the money is and the date in muted text, a status
+  pill (Reached and On pace in good, Behind in attention, Date passed in danger, No date muted),
+  saved of target as a display number, a bar in primary (warn when behind or late) and one pace
+  sentence. Paused goals show at 60% opacity.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

@@ -106,6 +106,13 @@ export const PAGES: PageDef[] = [
     summary: "A monthly budget per group, its pace and rollover.",
   },
   {
+    path: "/goals",
+    label: "Goals",
+    group: "Plan",
+    feature: "P2",
+    summary: "What you're saving for and what each goal needs a month.",
+  },
+  {
     path: "/taxes",
     label: "Gastos personales",
     group: "Plan",
