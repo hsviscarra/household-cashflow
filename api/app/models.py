@@ -155,6 +155,9 @@ class MerchantRule(Timestamps, Base):
     __tablename__ = "merchant_rule"
     __table_args__ = (
         CheckConstraint(_in("match_type", MATCH_TYPES), name="match_type"),
+        CheckConstraint(
+            "set_person IS NULL OR set_person IN ('Hernan', 'Lauren', 'Joint')", name="set_person"
+        ),
         {"schema": "core"},
     )
 
@@ -169,6 +172,9 @@ class MerchantRule(Timestamps, Base):
     # ("PAGO IESS" is the empleada's IESS under 300 and the BIESS house loan above).
     amount_min: Mapped[Decimal | None] = mapped_column(Money)
     amount_max: Mapped[Decimal | None] = mapped_column(Money)
+    # What else a match does (ADR-042): whose line it is, and the merchant's name.
+    set_person: Mapped[str | None] = mapped_column(Unicode(10))
+    merchant_name: Mapped[str | None] = mapped_column(Unicode(100))
 
     category: Mapped[Category] = relationship()
 

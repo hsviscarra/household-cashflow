@@ -21,6 +21,8 @@ class RuleRow(Protocol):
     is_active: bool
     amount_min: Decimal | None
     amount_max: Decimal | None
+    set_person: str | None
+    merchant_name: str | None
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class Rule:
     is_active: bool = True
     amount_min: Decimal | None = None
     amount_max: Decimal | None = None
+    set_person: str | None = None  # ADR-042: whose line it is
+    merchant_name: str | None = None  # ADR-042: the name lines get
 
     @classmethod
     def of(cls, r: RuleRow) -> "Rule":
@@ -45,7 +49,13 @@ class Rule:
             r.is_active,
             r.amount_min,
             r.amount_max,
+            getattr(r, "set_person", None),
+            getattr(r, "merchant_name", None),
         )
+
+    def merchant(self) -> str:
+        """The merchant name a matched line gets: the rule's name, or its pattern."""
+        return (self.merchant_name or self.pattern.strip(" *"))[:100]
 
 
 def normalize(text: str) -> str:

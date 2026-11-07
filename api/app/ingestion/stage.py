@@ -86,6 +86,7 @@ class _Classified:
     category_id: int | None
     rule_id: int | None
     merchant: str | None
+    person: str | None = None  # a rule's person (ADR-042)
 
 
 def _classify(
@@ -105,7 +106,7 @@ def _classify(
     if hit is None:
         return _Classified(classify.rule_type("expense", account, line.amount), None, None, None)
     type_ = classify.rule_type(by_id[hit.category_id].kind, account, line.amount)
-    return _Classified(type_, hit.category_id, hit.rule_id, patterns[hit.rule_id].strip(" *"))
+    return _Classified(type_, hit.category_id, hit.rule_id, hit.merchant(), hit.set_person)
 
 
 def _account_at_bank(db: Session, sf: StatementFile, last4: str) -> Account | None:
@@ -327,7 +328,7 @@ def parse_statement(
                 type=c.type,
                 category_id=c.category_id,
                 rule_id=c.rule_id,
-                person=line.person or account.owner,
+                person=c.person or line.person or account.owner,
                 country=country,
                 pay_reference=line.reference,
                 is_duplicate=False,

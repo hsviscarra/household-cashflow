@@ -150,6 +150,12 @@ how many lines wait for a category. URLs stay as they were.
   saved of target as a display number, a bar in primary (warn when behind or late) and one pace
   sentence. Paused goals show at 60% opacity.
 
+## Suggested rules (ADR-042)
+
+- A card above the rule list, shown only when there are suggestions: pattern in mono, then the
+  category, person, times and an example in muted text; Save rule (primary) and Not now (quiet),
+  both small (h-9). Rules that also set a person or name say so in muted text under the category.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

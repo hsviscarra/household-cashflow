@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ from app.schemas import (
     RuleTestOut,
 )
 from app.services import categories as category_service
-from app.services import classify
+from app.services import classify, rules_suggest
 from app.services import rules as rule_engine
 
 router = APIRouter(prefix="/api", tags=["reference"])
@@ -219,6 +220,8 @@ def _rule_out(rule: MerchantRule, paths: dict[int, str], applied: int = 0) -> Ru
         is_active=rule.is_active,
         amount_min=rule.amount_min,
         amount_max=rule.amount_max,
+        set_person=rule.set_person,
+        merchant_name=rule.merchant_name,
         applied=applied,
     )
 
@@ -235,6 +238,33 @@ def _check_rule(db: Session, pattern: str | None, match_type: str, category_id: 
             raise HTTPException(422, error)
     if category_id is not None:
         _get(db, Category, category_id, "Category")
+
+
+class RuleSuggestionOut(BaseModel):
+    pattern: str
+    category_id: int
+    category_path: str
+    times: int
+    example: str
+    person: str | None
+
+
+@router.get("/merchant-rules/suggestions", response_model=list[RuleSuggestionOut])
+def rule_suggestions(db: DB) -> list[RuleSuggestionOut]:
+    """Merchants you categorized the same way at least twice by hand and no rule covers yet
+    (ADR-042); saving one is an ordinary POST /api/merchant-rules."""
+    paths = _paths(db)
+    return [
+        RuleSuggestionOut(
+            pattern=s.pattern,
+            category_id=s.category_id,
+            category_path=paths.get(s.category_id, "?"),
+            times=s.times,
+            example=s.example,
+            person=s.person,
+        )
+        for s in rules_suggest.suggestions(db)
+    ]
 
 
 @router.get("/merchant-rules", response_model=list[RuleOut])
