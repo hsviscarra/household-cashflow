@@ -133,7 +133,8 @@ def sri_fetch(body: SriFetchIn, request: Request, db: DB) -> list[InvoiceUploadO
                 InvoiceUploadOut(
                     file_name=key,
                     outcome="rejected",
-                    message=words.get(answer.state, f"The SRI answered {answer.state}."),
+                    message=words.get(answer.state, f"The SRI answered {answer.state}.")
+                    + (f" {answer.reason}" if answer.reason else ""),
                 )
             )
             continue

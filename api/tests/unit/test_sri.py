@@ -48,6 +48,22 @@ def test_doc_type_and_answers() -> None:
     assert sri.read_answer(soap(None)).state == "NONE"
     refused = sri.read_answer(soap(factura(wrapped=False), "NO AUTORIZADO"))
     assert refused.state == "NO AUTORIZADO" and refused.xml is None
+    # A malformed key, as the SRI answered it in a real test (Nov 2026).
+    bad = sri.read_answer(
+        b'<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>'
+        b'<ns2:autorizacionComprobanteResponse xmlns:ns2="http://ec.gob.sri.ws.autorizacion">'
+        b"<RespuestaAutorizacionComprobante><claveAccesoConsultada>123</claveAccesoConsultada>"
+        b"<autorizaciones><autorizacion><estado>RECHAZADA</estado><mensajes><mensaje>"
+        b"<identificador>80</identificador><mensaje>ERROR EN LA ESTRUCTURA DE LA CLAVE DE ACCESO"
+        b"</mensaje><informacionAdicional>Error longitud clave acceso no valida."
+        b"</informacionAdicional></mensaje></mensajes></autorizacion></autorizaciones>"
+        b"</RespuestaAutorizacionComprobante></ns2:autorizacionComprobanteResponse>"
+        b"</soap:Body></soap:Envelope>"
+    )
+    assert bad.state == "RECHAZADA" and bad.xml is None
+    assert bad.reason == (
+        "ERROR EN LA ESTRUCTURA DE LA CLAVE DE ACCESO Error longitud clave acceso no valida."
+    )
     with pytest.raises(sri.SriError):
         sri.read_answer(b"<html>down for maintenance")
 
@@ -74,6 +90,11 @@ def test_fetching_stores_reports_and_survives_the_sri(
         OTHER: soap(None),
         CREDIT_NOTE: soap(factura(wrapped=False), "EN PROCESAMIENTO"),
     }
+    rejected = KEY[:-3] + "444"
+    answers[rejected] = soap(factura(wrapped=False), "RECHAZADA").replace(
+        b"<mensajes/>",
+        b"<mensajes><mensaje><mensaje>CLAVE NO REGISTRADA</mensaje></mensaje></mensajes>",
+    )
 
     def fake_ask(key: str) -> bytes:
         a = answers.get(key)
@@ -85,7 +106,7 @@ def test_fetching_stores_reports_and_survives_the_sri(
     late = KEY[:-3] + "555"
     resp = client.post(
         "/api/invoices/sri/fetch",
-        json={"keys": [KEY, OTHER, CREDIT_NOTE, late, "123"]},
+        json={"keys": [KEY, OTHER, CREDIT_NOTE, late, "123", rejected]},
         headers=USER,
     )
     assert resp.status_code == 200, resp.text
@@ -95,6 +116,7 @@ def test_fetching_stores_reports_and_survives_the_sri(
     assert got[2] == ("rejected", "The SRI is still processing it; try again later.")
     assert got[3][0] == "rejected" and "didn't answer" in got[3][1]
     assert got[4] == ("rejected", "Not an access key.")
+    assert got[5] == ("rejected", "The SRI answered RECHAZADA. CLAVE NO REGISTRADA")
     again = client.post("/api/invoices/sri/fetch", json={"keys": [KEY]}).json()
     assert again[0]["outcome"] == "duplicate"
     too_many = client.post("/api/invoices/sri/fetch", json={"keys": [KEY] * 11})

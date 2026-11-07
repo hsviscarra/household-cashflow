@@ -78,6 +78,7 @@ def _local(el: Element) -> None:
 class Answer:
     state: str  # AUTORIZADO, NO AUTORIZADO, EN PROCESAMIENTO, or NONE (the SRI has no such key)
     xml: bytes | None  # the whole authorization answer, which the invoice reader understands
+    reason: str = ""  # the SRI's own words when it refuses ("ERROR EN LA ESTRUCTURA…")
 
 
 def read_answer(body: bytes) -> Answer:
@@ -93,7 +94,16 @@ def read_answer(body: bytes) -> Answer:
         return Answer("NONE", None)
     state = (auth.findtext("estado") or "").strip().upper()
     has_doc = (auth.findtext("comprobante") or "").strip().startswith("<")
-    return Answer(state, body if state == "AUTORIZADO" and has_doc else None)
+    reasons = [
+        " ".join(
+            t
+            for t in (m.findtext("mensaje"), m.findtext("informacionAdicional"))
+            if t and t.strip()
+        )
+        for m in auth.findall("mensajes/mensaje")
+    ]
+    reason = "; ".join(r for r in reasons if r)[:300]
+    return Answer(state, body if state == "AUTORIZADO" and has_doc else None, reason)
 
 
 def ask(key: str) -> bytes:
