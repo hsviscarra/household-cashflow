@@ -102,10 +102,20 @@ export type Rule = {
   is_active: boolean;
   amount_min: Money | null; // on the absolute amount; null = no limit
   amount_max: Money | null;
+  set_person: Owner | null; // the rule also sets whose line it is (ADR-042)
+  merchant_name: string | null; // and the merchant name shown
   applied?: number; // lines this save categorized (loaded or waiting for approval)
 };
 export type RuleInput = Pick<Rule, "pattern" | "match_type" | "category_id" | "priority"> &
-  Partial<Pick<Rule, "amount_min" | "amount_max">>;
+  Partial<Pick<Rule, "amount_min" | "amount_max" | "set_person" | "merchant_name">>;
+export type RuleSuggestion = {
+  pattern: string;
+  category_id: number;
+  category_path: string;
+  times: number;
+  example: string;
+  person: Owner | null;
+};
 
 export const fetchAccounts = () => send<Account[]>("GET", "/api/accounts");
 export const createAccount = (a: AccountInput) => send<Account>("POST", "/api/accounts", a);
@@ -126,6 +136,8 @@ export const updateCategory = (
 ) => send<Category>("PATCH", `/api/categories/${id}`, c);
 
 export const fetchRules = () => send<Rule[]>("GET", "/api/merchant-rules");
+export const fetchRuleSuggestions = () =>
+  send<RuleSuggestion[]>("GET", "/api/merchant-rules/suggestions");
 export const createRule = (r: RuleInput) => send<Rule>("POST", "/api/merchant-rules", r);
 export const updateRule = (id: number, r: Partial<RuleInput & { is_active: boolean }>) =>
   send<Rule>("PATCH", `/api/merchant-rules/${id}`, r);

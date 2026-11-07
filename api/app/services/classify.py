@@ -415,7 +415,13 @@ def apply_rule(db: Session, rule: MerchantRule, user: str, skip: set[int] | None
         if skip and t.transaction_id in skip:
             continue
         if rule_engine.matches(engine_rule, t.description_raw, t.amount):
-            set_category(db, t, category, "rule", f"Rule {rule.rule_id}", user, rule.rule_id)
+            reason = f"Rule {rule.rule_id}"
+            set_category(db, t, category, "rule", reason, user, rule.rule_id)
+            if rule.set_person and t.person != rule.set_person:
+                _log(db, t, "person", t.person, rule.set_person, reason, user)
+                t.person = rule.set_person
+            if rule.merchant_name:
+                t.merchant = engine_rule.merchant()
             count += 1
     return count
 
@@ -441,7 +447,6 @@ def classify_waiting(
         return 0
     rows = [rule] if rule is not None else list(db.scalars(select(MerchantRule)))
     rules = [rule_engine.Rule.of(r) for r in rows]
-    patterns = {r.rule_id: r.pattern for r in rows}
     by_id = {c.category_id: c for c in db.scalars(select(Category))}
     count = 0
     for s, account in waiting:
@@ -450,7 +455,9 @@ def classify_waiting(
             continue
         s.type = rule_type(by_id[hit.category_id].kind, account, s.amount)
         s.category_id, s.rule_id = hit.category_id, hit.rule_id
-        s.merchant = patterns[hit.rule_id].strip(" *")
+        s.merchant = hit.merchant()
+        if hit.set_person:
+            s.person = hit.set_person
         count += 1
     db.flush()
     return count

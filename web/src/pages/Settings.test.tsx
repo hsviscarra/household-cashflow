@@ -3,12 +3,18 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Account, CategoryGroup, Rule } from "../api";
+import type { Account, CategoryGroup, Rule, RuleSuggestion } from "../api";
 import Settings, { usage, usesText } from "./Settings";
 import { pickCategory } from "../test/pick";
 
 // Small in-memory stand-in for the F1 API, so the page is tested against real request shapes.
-type Db = { accounts: Account[]; categories: CategoryGroup[]; rules: Rule[] };
+type Db = {
+  accounts: Account[];
+  categories: CategoryGroup[];
+  rules: Rule[];
+  suggestions: RuleSuggestion[];
+  settings: Record<string, unknown>;
+};
 let db: Db;
 let calls: { method: string; url: string; body: unknown }[];
 
@@ -86,8 +92,29 @@ function seed(): Db {
         is_active: true,
         amount_min: null,
         amount_max: null,
+        set_person: null,
+        merchant_name: null,
       },
     ],
+    suggestions: [
+      {
+        pattern: "SUPERMAXI",
+        category_id: 11,
+        category_path: "Groceries / Supermarket",
+        times: 3,
+        example: "SUPERMAXI 123 QUITO",
+        person: "Joint",
+      },
+      {
+        pattern: "FARMACIA",
+        category_id: 11,
+        category_path: "Health / Pharmacy",
+        times: 2,
+        example: "FARMACIA CRUZ AZUL",
+        person: null,
+      },
+    ],
+    settings: {},
   };
 }
 
@@ -173,6 +200,14 @@ function fakeFetch(input: string, init?: RequestInit) {
     });
   }
   if (path === "/api/merchant-rules" && method === "GET") return json(db.rules);
+  if (path === "/api/merchant-rules/suggestions")
+    return json(db.suggestions.filter((x) => !db.rules.some((r) => r.pattern === x.pattern)));
+  if (path === "/api/me/settings" && method === "GET") return json({ user: "local", settings: db.settings });
+  const setting = path.match(/^\/api\/me\/settings\/(.+)$/);
+  if (setting && method === "PUT") {
+    db.settings[decodeURIComponent(setting[1])] = body.value;
+    return json({ user: "local", settings: db.settings });
+  }
   if (path === "/api/merchant-rules/test") {
     const d = url.searchParams.get("description")!.toUpperCase();
     return json({ description: d, rule: db.rules.find((r) => d.includes(r.pattern)) ?? null });
@@ -451,6 +486,34 @@ describe("Settings: merchant rules", () => {
     fireEvent.click(within(table).getByRole("button", { name: "Delete rule UBER EATS" }));
     expect(await screen.findByText("Rule deleted: UBER EATS.")).toBeInTheDocument();
     await waitFor(() => expect(within(table).queryByText("UBER EATS")).not.toBeInTheDocument());
+  });
+
+  it("saves a suggested rule and puts one off", async () => {
+    renderSettings("rules");
+    const box = await screen.findByRole("region", { name: "Suggested rules" });
+    expect(within(box).getByText(/Groceries \/ Supermarket · Joint · 3 times/)).toBeInTheDocument();
+    fireEvent.click(within(box).getByRole("button", { name: "Save rule SUPERMAXI" }));
+    expect(await screen.findByText(/Rule added: SUPERMAXI/)).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "POST" && c.url === "/api/merchant-rules")!;
+    expect(sent.body).toMatchObject({ pattern: "SUPERMAXI", category_id: 11, set_person: "Joint" });
+    fireEvent.click(await within(box).findByRole("button", { name: "Not now FARMACIA" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Suggested rules" })).not.toBeInTheDocument(),
+    );
+    expect(db.settings.rule_suggestions_dismissed).toEqual(["FARMACIA"]);
+  });
+
+  it("adds a rule that also sets the person and the name", async () => {
+    renderSettings("rules");
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    fireEvent.change(screen.getByLabelText("Pattern in the statement description"), {
+      target: { value: "PAYPAL *NETFLIX" },
+    });
+    pickCategory(screen.getByRole("combobox", { name: "Category" }), "salary", "Salary");
+    fireEvent.change(screen.getByLabelText("Also set person (optional)"), { target: { value: "Lauren" } });
+    fireEvent.change(screen.getByLabelText("Show merchant as (optional)"), { target: { value: " Netflix " } });
+    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    expect(await screen.findByText(/Also sets person Lauren and name “Netflix”/)).toBeInTheDocument();
   });
 
   it("filters the rule list", async () => {

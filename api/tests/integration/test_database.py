@@ -1052,6 +1052,20 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     assert made.status_code == 201, made.text
     assert made.json()["months_left"] == 6 and made.json()["status"] == "behind"
 
+    # ADR-042: rules that also set the person and the name (migration 0034).
+    rule = client.post(
+        "/api/merchant-rules",
+        json={
+            "pattern": "CI SMARTER RULE",
+            "category_id": groceries,
+            "set_person": "Lauren",
+            "merchant_name": "CI Market",
+        },
+    )
+    assert rule.status_code == 201, rule.text
+    assert rule.json()["set_person"] == "Lauren"
+    assert client.get("/api/merchant-rules/suggestions").status_code == 200
+
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()
     reader.get_reader_engine.cache_clear()

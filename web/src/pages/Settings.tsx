@@ -12,6 +12,9 @@ import {
   fetchAccounts,
   fetchCategories,
   fetchRules,
+  fetchRuleSuggestions,
+  fetchSettings,
+  putSetting,
   testRule,
   updateAccount,
   updateCategory,
@@ -25,6 +28,8 @@ import {
   type MatchType,
   type Rule,
   type RuleInput,
+  type Owner,
+  type RuleSuggestion,
 } from "../api";
 import CategoryPicker, { fold } from "../components/CategoryPicker";
 import { money } from "../money";
@@ -976,6 +981,7 @@ function RulesTab({ notify }: { notify: Notify }) {
   return (
     <div className="space-y-6">
       <RuleTester />
+      <SuggestedRules notify={notify} reach={reach} />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="min-w-56 flex-1 md:max-w-sm">
@@ -1030,7 +1036,12 @@ function RulesTab({ notify }: { notify: Notify }) {
               <tr key={r.rule_id} className={r.is_active ? "" : "text-muted"}>
                 <td className="px-4 py-2 font-mono text-sm">{r.pattern}</td>
                 <td className="px-4 py-2 text-sm">{MATCH_LABEL[r.match_type]}</td>
-                <td className="px-4 py-2">{r.category_path}</td>
+                <td className="px-4 py-2">
+                  {r.category_path}
+                  {(r.set_person || r.merchant_name) && (
+                    <span className="block text-sm text-muted">{alsoNote(r)}</span>
+                  )}
+                </td>
                 <td className={`num px-4 py-2 text-sm ${r.amount_min || r.amount_max ? "" : "text-muted"}`}>
                   {amountRange(r)}
                 </td>
@@ -1084,8 +1095,91 @@ function RulesTab({ notify }: { notify: Notify }) {
   );
 }
 
+export function alsoNote(r: Pick<Rule, "set_person" | "merchant_name">): string {
+  const parts = [
+    r.set_person && `person ${r.set_person}`,
+    r.merchant_name && `name “${r.merchant_name}”`,
+  ].filter(Boolean);
+  return parts.length ? `Also sets ${parts.join(" and ")}` : "";
+}
+
+const DISMISSED = "rule_suggestions_dismissed";
+
+/** Merchants categorized the same way at least twice by hand, offered as rules (ADR-042). */
+function SuggestedRules({ notify, reach }: { notify: Notify; reach: string[][] }) {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["rules", "suggestions"], queryFn: fetchRuleSuggestions });
+  const me = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
+  const save = useSave(createRule, reach, notify);
+  const raw = me.data?.settings[DISMISSED];
+  const dismissed = Array.isArray(raw) ? (raw as string[]) : [];
+  const shown = (list.data ?? []).filter((s) => !dismissed.includes(s.pattern));
+  if (!shown.length) return null;
+  const dismiss = (s: RuleSuggestion) =>
+    putSetting(DISMISSED, [...dismissed, s.pattern].slice(-200)).then(() =>
+      qc.invalidateQueries({ queryKey: ["settings"] }),
+    );
+  return (
+    <section aria-label="Suggested rules" className="card space-y-3 p-5">
+      <div>
+        <h2 className="text-lg font-semibold">Suggested rules</h2>
+        <p className="text-sm text-muted">
+          You categorized these the same way more than once. Save one and the next statements get it by
+          themselves.
+        </p>
+      </div>
+      <ul className="divide-y divide-line">
+        {shown.map((s) => (
+          <li key={s.pattern} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="min-w-0">
+              <p className="font-mono text-sm">{s.pattern}</p>
+              <p className="text-sm text-muted">
+                → {s.category_path}
+                {s.person ? ` · ${s.person}` : ""} · {s.times} times · e.g. {s.example}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="btn btn-primary h-9 px-4 text-sm"
+                disabled={save.isPending}
+                aria-label={`Save rule ${s.pattern}`}
+                onClick={() =>
+                  save.mutate(
+                    {
+                      pattern: s.pattern,
+                      match_type: "contains",
+                      category_id: s.category_id,
+                      priority: 50,
+                      set_person: s.person,
+                    },
+                    {
+                      onSuccess: (r) =>
+                        notify(`Rule added: ${r.pattern} → ${r.category_path}.${appliedNote(r)}`),
+                    },
+                  )
+                }
+              >
+                Save rule
+              </button>
+              <button
+                className="btn btn-quiet h-9 px-4 text-sm"
+                aria-label={`Not now ${s.pattern}`}
+                onClick={() => void dismiss(s)}
+              >
+                Not now
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function RuleForm(props: { busy: boolean; onCancel: () => void; onSubmit: (b: RuleInput) => void }) {
   const [pattern, setPattern] = useState("");
+  const [person, setPerson] = useState<Owner | "">("");
+  const [merchantName, setMerchantName] = useState("");
   const [matchType, setMatchType] = useState<MatchType>("contains");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [priority, setPriority] = useState(50);
@@ -1105,6 +1199,8 @@ function RuleForm(props: { busy: boolean; onCancel: () => void; onSubmit: (b: Ru
           priority,
           amount_min: amountMin.trim() || null,
           amount_max: amountMax.trim() || null,
+          set_person: person || null,
+          merchant_name: merchantName.trim() || null,
         });
       }}
     >
@@ -1179,6 +1275,24 @@ function RuleForm(props: { busy: boolean; onCancel: () => void; onSubmit: (b: Ru
       <p className="text-sm text-muted md:col-span-4">
         Amounts are compared without their sign: “up to 299.99” catches a 104.11 payment, not a 505.19 one.
       </p>
+      <label>
+        <span className="label">Also set person (optional)</span>
+        <select className="field" value={person} onChange={(e) => setPerson(e.target.value as Owner | "")}>
+          <option value="">Keep the account’s</option>
+          <option value="Hernan">Hernan</option>
+          <option value="Lauren">Lauren</option>
+          <option value="Joint">Joint</option>
+        </select>
+      </label>
+      <label>
+        <span className="label">Show merchant as (optional)</span>
+        <input
+          className="field"
+          maxLength={100}
+          value={merchantName}
+          onChange={(e) => setMerchantName(e.target.value)}
+        />
+      </label>
       <div className="flex items-end gap-2 md:col-span-2">
         <button type="submit" className="btn btn-primary" disabled={props.busy}>
           Add rule

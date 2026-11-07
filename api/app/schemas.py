@@ -119,6 +119,8 @@ class RuleIn(BaseModel):
     is_active: bool = True
     amount_min: Decimal | None = Field(default=None, ge=0)
     amount_max: Decimal | None = Field(default=None, ge=0)
+    set_person: Literal["Hernan", "Lauren", "Joint"] | None = None
+    merchant_name: str | None = Field(default=None, max_length=100)
 
     @field_validator("pattern")
     @classmethod
@@ -134,6 +136,8 @@ class RulePatch(BaseModel):
     is_active: bool | None = None
     amount_min: Decimal | None = Field(default=None, ge=0)
     amount_max: Decimal | None = Field(default=None, ge=0)
+    set_person: Literal["Hernan", "Lauren", "Joint"] | None = None
+    merchant_name: str | None = Field(default=None, max_length=100)
 
 
 class RuleOut(_Out):
@@ -146,6 +150,8 @@ class RuleOut(_Out):
     is_active: bool
     amount_min: Decimal | None
     amount_max: Decimal | None
+    set_person: str | None = None
+    merchant_name: str | None = None
     # Lines this save categorized (loaded or waiting for approval); 0 when only listing.
     applied: int = 0
 

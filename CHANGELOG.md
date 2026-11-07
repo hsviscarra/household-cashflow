@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.58.0] — Smarter rules
+
+### Added
+- **Rules also set the person and the merchant name** (ADR-042): optional "Also set person" and
+  "Show merchant as" on a rule, applied at staging, to waiting statements and to loaded lines
+  without a category.
+- **Suggested rules** in Settings → Rules: a merchant you categorized the same way at least twice
+  by hand, with no rule yet, is offered as a rule with Save rule or Not now.
+- `GET /api/merchant-rules/suggestions`; migration 0034: `merchant_rule.set_person` and
+  `merchant_name`.
+
 ## [0.57.0] — Bills that don't come every month
 
 ### Added
