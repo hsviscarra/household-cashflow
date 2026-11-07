@@ -59,6 +59,8 @@ READER_PASSWORD="${READER_PASSWORD:-$(secret reader-password)}"
 INBOX_TOKEN="${INBOX_TOKEN:-$(secret inbox-token)}"
 # Whose invoice (ADR-036, setup-buyers.sh): keep it.
 INVOICE_BUYERS="${INVOICE_BUYERS:-$(secret invoice-buyers)}"
+# Bank sync (ADR-044, setup-simplefin.sh): keep the access URL.
+SIMPLEFIN_ACCESS_URL="${SIMPLEFIN_ACCESS_URL:-$(secret simplefin-access)}"
 
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
@@ -66,7 +68,7 @@ deploy() {
        ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" \
        anthropicApiKey="${ANTHROPIC_API_KEY:-}" mcpToken="${MCP_TOKEN:-}" \
        readerPassword="${READER_PASSWORD:-}" inboxToken="${INBOX_TOKEN:-}" \
-       invoiceBuyers="${INVOICE_BUYERS:-}" "$@" \
+       invoiceBuyers="${INVOICE_BUYERS:-}" simplefinAccessUrl="${SIMPLEFIN_ACCESS_URL:-}" "$@" \
     --query properties.outputs -o json
 }
 

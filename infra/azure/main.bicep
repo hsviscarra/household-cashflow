@@ -57,6 +57,10 @@ param inboxToken string = ''
 param invoiceBuyers string = ''
 
 @secure()
+@description('Bank sync (ADR-044): the SimpleFIN access URL setup-simplefin.sh claims. Empty = off.')
+param simplefinAccessUrl string = ''
+
+@secure()
 @description('Password of the read-only database login the MCP endpoint uses (F18).')
 param readerPassword string = ''
 
@@ -181,7 +185,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           { name: 'reader-password', value: readerPassword }
         ],
         empty(inboxToken) ? [] : [ { name: 'inbox-token', value: inboxToken } ],
-        empty(invoiceBuyers) ? [] : [ { name: 'invoice-buyers', value: invoiceBuyers } ])
+        empty(invoiceBuyers) ? [] : [ { name: 'invoice-buyers', value: invoiceBuyers } ],
+        empty(simplefinAccessUrl) ? [] : [ { name: 'simplefin-access', value: simplefinAccessUrl } ])
     }
     template: {
       containers: [
@@ -200,7 +205,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               { name: 'READER_PASSWORD', secretRef: 'reader-password' }
             ],
             empty(inboxToken) ? [] : [ { name: 'INBOX_TOKEN', secretRef: 'inbox-token' } ],
-            empty(invoiceBuyers) ? [] : [ { name: 'INVOICE_BUYERS', secretRef: 'invoice-buyers' } ])
+            empty(invoiceBuyers) ? [] : [ { name: 'INVOICE_BUYERS', secretRef: 'invoice-buyers' } ],
+            empty(simplefinAccessUrl) ? [] : [ { name: 'SIMPLEFIN_ACCESS_URL', secretRef: 'simplefin-access' } ])
         }
       ]
       scale: { minReplicas: 0, maxReplicas: 1 }
