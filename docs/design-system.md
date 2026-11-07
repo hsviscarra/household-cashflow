@@ -1,37 +1,41 @@
-# Design system: Ledger
+# Design system: Clear
 
-Chosen 2026-11-05 (ADR-025) to replace Mercado, from the redesign canvas "Household Cashflow
-redesign". Calm and dense: a dark sidebar, a light grey canvas with white cards, KPI tiles at the
-top of every page, one color per spending category, rounded pill controls. Tokens live in
-`web/src/index.css`; use the Tailwind utilities they generate (`bg-canvas`, `bg-ground`,
-`text-muted`, `bg-primary`, `font-display`…), never raw hex in components.
+Chosen 2026-11-06 (ADR-035) to replace Ledger, from the "Look A: Clear" board of the canvas
+"Household Cashflow redesign". The layout, sidebar groups and pages of ADR-025 stay; the look is
+brighter and higher in contrast: a white page, a light sidebar, near-black text, one green
+accent, 10 px corners on controls and 14 px on cards. Tokens live in `web/src/index.css`; use the
+Tailwind utilities they generate (`bg-canvas`, `bg-ground`, `text-muted`, `bg-primary`,
+`font-display`…), never raw hex in components.
 
 ## Type
 
 | Role | Family | Use |
 |---|---|---|
-| Display | Space Grotesk 500/600/700 | Page titles, section titles, KPI numbers |
-| Interface | Inter 400/500/600/700 | Everything else |
-| Numbers | Inter with `.num` (tabular figures) | Every amount, so columns line up |
+| Display | Plus Jakarta Sans 700/800, tight tracking | Page titles, section titles, KPI numbers |
+| Interface | Plus Jakarta Sans 400/500/600 | Everything else |
+| Numbers | The same with `.num` (tabular figures) | Every amount, so columns line up |
 
 ## Color
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| canvas | #F6F7F9 | #0B1220 | Page background |
-| ground | #FFFFFF | #121B2C | Cards, inputs, secondary buttons |
-| surface | #EBEEF3 | #1A2539 | Quiet panels and tiles inside the page |
-| line | #E3E6EC | #2A3650 | Borders, dividers |
-| ink | #101828 | #E6EAF2 | Text |
-| muted | #5B6474 | #A3AEC2 | Secondary text (≥ 5.3:1 on canvas, ground and surface) |
-| primary | #2B4ACB | #8AA4FF | The one main button per screen, links |
-| attention-bg / ink | #FEF3C7 / #5A3B00 | #3A2F10 / #F5D58A | Needs action: inbox, shortfall, stale values |
-| good-bg / ink | #E7F6F3 / #0B6B5E | #10302B / #7FD8C8 | Confirmations, healthy status |
-| danger-bg / ink | #FDE7DF / #9A3412 | #3B1D14 / #F4A898 | Discard, delete, failed checks, shortfalls |
-| info-bg | #EEF2FF | #1C2650 | Neutral highlight panels |
-| nav / nav-ink / nav-muted / nav-active | #0F1B2D / #C9D2E0 / #8E9AB0 / #22324D | #070D18 / … / #1A2539 | The sidebar |
+| canvas / ground | #FFFFFF / #FFFFFF | #0C0D10 / #15171C | Page; cards, inputs, secondary buttons |
+| surface | #F2F4F7 | #1C1F26 | Quiet panels, bar tracks |
+| line / line-strong | #E4E7EC / #D0D5DD | #2A2D35 / #3A3E48 | Card borders / control borders |
+| ink | #0B0F19 | #F5F6F7 | Text (≥ 18:1 on white) |
+| muted | #475467 | #A9AEB8 | Secondary text (≥ 7:1 on white, ≥ 7:1 on dark cards) |
+| primary | #047857 | #34D399 | The one main button per screen, links, Inbox count |
+| attention-bg / line / ink | #FFFAEB / #FEDF89 / #7A2E0E | #2A2210 / #5C4A1A / #FCD889 | Needs action |
+| good-bg / ink | #ECFDF3 / #05603A | #13291C / #86EFAC | Confirmations, healthy status |
+| danger-bg / ink | #FEF3F2 / #B42318 | #331716 / #FCA5A5 | Delete, failed checks, shortfalls |
+| info-bg / ink | #EFF8FF / #175CD3 | #16223A / #93C5FD | Neutral highlight panels |
+| flow-in / flow-out | #047857 / #175CD3 | #34D399 / #60A5FA | Money in / out in charts (green / blue, told apart by lightness too) |
+| nav / nav-line | #F7F8FA / #E4E7EC | #0C0D10 / #24262D | The sidebar and its hairline |
+| nav-ink / nav-muted / nav-strong | #344054 / #667085 / #0B0F19 | #B4B9C4 / #8A909C / #F5F6F7 | Links, group names, hover and brand |
+| nav-active / nav-active-ink / nav-well | #E7F5EF / #05603A / #ECEFF3 | #13291C / #86EFAC / #1C1F26 | The current page; the person switch's well |
 
-Dark mode follows the device setting (`prefers-color-scheme`). Every text pair above passes WCAG AA.
+Dark mode follows the device setting (`prefers-color-scheme`). Every text pair above passes WCAG AA;
+body text passes AAA.
 
 ## Navigation (ADR-025)
 

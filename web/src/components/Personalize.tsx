@@ -12,12 +12,14 @@ export function PersonSwitch() {
       <legend className="mb-1.5 text-[11px] font-semibold tracking-widest text-nav-muted uppercase">
         Showing
       </legend>
-      <div className="flex rounded-xl bg-nav-active p-1">
+      <div className="flex rounded-[10px] bg-nav-well p-1">
         {PEOPLE.map((p) => (
           <label
             key={p}
             className={`flex h-8 flex-1 cursor-pointer items-center justify-center rounded-lg text-xs font-semibold has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary ${
-              person === p ? "bg-ground text-ink" : "text-nav-ink hover:text-nav-strong"
+              person === p
+                ? "bg-ground font-semibold text-ink shadow-sm"
+                : "text-nav-ink hover:text-nav-strong"
             }`}
           >
             <input
@@ -171,7 +173,7 @@ export function SavedViewLinks({ onNavigate }: { onNavigate?: () => void }) {
         Saved views
       </div>
       {views.map((v) => (
-        <div key={v.id} className="group flex items-center rounded-xl hover:bg-nav-active">
+        <div key={v.id} className="group flex items-center rounded-[10px] hover:bg-nav-well">
           <Link
             to={`${v.path}${v.search}`}
             className="flex h-10 min-w-0 flex-1 items-center px-3 text-sm font-medium text-nav-ink hover:text-nav-strong"

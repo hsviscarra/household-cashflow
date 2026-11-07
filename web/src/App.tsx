@@ -63,7 +63,7 @@ function SignedIn() {
     <span className="flex items-center gap-2 text-sm text-nav-ink">
       <span
         aria-hidden="true"
-        className="flex h-7 w-7 items-center justify-center rounded-full bg-nav-active font-semibold text-nav-strong uppercase"
+        className="flex h-7 w-7 items-center justify-center rounded-full bg-nav-well font-semibold text-nav-strong uppercase"
       >
         {data.name.charAt(0)}
       </span>
@@ -78,7 +78,7 @@ function InboxCount() {
   const n = data?.uncategorized_lines ?? 0;
   if (!n) return null;
   return (
-    <span className="num ml-auto rounded-full bg-[#f59e0b] px-2 text-xs font-bold text-[#1f1300]">
+    <span className="num ml-auto rounded-full bg-primary px-2 text-xs font-bold text-on-primary">
       {n}
       <span className="sr-only"> waiting</span>
     </span>
@@ -131,7 +131,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   `flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium ${
-                    isActive ? "bg-nav-active text-nav-strong" : "text-nav-ink hover:text-nav-strong"
+                    isActive
+                      ? "bg-nav-active font-semibold text-nav-active-ink"
+                      : "text-nav-ink hover:text-nav-strong"
                   }`
                 }
               >
@@ -146,7 +148,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <Link
           to="/import"
           onClick={onNavigate}
-          className="flex h-10 items-center justify-center rounded-xl border border-nav-active text-sm font-semibold text-nav-strong hover:bg-nav-active"
+          className="flex h-10 items-center justify-center rounded-[10px] border border-nav-line text-sm font-semibold text-nav-strong hover:bg-nav-well"
         >
           Upload statements
         </Link>
@@ -155,7 +157,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           className={({ isActive }) =>
             `flex h-10 items-center rounded-xl px-3 text-sm font-medium ${
-              isActive ? "bg-nav-active text-nav-strong" : "text-nav-ink hover:text-nav-strong"
+              isActive
+                ? "bg-nav-active font-semibold text-nav-active-ink"
+                : "text-nav-ink hover:text-nav-strong"
             }`
           }
         >
@@ -218,14 +222,14 @@ export default function App() {
         Skip to content
       </a>
       {/* Phone and tablet: a bar with the menu button; the sidebar opens over the page. */}
-      <header className="flex items-center justify-between bg-nav px-4 py-3 lg:hidden">
+      <header className="flex items-center justify-between border-b border-nav-line bg-nav px-4 py-3 lg:hidden">
         <Link to="/" className="flex items-center gap-2 text-nav-strong">
           <span aria-hidden="true" className="h-7 w-7 rounded-lg bg-primary" />
           <span className="font-display text-lg font-semibold">Cashflow</span>
         </Link>
         <button
           type="button"
-          className="flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-nav-strong hover:bg-nav-active"
+          className="flex h-11 items-center gap-2 rounded-[10px] px-4 text-sm font-semibold text-nav-strong hover:bg-nav-well"
           aria-expanded={menu}
           aria-controls="sidebar"
           onClick={() => setMenu(!menu)}
@@ -236,7 +240,7 @@ export default function App() {
       <nav
         id="sidebar"
         aria-label="Main"
-        className={`${menu ? "block" : "hidden"} bg-nav lg:sticky lg:top-0 lg:block lg:border-r lg:border-line lg:h-screen lg:w-60 lg:shrink-0 lg:overflow-y-auto`}
+        className={`${menu ? "block" : "hidden"} bg-nav lg:sticky lg:top-0 lg:block lg:border-r lg:border-nav-line lg:h-screen lg:w-60 lg:shrink-0 lg:overflow-y-auto`}
       >
         <Sidebar onNavigate={() => setMenu(false)} />
       </nav>

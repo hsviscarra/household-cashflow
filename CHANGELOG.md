@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.51.0] — The Clear look
+
+### Changed
+- **New look** (ADR-035): a white page and a light sidebar, near-black text with darker secondary
+  text for contrast, one green accent, Plus Jakarta Sans everywhere, 10 px corners on buttons and
+  fields. Money out is blue in charts. Dark mode re-tuned to match. Layout and pages unchanged.
+
 ## [0.50.0] — What a line was, and deleting a category
 
 ### Added

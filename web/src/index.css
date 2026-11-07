@@ -1,83 +1,98 @@
 @import "tailwindcss";
 
 /*
- * Mercado design tokens (docs/design-system.md).
+ * Clear design tokens (docs/design-system.md, ADR-035).
  * Utilities read these variables, so the dark block below re-themes the whole app.
  */
 @theme {
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
-  /* Page background; cards, inputs and buttons sit on it in `ground` (white). */
-  --color-canvas: #f6f7f9;
+  /* Clear (ADR-035): a white page, near-black text, one green accent. */
+  --color-canvas: #ffffff;
   --color-ground: #ffffff;
-  --color-surface: #ebeef3;
-  --color-line: #e3e6ec;
-  --color-ink: #101828;
-  --color-muted: #5b6474;
+  --color-surface: #f2f4f7;
+  --color-line: #e4e7ec;
+  --color-line-strong: #d0d5dd;
+  --color-ink: #0b0f19;
+  --color-muted: #475467;
 
-  --color-primary: #2b4acb;
-  --color-primary-hover: #1c3399;
+  --color-primary: #047857;
+  --color-primary-hover: #05603a;
   --color-on-primary: #ffffff;
 
-  --color-attention-bg: #fef3c7;
-  --color-attention-ink: #5a3b00;
-  --color-good-bg: #e7f6f3;
-  --color-good-ink: #0b6b5e;
-  --color-danger-bg: #fde7df;
-  --color-danger-ink: #9a3412;
-  --color-info-bg: #eef2ff;
+  --color-attention-bg: #fffaeb;
+  --color-attention-line: #fedf89;
+  --color-attention-ink: #7a2e0e;
+  --color-good-bg: #ecfdf3;
+  --color-good-ink: #05603a;
+  --color-danger-bg: #fef3f2;
+  --color-danger-ink: #b42318;
+  --color-info-bg: #eff8ff;
+  --color-info-ink: #175cd3;
 
-  /* The sidebar (ADR-025) */
-  --color-nav: #0f1b2d;
-  --color-nav-ink: #c9d2e0;
-  --color-nav-muted: #8e9ab0;
-  --color-nav-active: #22324d;
-  --color-nav-strong: #ffffff;
+  /* The sidebar: light, a hairline on its right */
+  --color-nav: #f7f8fa;
+  --color-nav-line: #e4e7ec;
+  --color-nav-ink: #344054;
+  --color-nav-muted: #667085;
+  --color-nav-strong: #0b0f19;
+  --color-nav-active: #e7f5ef;
+  --color-nav-active-ink: #05603a;
+  --color-nav-well: #eceff3;
 
   /* Category colors, in the order of docs/design-system.md */
   --color-cat-fixed: #6b6788;
-  --color-cat-groceries: #4e9a2a;
-  --color-cat-health: #00897b;
+  --color-cat-groceries: #16a34a;
+  --color-cat-health: #0891b2;
   --color-cat-services: #7b4bd6;
-  --color-cat-dining: #e2583e;
+  --color-cat-dining: #ea580c;
   --color-cat-shopping: #c2185b;
-  --color-cat-subscriptions: #2f5bea;
+  --color-cat-subscriptions: #7c3aed;
   --color-cat-delivery: #e8a000;
   --color-cat-kids: #e57ba9;
   --color-cat-transport: #3aa7d9;
 
   /* Money in / out in charts */
-  --color-flow-in: #0e8f7e;
-  --color-flow-out: #7a5af0;
+  --color-flow-in: #047857;
+  --color-flow-out: #175cd3;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #0b1220;
-    --color-ground: #121b2c;
-    --color-surface: #1a2539;
-    --color-line: #2a3650;
-    --color-ink: #e6eaf2;
-    --color-muted: #a3aec2;
+    --color-canvas: #0c0d10;
+    --color-ground: #15171c;
+    --color-surface: #1c1f26;
+    --color-line: #2a2d35;
+    --color-line-strong: #3a3e48;
+    --color-ink: #f5f6f7;
+    --color-muted: #a9aeb8;
 
-    --color-primary: #8aa4ff;
-    --color-primary-hover: #b0c2ff;
-    --color-on-primary: #0b1430;
+    --color-primary: #34d399;
+    --color-primary-hover: #6ee7b7;
+    --color-on-primary: #052e1f;
 
-    --color-attention-bg: #3a2f10;
-    --color-attention-ink: #f5d58a;
-    --color-good-bg: #10302b;
-    --color-good-ink: #7fd8c8;
-    --color-danger-bg: #3b1d14;
-    --color-danger-ink: #f4a898;
-    --color-info-bg: #1c2650;
+    --color-attention-bg: #2a2210;
+    --color-attention-line: #5c4a1a;
+    --color-attention-ink: #fcd889;
+    --color-good-bg: #13291c;
+    --color-good-ink: #86efac;
+    --color-danger-bg: #331716;
+    --color-danger-ink: #fca5a5;
+    --color-info-bg: #16223a;
+    --color-info-ink: #93c5fd;
 
-    --color-nav: #070d18;
-    --color-nav-active: #1a2539;
+    --color-nav: #0c0d10;
+    --color-nav-line: #24262d;
+    --color-nav-ink: #b4b9c4;
+    --color-nav-muted: #8a909c;
+    --color-nav-strong: #f5f6f7;
+    --color-nav-active: #13291c;
+    --color-nav-active-ink: #86efac;
+    --color-nav-well: #1c1f26;
 
-    --color-flow-in: #2bb39f;
-    --color-flow-out: #9b84f5;
+    --color-flow-in: #34d399;
+    --color-flow-out: #60a5fa;
   }
 }
 
@@ -111,15 +126,15 @@ body {
   outline-offset: 2px;
 }
 
-/* Buttons and fields (docs/design-system.md: pill controls, height >= 44 px) */
+/* Buttons and fields (docs/design-system.md: 10 px corners, height >= 44 px) */
 .btn {
-  @apply inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 font-semibold whitespace-nowrap disabled:opacity-50;
+  @apply inline-flex h-11 items-center justify-center gap-2 rounded-[10px] px-5 font-semibold whitespace-nowrap disabled:opacity-50;
 }
 .btn-primary {
   @apply bg-primary text-on-primary hover:bg-primary-hover;
 }
 .btn-secondary {
-  @apply border border-line bg-ground text-ink hover:bg-surface;
+  @apply border border-line-strong bg-ground text-ink hover:bg-surface;
 }
 .btn-danger {
   @apply bg-danger-bg text-danger-ink;
@@ -128,7 +143,7 @@ body {
   @apply text-primary hover:bg-surface;
 }
 .field {
-  @apply h-11 w-full rounded-xl border border-line bg-ground px-3 text-ink;
+  @apply h-11 w-full rounded-[10px] border border-line-strong bg-ground px-3 text-ink;
 }
 .label {
   @apply mb-1 block text-sm font-semibold text-muted;
@@ -136,13 +151,13 @@ body {
 
 /* Cards and KPI tiles (docs/design-system.md) */
 .card {
-  @apply rounded-2xl border border-line bg-ground p-5;
+  @apply rounded-[14px] border border-line bg-ground p-5;
 }
 .kpi-label {
   @apply text-xs font-semibold tracking-wider text-muted uppercase;
 }
 .kpi-value {
-  @apply mt-1 font-display text-3xl font-semibold;
+  @apply mt-1 font-display text-3xl font-bold tracking-tight;
 }
 
 /* Row size, one choice per person for every table (ADR-026): set on <html> by the app. */
