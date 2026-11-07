@@ -1508,3 +1508,35 @@ export type SriKeys = { new: string[]; stored: number; other: number };
 export const findSriKeys = (text: string) => send<SriKeys>("POST", "/api/invoices/sri/keys", { text });
 export const fetchSriInvoices = (keys: string[]) =>
   send<InvoiceUpload[]>("POST", "/api/invoices/sri/fetch", { keys });
+
+// ---------- budget per group (ADR-039) ----------
+export type GroupBudget = {
+  group_id: number;
+  name: string;
+  color: string | null;
+  budget: Money | null;
+  rollover: boolean;
+  carried: Money;
+  spent: Money;
+  available: Money;
+  left: Money;
+  expected: Money;
+  status: "over" | "ahead" | "on_track" | "none";
+  suggested: Money | null;
+  since: string | null;
+};
+export type MonthBudget = {
+  month: string;
+  day_share: Money;
+  groups: GroupBudget[];
+  budgeted: Money;
+  spent: Money;
+  unbudgeted: Money;
+  left: Money;
+  has_plans: boolean;
+};
+export const fetchBudget = (month: string) => send<MonthBudget>("GET", `/api/budget/${month}`);
+export const setBudget = (groupId: number, fromMonth: string, amount: string, rollover: boolean) =>
+  send<void>("PUT", `/api/budget/groups/${groupId}`, { from_month: fromMonth, amount, rollover });
+export const startBudgetFromAverage = (month: string) =>
+  send<{ added: number }>("POST", `/api/budget/${month}/start-from-average`);

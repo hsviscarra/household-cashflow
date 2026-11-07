@@ -99,6 +99,13 @@ export const PAGES: PageDef[] = [
     summary: "Next three months and cash timing.",
   },
   {
+    path: "/budget",
+    label: "Budget",
+    group: "Plan",
+    feature: "P2",
+    summary: "A monthly budget per group, its pace and rollover.",
+  },
+  {
     path: "/taxes",
     label: "Gastos personales",
     group: "Plan",

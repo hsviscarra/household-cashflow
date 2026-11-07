@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.mcp_server import http_endpoint
 from app.routers import (
     batches,
+    budget,
     classify,
     costs,
     gastos,
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(investments.router)
     app.include_router(invoices.router)
     app.include_router(gastos.router)
+    app.include_router(budget.router)
     app.include_router(report.router)
 
     app.router.routes.append(mcp_route)

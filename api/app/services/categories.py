@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Budget,
+    BudgetPlan,
     Category,
     ChangeLog,
     Counterparty,
@@ -55,7 +56,7 @@ def uses(db: Session, category_id: int) -> Uses:
         lines=_count(db, Transaction, category_id),
         rules=_count(db, MerchantRule, category_id),
         bills=_count(db, RecurringTemplate, category_id),
-        budgets=_count(db, Budget, category_id),
+        budgets=_count(db, Budget, category_id) + _count(db, BudgetPlan, category_id),
         other=sum(_count(db, m, category_id) for m in _OTHER),
     )
 
@@ -90,6 +91,16 @@ def _move_budgets(db: Session, old: int, new: int) -> None:
             db.delete(b)
         else:
             b.category_id = new
+    for p in list(db.scalars(select(BudgetPlan).where(BudgetPlan.category_id == old))):
+        clash = db.scalars(
+            select(BudgetPlan).where(
+                BudgetPlan.category_id == new, BudgetPlan.start_month == p.start_month
+            )
+        ).first()
+        if clash is not None:
+            db.delete(p)  # the target's own budget for that month wins
+        else:
+            p.category_id = new
     db.flush()
 
 
