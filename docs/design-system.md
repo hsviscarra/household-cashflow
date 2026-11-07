@@ -28,6 +28,7 @@ Tailwind utilities they generate (`bg-canvas`, `bg-ground`, `text-muted`, `bg-pr
 | attention-bg / line / ink | #FFFAEB / #FEDF89 / #7A2E0E | #2A2210 / #5C4A1A / #FCD889 | Needs action |
 | good-bg / ink | #ECFDF3 / #05603A | #13291C / #86EFAC | Confirmations, healthy status |
 | danger-bg / ink | #FEF3F2 / #B42318 | #331716 / #FCA5A5 | Delete, failed checks, shortfalls |
+| warn | #DC6803 | #F59E0B | A budget bar running ahead of pace (never text) |
 | info-bg / ink | #EFF8FF / #175CD3 | #16223A / #93C5FD | Neutral highlight panels |
 | flow-in / flow-out | #047857 / #175CD3 | #34D399 / #60A5FA | Money in / out in charts (green / blue, told apart by lightness too) |
 | nav / nav-line | #F7F8FA / #E4E7EC | #0C0D10 / #24262D | The sidebar and its hairline |
@@ -134,6 +135,13 @@ how many lines wait for a category. URLs stay as they were.
   keys" is a quiet button that opens a full-width textarea. While it runs, the button says how
   far it got ("Getting 20 of 45 from the SRI…"); the outcome goes in the page's status line and
   the results list.
+
+## Budget (ADR-039)
+
+- One card per group: name with its color dot, a status pill (Over in danger, Ahead of pace in
+  attention, On track in good, No budget muted), "spent of available", then a bar on a surface
+  track in primary, warn or danger-ink with a thin ink mark at today's share of the month.
+- Changing a budget opens an inline form in the card (amount from this month on, rollover).
 
 ## KPI tiles
 

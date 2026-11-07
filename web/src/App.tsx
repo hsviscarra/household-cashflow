@@ -13,6 +13,7 @@ import Home from "./pages/Home";
 import PeoplePage from "./pages/People";
 import ProjectionsPage from "./pages/Projections";
 import TaxesPage from "./pages/Taxes";
+import BudgetPage from "./pages/Budget";
 import PurchasesPage from "./pages/Purchases";
 import BillsPage from "./pages/Bills";
 import ReportPage from "./pages/Report";
@@ -97,6 +98,7 @@ const NAV_ORDER = [
   "/people",
   "/recurring",
   "/projections",
+  "/budget",
   "/taxes",
   "/report",
   "/status",
@@ -203,6 +205,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/subscriptions": <BillsPage start="found" />,
   "/debt": <DebtPage />,
   "/projections": <ProjectionsPage />,
+  "/budget": <BudgetPage />,
   "/taxes": <TaxesPage />,
   "/report": <ReportPage />,
 };

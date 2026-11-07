@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.55.0] — Budget per group
+
+### Added
+- **Budget** page (ADR-039): a monthly amount per spending group from a month on, what's spent
+  and left, a pace mark for today, and status (over, ahead of pace, on track). Optional rollover
+  carries what's left, or overspent, into the next month.
+- Start every group from its 3-month average, rounded up to $10, in one click.
+- Migration 0032: `core.budget_plan`.
+
 ## [0.54.0] — The weekly digest
 
 ### Added

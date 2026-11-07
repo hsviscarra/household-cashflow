@@ -1004,3 +1004,24 @@ class GpProfile(Base):
     year: Mapped[int] = mapped_column(Integer, primary_key=True)
     cargas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
     catastrophic: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
+class BudgetPlan(Base):
+    """A spending group's monthly budget from a month on (ADR-039); the latest start on or before
+    a month sets it. Amount 0 = no budget from then; rollover carries what's left (or overspent)
+    into the next month."""
+
+    __tablename__ = "budget_plan"
+    __table_args__ = (
+        UniqueConstraint("category_id", "start_month"),
+        CheckConstraint("amount >= 0", name="amount"),
+        {"schema": "core"},
+    )
+
+    budget_plan_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("core.category.category_id"))
+    start_month: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    rollover: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_by: Mapped[str] = mapped_column(Unicode(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

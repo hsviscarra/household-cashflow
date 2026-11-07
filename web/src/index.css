@@ -28,6 +28,7 @@
   --color-good-ink: #05603a;
   --color-danger-bg: #fef3f2;
   --color-danger-ink: #b42318;
+  --color-warn: #dc6803; /* a bar or mark running ahead of pace */
   --color-info-bg: #eff8ff;
   --color-info-ink: #175cd3;
 
@@ -79,6 +80,7 @@
     --color-good-ink: #86efac;
     --color-danger-bg: #331716;
     --color-danger-ink: #fca5a5;
+    --color-warn: #f59e0b;
     --color-info-bg: #16223a;
     --color-info-ink: #93c5fd;
 
