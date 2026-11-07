@@ -128,6 +128,13 @@ how many lines wait for a category. URLs stay as they were.
 - Invoices sit in one bordered list; whose and the category are inline selects that save on
   change, with the reason for a guess in muted text under the issuer.
 
+## SRI list import (ADR-037)
+
+- "Upload the SRI list (.txt)" is a secondary button beside "Upload invoice XMLs"; "Paste access
+  keys" is a quiet button that opens a full-width textarea. While it runs, the button says how
+  far it got ("Getting 20 of 45 from the SRI…"); the outcome goes in the page's status line and
+  the results list.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

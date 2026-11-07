@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
@@ -23,11 +24,12 @@ from app.schemas import (
     SuggestedOut,
     UngroupedOut,
 )
-from app.services import invoices, product_suggest
+from app.services import invoices, product_suggest, sri
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 DB = Annotated[Session, Depends(get_session)]
 MAX_FILES = 100
+SRI_BATCH = 10
 ZERO = Decimal(0)
 
 
@@ -78,6 +80,64 @@ async def upload(files: list[UploadFile], request: Request, db: DB) -> list[Invo
     for f in files:
         data = await f.read(invoices.MAX_BYTES + 1)
         out.append(receive_xml(db, data, f.filename or "", _user(request)))
+    return out
+
+
+class SriTextIn(BaseModel):
+    text: str = Field(max_length=5_000_000)
+
+
+class SriKeysOut(BaseModel):
+    new: list[str]
+    stored: int
+    other: int
+
+
+class SriFetchIn(BaseModel):
+    keys: list[str] = Field(min_length=1, max_length=SRI_BATCH)
+
+
+@router.post("/sri/keys", response_model=SriKeysOut)
+def sri_keys(body: SriTextIn, db: DB) -> SriKeysOut:
+    """The access keys in an SRI "Comprobantes recibidos" report (or any pasted text): invoices
+    not in the app yet, invoices already here, and other documents (ADR-037)."""
+    k = sri.find_keys(db, body.text)
+    return SriKeysOut(new=k.new, stored=k.stored, other=k.other)
+
+
+@router.post("/sri/fetch", response_model=list[InvoiceUploadOut])
+def sri_fetch(body: SriFetchIn, request: Request, db: DB) -> list[InvoiceUploadOut]:
+    """Up to 10 access keys at a time: each invoice's authorized XML from the SRI, read and stored
+    like an upload. The page sends the keys in batches so each request stays short."""
+    out = []
+    for key in body.keys:
+        if not sri.KEY.fullmatch(key):
+            out.append(
+                InvoiceUploadOut(
+                    file_name=key[:60], outcome="rejected", message="Not an access key."
+                )
+            )
+            continue
+        try:
+            answer = sri.fetch(key)
+        except sri.SriError as exc:
+            out.append(InvoiceUploadOut(file_name=key, outcome="rejected", message=str(exc)))
+            continue
+        if answer.xml is None:
+            words = {
+                "NONE": "The SRI has no document with this access key.",
+                "NO AUTORIZADO": "The SRI didn't authorize this document.",
+                "EN PROCESAMIENTO": "The SRI is still processing it; try again later.",
+            }
+            out.append(
+                InvoiceUploadOut(
+                    file_name=key,
+                    outcome="rejected",
+                    message=words.get(answer.state, f"The SRI answered {answer.state}."),
+                )
+            )
+            continue
+        out.append(receive_xml(db, answer.xml, key, _user(request)))
     return out
 
 

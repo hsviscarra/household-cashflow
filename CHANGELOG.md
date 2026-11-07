@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.53.0] — Invoices from the SRI's list
+
+### Added
+- **Upload the SRI list** on Purchases (ADR-037): the month's "Comprobantes electrónicos
+  recibidos" from SRI en línea, uploaded or pasted. The app finds every access key, skips what it
+  already has and other documents, and gets each new invoice's XML from the SRI's public
+  authorization service, ten at a time. No SRI password is used or stored.
+- `POST /api/invoices/sri/keys` and `POST /api/invoices/sri/fetch`; setting
+  `SRI_AUTHORIZATION_URL`.
+
 ## [0.52.0] — Gastos personales
 
 ### Added
