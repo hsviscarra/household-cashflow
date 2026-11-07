@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Purchases } from "../api";
-import PurchasesPage, { coverageLine } from "./Purchases";
+import PurchasesPage, { coverageLine, sriFoundLine } from "./Purchases";
 
 const P: Purchases = {
   month: "2026-10",
@@ -204,5 +204,69 @@ describe("purchases", () => {
       target: { files: [new File(["<x/>"], "a.xml")] },
     });
     expect(await screen.findByText("Upload at most 100 files at a time.")).toBeInTheDocument();
+  });
+
+  it("gets the invoices in an SRI list, ten at a time", async () => {
+    const keys = Array.from(
+      { length: 12 },
+      (_, i) => `30102026011799999999001207214000012345612345${String(i).padStart(4, "0")}`,
+    );
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const json = (b: unknown) => Promise.resolve(new Response(JSON.stringify(b)));
+        if (url === "/api/invoices/sri/keys") return json({ new: keys, stored: 3, other: 1 });
+        if (url === "/api/invoices/sri/fetch") {
+          bodies.push(init!.body as string);
+          const sent = JSON.parse(init!.body as string).keys as string[];
+          return json(
+            sent.map((key, i) =>
+              key === keys[11]
+                ? {
+                    file_name: key,
+                    outcome: "rejected",
+                    message: "The SRI has no document with this access key.",
+                  }
+                : { file_name: key, outcome: "stored", message: `SUPER ${i}`, invoice_id: i },
+            ),
+          );
+        }
+        return json(P);
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/purchases?month=2026-10"]}>
+          <PurchasesPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByLabelText("SRI list of received documents"), {
+      target: { files: [new File([keys.join("\n")], "recibidos.txt", { type: "text/plain" })] },
+    });
+    expect(
+      await screen.findByText(
+        "Found 15 invoices: 12 new, 3 already here; 1 other document skipped. Added 11.",
+      ),
+    ).toBeInTheDocument();
+    expect(bodies.map((b) => JSON.parse(b).keys.length)).toEqual([10, 2]);
+    const results = screen.getByRole("list", { name: "Upload results" });
+    expect(results).toHaveTextContent(
+      "Refused: " + keys[11] + " The SRI has no document with this access key.",
+    );
+    expect(results).toHaveTextContent("Added: " + keys[0]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Paste access keys" }));
+    fireEvent.change(screen.getByLabelText(/Access keys \(49 digits each\)/), { target: { value: keys[0] } });
+    fireEvent.click(screen.getByRole("button", { name: "Get these invoices from the SRI" }));
+    await waitFor(() => expect(bodies.length).toBe(4));
+  });
+
+  it("words what an SRI list held", () => {
+    expect(sriFoundLine({ new: [], stored: 0, other: 0 })).toBe("No access keys found in it.");
+    expect(sriFoundLine({ new: [], stored: 0, other: 2 })).toBe("No invoices in it, only 2 other documents.");
+    expect(sriFoundLine({ new: ["k"], stored: 0, other: 0 })).toBe("Found 1 invoice: 1 new, 0 already here.");
   });
 });

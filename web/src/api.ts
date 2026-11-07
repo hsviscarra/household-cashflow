@@ -1502,3 +1502,9 @@ export const chooseGastos = (invoiceId: number, body: GastosChoice) =>
 export const setGastosProfile = (year: number, person: string, cargas: number, catastrophic: boolean) =>
   send<{ cap: Money | null }>("PUT", `/api/gastos/${year}/profile/${person}`, { cargas, catastrophic });
 export const gastosCsvUrl = (year: number, person: string) => `/api/gastos/${year}/${person}.csv`;
+
+// ---------- invoices from the SRI by access key (ADR-037) ----------
+export type SriKeys = { new: string[]; stored: number; other: number };
+export const findSriKeys = (text: string) => send<SriKeys>("POST", "/api/invoices/sri/keys", { text });
+export const fetchSriInvoices = (keys: string[]) =>
+  send<InvoiceUpload[]>("POST", "/api/invoices/sri/fetch", { keys });

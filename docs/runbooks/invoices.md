@@ -19,6 +19,18 @@ and more (F21, ADR-021).
 An invoice already in the app is skipped, so sending one twice is harmless. Credit notes and
 retentions are skipped too.
 
+## Invoices that never reached Gmail (ADR-037)
+
+1. In SRI en línea, open **Facturación electrónica → Comprobantes electrónicos recibidos**,
+   choose the month and **Factura**, and download the list (the report file).
+2. On **Purchases**, use **Upload the SRI list (.txt)**, or **Paste access keys** and paste the
+   list or some 49-digit keys.
+3. The app finds each access key, skips the invoices it already has and other documents, and asks
+   the SRI for the rest, ten at a time. The results list says what was added and what the SRI
+   didn't return; send those again later.
+
+Do this for Lauren's cédula too, from her SRI account. No SRI password is stored.
+
 ## Getting every Supermaxi purchase
 
 Only purchases invoiced to your cédula, with your email on file at Favorita, reach Gmail. At

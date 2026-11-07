@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Whose invoice is it (ADR-036): "Hernan:<cédula>,Lauren:<cédula>". Compared with the
     # buyer's ID while an invoice XML is read; only the name is stored, never the ID.
     invoice_buyers: str = ""
+    # The SRI's public authorization web service (ADR-037): an invoice's XML by its access key.
+    sri_authorization_url: str = (
+        "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline"
+    )
     # Backups (F17): the jobs write to this container (Azure) or folder (local runs).
     backups_container: str = "backups"
     backups_dir: str = "data/backups"
