@@ -95,8 +95,8 @@ function testDigest() {
  * to DIGEST_TO (a script property, comma-separated; default: this account).
  */
 function sendDigest_() {
-  const url = props_().getProperty('APP_URL');
-  const token = props_().getProperty('INBOX_TOKEN');
+  const url = (props_().getProperty('APP_URL') || '').replace(/\/+$/, '');
+  const token = props_().getProperty('INBOX_TOKEN') || '';
   // The app may be asleep: give it up to three tries to wake up.
   for (let i = 0; i < 3; i++) {
     const response = UrlFetchApp.fetch(`${url}/api/inbox`, {
