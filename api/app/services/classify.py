@@ -15,6 +15,7 @@ from sqlalchemy import Exists, and_, exists, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import (
+    FROM_BANKS,
     Account,
     Category,
     ChangeLog,
@@ -131,7 +132,7 @@ def _has_parts() -> Exists:
 def uncategorized(db: Session, month: date | None = None) -> list[Transaction]:
     q = select(Transaction).where(
         Transaction.category_id.is_(None),
-        Transaction.source == "statement",
+        Transaction.source.in_(FROM_BANKS),
         ~_has_parts(),
     )
     if month:

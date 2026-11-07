@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { runBankSync } from "./api";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import { fetchHealth, fetchMe, fetchReview } from "./api";
@@ -219,6 +220,10 @@ export default function App() {
   useEffect(() => setMenu(false), [pathname]);
   // Row size is one choice for every table (ADR-026); index.css reads it from <html>.
   const [density] = useDensity();
+  // Bank sync (ADR-044): once per app open; the server runs it only when 12 hours have passed.
+  useEffect(() => {
+    runBankSync(true).catch(() => undefined);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.density = density;
   }, [density]);

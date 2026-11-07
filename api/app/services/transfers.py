@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, aliased
 
-from app.models import Account, Category, ChangeLog, Transaction
+from app.models import FROM_BANKS, Account, Category, ChangeLog, Transaction
 
 WINDOW = timedelta(days=5)
 CARD_PAYMENT = ("Transfers", "Card Payment")
@@ -49,7 +49,7 @@ def _candidates(db: Session) -> list[Transaction]:
         db.scalars(
             select(Transaction)
             .where(
-                Transaction.source == "statement",
+                Transaction.source.in_(FROM_BANKS),
                 Transaction.account_id.is_not(None),
                 Transaction.transfer_group_id.is_(None),
                 Transaction.parent_transaction_id.is_(None),
@@ -208,7 +208,7 @@ def unmatched(db: Session, month: date | None = None) -> list[Transaction]:
     """Transfers whose other side isn't loaded (or doesn't fit): usually a statement to upload."""
     paired = _paired_categories(db)
     q = select(Transaction).where(
-        Transaction.source == "statement",
+        Transaction.source.in_(FROM_BANKS),
         Transaction.type == "transfer",
         Transaction.transfer_group_id.is_(None),
         Transaction.parent_transaction_id.is_(None),

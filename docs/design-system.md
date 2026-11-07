@@ -162,6 +162,12 @@ how many lines wait for a category. URLs stay as they were.
   amount in tabular numerals, a pill for how often; category, account, usual day and charges in
   muted text; Add (primary) and Not now (quiet), both small (h-9).
 
+## Bank sync (ADR-044)
+
+- Settings tab: a card with the last sync, the pending count and Sync now (primary); SimpleFIN
+  errors as warn-bordered alerts; a table of bank accounts (org in semibold, balance in tabular
+  numerals) with a select of the app account each feeds.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

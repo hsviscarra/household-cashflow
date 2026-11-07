@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import Select, and_, case, exists, func, not_, or_, select
 from sqlalchemy.orm import Session, aliased
 
-from app.models import Account, Category, Transaction, v_excel_month
+from app.models import FROM_BANKS, Account, Category, Transaction, v_excel_month
 from app.services.recurring import add_months, first
 
 ZERO = Decimal("0")
@@ -28,7 +28,7 @@ def counted[S: Select[*tuple[Any, ...]]](q: S, person: str | None = None) -> S:
     excel = select(v_excel_month.c.cash_month)
     q = q.where(
         t.type != "transfer",
-        not_(and_(t.source == "statement", t.cash_month.in_(excel))),
+        not_(and_(t.source.in_(FROM_BANKS), t.cash_month.in_(excel))),
         not_(and_(t.source == "excel_history", t.cash_month.not_in(excel))),
         ~exists(select(Part.transaction_id).where(Part.parent_transaction_id == t.transaction_id)),
     )

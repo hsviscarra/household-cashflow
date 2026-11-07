@@ -3,12 +3,13 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Account, CategoryGroup, Rule, RuleSuggestion } from "../api";
+import type { Account, BankSync, CategoryGroup, Rule, RuleSuggestion } from "../api";
 import Settings, { usage, usesText } from "./Settings";
 import { pickCategory } from "../test/pick";
 
 // Small in-memory stand-in for the F1 API, so the page is tested against real request shapes.
 type Db = {
+  sync: BankSync;
   accounts: Account[];
   categories: CategoryGroup[];
   rules: Rule[];
@@ -115,6 +116,32 @@ function seed(): Db {
       },
     ],
     settings: {},
+    sync: {
+      configured: true,
+      due: false,
+      pending_lines: 3,
+      last_run: {
+        at: "2026-11-07T14:00:00",
+        by: "hernan",
+        added: 3,
+        already: 0,
+        covered: 0,
+        unlinked: 1,
+        accounts: [
+          {
+            sync_id: "ACT-1",
+            org: "Bank of America",
+            name: "Adv Plus Banking",
+            balance: "2000.0000",
+            balance_date: "2026-11-07",
+            account_id: null,
+            movements: 4,
+          },
+        ],
+        errors: ["Capital One needs you to sign in again."],
+      },
+      accounts: [{ account_id: 1, name: "Adv Plus Banking", institution: "Bank of America", sync_id: null }],
+    } as BankSync,
   };
 }
 
@@ -200,6 +227,11 @@ function fakeFetch(input: string, init?: RequestInit) {
     });
   }
   if (path === "/api/merchant-rules" && method === "GET") return json(db.rules);
+  if (path === "/api/bank-sync" || path === "/api/bank-sync/run" || path === "/api/bank-sync/link") {
+    if (path.endsWith("/link")) db.sync.accounts[0].sync_id = body.account_id ? body.sync_id : null;
+    if (path.endsWith("/run")) return json({ ...db.sync, ran: true, added: 2 });
+    return json(db.sync);
+  }
   if (path === "/api/merchant-rules/suggestions")
     return json(db.suggestions.filter((x) => !db.rules.some((r) => r.pattern === x.pattern)));
   if (path === "/api/me/settings" && method === "GET") return json({ user: "local", settings: db.settings });
@@ -486,6 +518,20 @@ describe("Settings: merchant rules", () => {
     fireEvent.click(within(table).getByRole("button", { name: "Delete rule UBER EATS" }));
     expect(await screen.findByText("Rule deleted: UBER EATS.")).toBeInTheDocument();
     await waitFor(() => expect(within(table).queryByText("UBER EATS")).not.toBeInTheDocument());
+  });
+
+  it("links a bank account and syncs now", async () => {
+    renderSettings("sync");
+    expect(await screen.findByText(/3 lines wait for its statement/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Capital One needs you to sign in again.");
+    fireEvent.change(screen.getByLabelText("App account for Bank of America Adv Plus Banking"), {
+      target: { value: "1" },
+    });
+    expect(await screen.findByText(/next sync brings/)).toBeInTheDocument();
+    const sent = calls.find((c) => c.url === "/api/bank-sync/link")!;
+    expect(sent.body).toEqual({ sync_id: "ACT-1", account_id: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+    expect(await screen.findByText("Synced: 2 new lines.")).toBeInTheDocument();
   });
 
   it("saves a suggested rule and puts one off", async () => {

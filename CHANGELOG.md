@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.60.0] — Bank sync
+
+### Added
+- **Bank sync through SimpleFIN** (ADR-044): Bank of America and Capital One movements arrive by
+  themselves when the app opens (twice a day at most) as pending lines, categorized by the rules.
+  When the month's statement is approved its lines take their place and keep what you set by hand.
+- Settings → **Bank sync**: the accounts SimpleFIN reaches, which app account each feeds, Sync now.
+- `GET /api/bank-sync`, `POST /api/bank-sync/run`, `PUT /api/bank-sync/link`; migration 0035
+  (`account.sync_id`, transaction source `bank_sync`).
+
 ## [0.59.1] — Bank sync setup
 
 ### Added

@@ -13,6 +13,7 @@ from app.auth import allow_list
 from app.config import get_settings
 from app.mcp_server import http_endpoint
 from app.routers import (
+    bank_sync,
     batches,
     budget,
     classify,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(budget.router)
     app.include_router(goals.router)
     app.include_router(report.router)
+    app.include_router(bank_sync.router)
 
     app.router.routes.append(mcp_route)
 
