@@ -3,7 +3,15 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { GridCell, GridRow, RecurringEntry, RecurringGrid, RecurringTemplate, Txn } from "../api";
+import type {
+  FoundBill,
+  GridCell,
+  GridRow,
+  RecurringEntry,
+  RecurringGrid,
+  RecurringTemplate,
+  Txn,
+} from "../api";
 import RecurringPage, { cellValue, totals } from "./Recurring";
 import { pickCategory } from "../test/pick";
 
@@ -119,7 +127,28 @@ const ENTRY: RecurringEntry = {
   candidates: [line(2, "DEBITO VISA", "-40.00")],
 };
 
+let found: FoundBill[];
+let settings: Record<string, unknown>;
+const NETFLIX: FoundBill = {
+  merchant: "NETFLIX.COM",
+  every_months: 1,
+  amount: "15.49",
+  category_id: 30,
+  category_path: "Subscriptions & Software / Media",
+  account_id: 5,
+  account_name: "Produbanco Ahorros",
+  person: "Joint",
+  match_pattern: "NETFLIX.COM",
+  due_day: 14,
+  times: 4,
+  last_date: "2026-10-14",
+  next_expected: "2026-11-14",
+  examples: ["NETFLIX.COM 8813"],
+};
+
 beforeEach(() => {
+  found = [NETFLIX, { ...NETFLIX, merchant: "SEGURO VIDA", every_months: 12, match_pattern: null }];
+  settings = {};
   calls = [];
   grid = { year: 2026, months: MONTHS, excel_months: MONTHS.slice(0, 6), rows: [salary, condo] };
   vi.stubGlobal(
@@ -128,6 +157,12 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (url.startsWith("/api/recurring/grid")) return json(grid);
+      if (url === "/api/recurring/found") return json(found);
+      if (url === "/api/me/settings") return json({ user: "local", settings });
+      if (url.startsWith("/api/me/settings/") && method === "PUT") {
+        settings = { ...settings, bills_found_dismissed: JSON.parse(String(init!.body)).value };
+        return json({ user: "local", settings });
+      }
       if (url === "/api/recurring/templates" && method === "GET") return json([TEMPLATE]);
       if (url === "/api/recurring/templates" && method === "POST")
         return json({ ...TEMPLATE, template_id: 9, name: "Phone", start_month: "2026-10-01" }, 201);
@@ -239,6 +274,31 @@ describe("grid totals", () => {
 });
 
 describe("Recurring page", () => {
+  it("adds a bill found in the statements and puts another off", async () => {
+    renderAt();
+    const box = await screen.findByRole("region", { name: "Found in your statements" });
+    expect(within(box).getByText("Yearly")).toBeInTheDocument();
+    found = [found[1]]; // what the next fetch returns once Netflix is covered
+    fireEvent.click(within(box).getByRole("button", { name: "Add Netflix.com as a recurring item" }));
+    expect(await screen.findByText(/Added Phone as a recurring item/)).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "POST" && c.url === "/api/recurring/templates")!;
+    expect(sent.body).toMatchObject({
+      name: "Netflix.com",
+      amount: "15.49",
+      start_month: "2026-10-01",
+      match_pattern: "NETFLIX.COM",
+      every_months: 1,
+      due_day: 14,
+      person: "Joint",
+      type: "expense",
+    });
+    fireEvent.click(within(box).getByRole("button", { name: "Not now Seguro Vida" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Found in your statements" })).not.toBeInTheDocument(),
+    );
+    expect(settings.bills_found_dismissed).toEqual(["SEGURO VIDA"]);
+  });
+
   it("shows the year like the sheet, with paid, expected and skipped cells", async () => {
     renderAt();
     const table = await screen.findByRole("table", { name: "Recurring items in 2026, by month" });

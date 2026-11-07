@@ -156,6 +156,12 @@ how many lines wait for a category. URLs stay as they were.
   category, person, times and an example in muted text; Save rule (primary) and Not now (quiet),
   both small (h-9). Rules that also set a person or name say so in muted text under the category.
 
+## Found bills (ADR-043)
+
+- A card under the Recurring actions, shown only when something is found: name in semibold, the
+  amount in tabular numerals, a pill for how often; category, account, usual day and charges in
+  muted text; Add (primary) and Not now (quiet), both small (h-9).
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

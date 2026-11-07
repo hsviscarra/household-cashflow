@@ -35,7 +35,7 @@ from app.schemas import (
     TemplatePatch,
     TransactionOut,
 )
-from app.services import recurring
+from app.services import bills_found, recurring
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 DB = Annotated[Session, Depends(get_session)]
@@ -312,6 +312,32 @@ class BillsOut(BaseModel):
     month: date
     today: date
     bills: list[BillOut]
+
+
+class FoundBillOut(BaseModel):
+    merchant: str
+    every_months: int
+    amount: Decimal
+    category_id: int
+    category_path: str | None
+    account_id: int | None
+    account_name: str | None
+    person: str | None
+    match_pattern: str | None
+    due_day: int
+    times: int
+    last_date: date
+    next_expected: date | None
+    examples: list[str]
+
+
+@router.get("/found", response_model=list[FoundBillOut])
+def found_bills(
+    db: DB, today: Annotated[date | None, Query(include_in_schema=False)] = None
+) -> list[FoundBillOut]:
+    """Charges that repeat monthly, quarterly or yearly and no recurring item covers yet
+    (ADR-043); adding one is an ordinary POST /api/recurring/templates."""
+    return [FoundBillOut(**vars(b)) for b in bills_found.find(db, today)]
 
 
 @router.get("/bills", response_model=BillsOut)
