@@ -23,8 +23,12 @@
  *   cashflow-imported  sent; read, or a statement already in the app
  *   cashflow-check     sent, but it needs you on the Import page (or the app refused the file)
  *
+ * On Mondays it also emails the weekly digest the app writes (ADR-038): what needs someone this
+ * week. It goes to DIGEST_TO (a script property; default: this Gmail account).
+ *
  * Setup (docs/runbooks/gmail-statements.md): Project Settings -> Script properties APP_URL and
- * INBOX_TOKEN (from infra/azure/setup-inbox.sh), then run setup() once.
+ * INBOX_TOKEN (from infra/azure/setup-inbox.sh), then run setup() once. For the digest, run
+ * testDigest() once to allow sending email.
  */
 
 // One search per bank. Add a bank by adding its sender (issue #60: Bank of America, Capital One).
@@ -72,9 +76,44 @@ const MAX_FILES_PER_RUN = 40;
 // files after 4.5 minutes instead; the next run (or backfill again) picks up where this one left.
 const TIME_BUDGET_MS = 4.5 * 60 * 1000;
 
-/** Every day: statements and invoices from the last 45 days that haven't been sent yet. */
+/**
+ * Every day: statements and invoices from the last 45 days that haven't been sent yet; on
+ * Mondays, then the weekly digest (ADR-038).
+ */
 function run() {
   importStatements_(RECENT);
+  if (new Date().getDay() === 1) sendDigest_();
+}
+
+/** By hand, any day: send the weekly digest now (the first time it asks to send email for you). */
+function testDigest() {
+  sendDigest_();
+}
+
+/**
+ * The weekly digest from the app (GET /api/inbox with the same token), emailed from this Gmail
+ * to DIGEST_TO (a script property, comma-separated; default: this account).
+ */
+function sendDigest_() {
+  const url = props_().getProperty('APP_URL');
+  const token = props_().getProperty('INBOX_TOKEN');
+  // The app may be asleep: give it up to three tries to wake up.
+  for (let i = 0; i < 3; i++) {
+    const response = UrlFetchApp.fetch(`${url}/api/inbox`, {
+      headers: { Authorization: `Bearer ${token}` },
+      muteHttpExceptions: true,
+    });
+    if (response.getResponseCode() === 200) {
+      const d = JSON.parse(response.getContentText());
+      const to = props_().getProperty('DIGEST_TO') || Session.getEffectiveUser().getEmail();
+      MailApp.sendEmail({ to: to, subject: d.subject, body: d.text, htmlBody: d.html });
+      console.log(`Digest sent to ${to}: ${d.subject}`);
+      return;
+    }
+    console.warn(`Digest: HTTP ${response.getResponseCode()}; trying again.`);
+    Utilities.sleep(20000);
+  }
+  console.warn('Digest: the app did not answer; next Monday it tries again.');
 }
 
 /**

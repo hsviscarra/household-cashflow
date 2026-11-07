@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.54.0] — The weekly digest
+
+### Added
+- **Weekly digest by email** (ADR-038): every Monday the Gmail script emails what needs you:
+  lines to categorize, bills due this week or late, cash running short, unusual charges, last
+  month's missing statements and invoices to sort out for gastos personales, with links into the
+  app and the month's spending so far against last month.
+- `GET /api/inbox` (inbox token) returns the digest as JSON, text and HTML.
+
+### Changed
+- CLAUDE.md: Claude merges a PR once every CI check passes (Hernan's call, Nov 2026).
+
 ## [0.53.0] — Invoices from the SRI's list
 
 ### Added

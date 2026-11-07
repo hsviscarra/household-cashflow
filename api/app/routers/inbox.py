@@ -15,7 +15,7 @@ from collections.abc import Callable
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -27,7 +27,7 @@ from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
 from app.routers.invoices import receive_xml
-from app.services import people
+from app.services import digest, people
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 DB = Annotated[Session, Depends(get_session)]
@@ -76,6 +76,44 @@ def _needs_ocr(data: bytes) -> bool:
         return not read_pdf(data).text.strip()
     except PdfError:
         return False  # store_statement refuses it with the reason
+
+
+class DigestSectionOut(BaseModel):
+    title: str
+    items: list[str]
+
+
+class DigestOut(BaseModel):
+    subject: str
+    summary: str
+    sections: list[DigestSectionOut]
+    actions: int
+    text: str
+    html: str
+
+
+@router.get("", response_model=DigestOut)
+def weekly_digest(
+    request: Request,
+    db: DB,
+    today: Annotated[date | None, Query(description="For tests; default today")] = None,
+) -> DigestOut:
+    """The weekly digest (ADR-038), for the Gmail script to email on Monday mornings: the subject,
+    a plain-text and an HTML body, with links into the app."""
+    d = digest.build(db, today)
+    # Behind Container Apps' ingress the app sees http; links in the email use the outside scheme.
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    base = f"{proto}://{request.headers.get('host', request.url.netloc)}"
+    return DigestOut(
+        subject=d.subject,
+        summary=d.summary,
+        sections=[
+            DigestSectionOut(title=s.title, items=[i.text for i in s.items]) for s in d.sections
+        ],
+        actions=d.actions,
+        text=digest.text(d, base),
+        html=digest.to_html(d, base),
+    )
 
 
 @router.post("", response_model=InboxOut, responses={503: {"description": BUSY}})
