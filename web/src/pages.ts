@@ -99,6 +99,13 @@ export const PAGES: PageDef[] = [
     summary: "Next three months and cash timing.",
   },
   {
+    path: "/taxes",
+    label: "Gastos personales",
+    group: "Plan",
+    feature: "P1",
+    summary: "Each person's deductible expenses from the SRI invoices, the cap and the 18% rebate.",
+  },
+  {
     path: "/report",
     label: "Monthly report",
     group: "Reports",

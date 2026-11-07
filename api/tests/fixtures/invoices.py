@@ -15,6 +15,8 @@ def factura(
     subtotal_delta: str = "0",
     wrapped: bool = True,
     cod: str = "01",
+    buyer: str = "0000000000",
+    ruc: str = "1799999999001",
 ) -> bytes:
     """An invoice; lines are (description, quantity, unit price, IVA rate %). By default it's
     wrapped as SRI returns an authorized document (<autorizacion> with the invoice in CDATA)."""
@@ -45,13 +47,13 @@ def factura(
         f'<?xml version="1.0" encoding="UTF-8"?><{tag} id="comprobante" version="1.1.0">'
         f"<infoTributaria><ambiente>2</ambiente><tipoEmision>1</tipoEmision>"
         f"<razonSocial>{issuer}</razonSocial><nombreComercial>{trade_name}</nombreComercial>"
-        f"<ruc>1799999999001</ruc><claveAcceso>{key}</claveAcceso><codDoc>{cod}</codDoc>"
+        f"<ruc>{ruc}</ruc><claveAcceso>{key}</claveAcceso><codDoc>{cod}</codDoc>"
         f"<estab>072</estab><ptoEmi>140</ptoEmi><secuencial>000123456</secuencial>"
         f"<dirMatriz>CALLE DE PRUEBA</dirMatriz></infoTributaria>"
         f"<infoFactura><fechaEmision>{day}</fechaEmision>"
         f"<tipoIdentificacionComprador>05</tipoIdentificacionComprador>"
         f"<razonSocialComprador>CLIENTE DE PRUEBA</razonSocialComprador>"
-        f"<identificacionComprador>0000000000</identificacionComprador>"
+        f"<identificacionComprador>{buyer}</identificacionComprador>"
         f"<totalSinImpuestos>{printed}</totalSinImpuestos><totalDescuento>0.00</totalDescuento>"
         f"<totalConImpuestos><totalImpuesto><codigo>2</codigo><codigoPorcentaje>4"
         f"</codigoPorcentaje><baseImponible>{subtotal}</baseImponible><valor>{tax}</valor>"

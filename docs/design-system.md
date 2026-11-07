@@ -121,6 +121,13 @@ how many lines wait for a category. URLs stay as they were.
 - Delete lives inside the edit form as a quiet button in danger ink; the confirmation is a
   bordered box that says what moves where, never a browser dialog.
 
+## Gastos personales (ADR-036)
+
+- One card per person: the rebate as the KPI in primary, what counts toward the cap with a
+  primary bar on a surface track, then the six categories as a plain table and the cargas form.
+- Invoices sit in one bordered list; whose and the category are inline selects that save on
+  change, with the reason for a guess in muted text under the issuer.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

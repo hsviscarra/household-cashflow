@@ -554,6 +554,8 @@ PRODUCT_GROUPS = (
     "Other",
 )
 GROUP_SOURCES = ("rule", "keyword", "claude", "confirmed")
+# SRI's six categories of deductible personal expenses (ADR-036)
+GP_CATEGORIES = ("vivienda", "educacion", "salud", "alimentacion", "vestimenta", "turismo")
 
 
 class Invoice(Base):
@@ -562,7 +564,13 @@ class Invoice(Base):
     buyer's identification isn't stored."""
 
     __tablename__ = "invoice"
-    __table_args__ = ({"schema": "core"},)
+    __table_args__ = (
+        CheckConstraint(
+            f"gp_category IS NULL OR gp_category = 'none' OR {_in('gp_category', GP_CATEGORIES)}",
+            name="gp_category",
+        ),
+        {"schema": "core"},
+    )
 
     invoice_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     access_key: Mapped[str] = mapped_column(Unicode(49), unique=True)  # SRI's clave de acceso
@@ -578,6 +586,9 @@ class Invoice(Base):
     )
     received_by: Mapped[str] = mapped_column(Unicode(320))
     received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # Gastos personales (ADR-036): whose invoice (never the buyer's ID) and a chosen category.
+    person: Mapped[str | None] = mapped_column(Unicode(20))
+    gp_category: Mapped[str | None] = mapped_column(Unicode(20))
 
     lines: Mapped[list["InvoiceLine"]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.line_no"
@@ -959,3 +970,37 @@ v_debt_cost = Table(
     Column("transactions", Integer),
     schema="mart",
 )
+
+
+class GpIssuerRule(Base):
+    """An issuer's SRI category for gastos personales, saved from a person's choice (ADR-036);
+    'none' = this issuer's invoices aren't deductible."""
+
+    __tablename__ = "gp_issuer_rule"
+    __table_args__ = (
+        CheckConstraint(
+            f"gp_category = 'none' OR {_in('gp_category', GP_CATEGORIES)}", name="category"
+        ),
+        {"schema": "core"},
+    )
+
+    gp_issuer_rule_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issuer_ruc: Mapped[str] = mapped_column(Unicode(13), unique=True)
+    gp_category: Mapped[str] = mapped_column(Unicode(20))
+    created_by: Mapped[str] = mapped_column(Unicode(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class GpProfile(Base):
+    """A person's cargas familiares for a tax year, which set the cap (ADR-036)."""
+
+    __tablename__ = "gp_profile"
+    __table_args__ = (
+        CheckConstraint("cargas >= 0 AND cargas <= 20", name="cargas"),
+        {"schema": "core"},
+    )
+
+    person: Mapped[str] = mapped_column(Unicode(20), primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cargas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    catastrophic: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")

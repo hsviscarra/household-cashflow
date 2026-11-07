@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.52.0] — Gastos personales
+
+### Added
+- **Gastos personales** page (ADR-036): each person's deductible invoices for the tax year in
+  SRI's six categories, against the cap their cargas familiares allow, and the 18% rebate so far.
+- Invoices are assigned to Hernan or Lauren from the buyer's ID while they're read
+  (`INVOICE_BUYERS` secret, `infra/azure/setup-buyers.sh`); only the name is stored.
+- Categories guessed from the paying line or the products; choose or fix one per invoice or for
+  every invoice from an issuer; mark one not deductible.
+- "Numbers for the annex (CSV)" per person: RUC, provider, category, invoices, base and total.
+- Migration 0031: `core.invoice.person`, `core.invoice.gp_category`, `core.gp_issuer_rule`,
+  `core.gp_profile`.
+
 ## [0.51.0] — The Clear look
 
 ### Changed

@@ -1012,6 +1012,20 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     month = client.get("/api/invoices", params={"month": "2026-10"}).json()
     assert {g["group"] for g in month["groups"]} >= {"Dairy & Eggs", "Household & Cleaning"}
 
+    # ADR-036: gastos personales on SQL Server (migration 0031).
+    [row] = client.get("/api/gastos/2026/invoices").json()
+    chosen = client.put(
+        f"/api/invoices/{row['invoice_id']}/gastos",
+        json={"person": "Hernan", "category": "alimentacion", "remember_issuer": True},
+    )
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["category_source"] == "issuer"
+    profile = client.put("/api/gastos/2026/profile/Hernan", json={"cargas": 1})
+    assert profile.json()["cap"] == "7396.20"
+    hernan = client.get("/api/gastos/2026").json()["people"][0]
+    assert hernan["cargas"] == 1 and float(hernan["deductible"]) == 15.0
+    assert ",Alimentación,1,15.00,15.98" in client.get("/api/gastos/2026/Hernan.csv").text
+
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()
     reader.get_reader_engine.cache_clear()
