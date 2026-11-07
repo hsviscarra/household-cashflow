@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.56.0] — Saving goals
+
+### Added
+- **Goals** page (ADR-040): what you're saving for, a target and optional date, where the money is
+  (a bank account or a Net worth item, or an amount typed by hand) and a planned monthly amount.
+  Each goal shows saved of target, a status (reached, on pace, behind, date passed, no date) and
+  what it needs a month to arrive on time.
+- Home's Goals widget lists active goals with their pace.
+- Migration 0033: `core.goal`.
+
 ## [0.55.0] — Budget per group
 
 ### Added

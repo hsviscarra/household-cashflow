@@ -1038,6 +1038,20 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     g = next(x for x in view["groups"] if x["group_id"] == groceries)
     assert float(g["budget"]) == 200 and g["rollover"] is True
 
+    # ADR-040: saving goals on SQL Server (migration 0033).
+    made = client.post(
+        "/api/goals",
+        params={"today": "2026-11-07"},
+        json={
+            "name": "Trip",
+            "target_amount": "2500",
+            "saved_amount": "600",
+            "target_date": "2027-04-30",
+        },
+    )
+    assert made.status_code == 201, made.text
+    assert made.json()["months_left"] == 6 and made.json()["status"] == "behind"
+
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()
     reader.get_reader_engine.cache_clear()
