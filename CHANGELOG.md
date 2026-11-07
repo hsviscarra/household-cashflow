@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.59.1] — Bank sync setup
+
+### Added
+- `infra/azure/setup-simplefin.sh` (ADR-044): claims the SimpleFIN setup token once and keeps the
+  access URL only as a Container App secret; bootstrap and Bicep carry it through redeploys.
+
 ## [0.59.0] — Bills found in the statements
 
 ### Added
