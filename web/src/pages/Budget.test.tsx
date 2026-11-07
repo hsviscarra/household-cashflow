@@ -67,6 +67,33 @@ function renderPage(body: MonthBudget, calls: { method: string; url: string; bod
       calls.push({ method, url, body: init?.body as string | undefined });
       if (method === "PUT") return Promise.resolve(new Response(null, { status: 204 }));
       if (method === "POST") return Promise.resolve(new Response(JSON.stringify({ added: 3 })));
+      if (url.endsWith("/yearly-bills"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                template_id: 7,
+                name: "Water",
+                every_months: 3,
+                amount: "90",
+                monthly: "30",
+                next_due: "2027-01-01",
+                months_to_go: 3,
+                should_have: "30",
+              },
+              {
+                template_id: 8,
+                name: "Car insurance",
+                every_months: 12,
+                amount: "1200",
+                monthly: "100",
+                next_due: "2027-03-01",
+                months_to_go: 5,
+                should_have: "800",
+              },
+            ]),
+          ),
+        );
       return Promise.resolve(new Response(JSON.stringify(body)));
     }),
   );
@@ -106,6 +133,12 @@ describe("Budget", () => {
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.url).toBe("/api/budget/groups/3");
     expect(JSON.parse(put.body!)).toEqual({ from_month: "2026-11-01", amount: "50", rollover: true });
+
+    const yearly = await screen.findByRole("table", { name: "Bills that come every few months" });
+    expect(yearly).toHaveTextContent("Car insuranceyearly1,200.00100.00Mar 2027in 5 months800.00");
+    expect(screen.getByText(/aside each month and these never catch you short/)).toHaveTextContent(
+      "Put 130.00 aside each month and these never catch you short. By now about 830.00 should be set aside for them.",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Next month" }));
     await vi.waitFor(() => expect(calls.some((c) => c.url === "/api/budget/2026-12")).toBe(true));

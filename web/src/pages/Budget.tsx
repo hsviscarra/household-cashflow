@@ -4,7 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { fetchBudget, setBudget, startBudgetFromAverage, type GroupBudget, type MonthBudget } from "../api";
+import {
+  fetchBudget,
+  fetchYearlyBills,
+  setBudget,
+  startBudgetFromAverage,
+  type GroupBudget,
+  type MonthBudget,
+} from "../api";
 import KpiCard from "../components/KpiCard";
 import { addMonths, localToday, money, monthLong, num } from "../money";
 
@@ -103,6 +110,7 @@ export default function BudgetPage() {
             ))}
           </ul>
           {b.groups.length === 0 && <p className="mt-6 text-muted">No spending this month yet.</p>}
+          <YearlyBills month={month} />
         </>
       )}
     </section>
@@ -210,5 +218,72 @@ function GroupRow({ g, b, month }: { g: GroupBudget; b: MonthBudget; month: stri
         )}
       </section>
     </li>
+  );
+}
+
+const EVERY: Record<number, string> = {
+  2: "every 2 months",
+  3: "quarterly",
+  4: "every 4 months",
+  6: "twice a year",
+  12: "yearly",
+};
+const shortMonth = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+
+/** Bills that come every few months, as a monthly amount to set aside (ADR-041). */
+function YearlyBills({ month }: { month: string }) {
+  const q = useQuery({ queryKey: ["budget", month, "yearly"], queryFn: () => fetchYearlyBills(month) });
+  const rows = q.data ?? [];
+  if (!rows.length) return null;
+  const total = rows.reduce((t, r) => t + num(r.monthly), 0);
+  const should = rows.reduce((t, r) => t + num(r.should_have), 0);
+  return (
+    <section className="mt-10" aria-labelledby="yearly">
+      <h2 id="yearly" className="font-display text-2xl font-bold">
+        Bills that don’t come every month
+      </h2>
+      <p className="mt-1 max-w-3xl text-muted">
+        Put <strong className="num text-ink">{money(total)}</strong> aside each month and these never catch
+        you short. By now about <span className="num">{money(should)}</span> should be set aside for them.
+      </p>
+      <div className="mt-3 overflow-x-auto rounded-[14px] border border-line bg-ground">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Bills that come every few months</caption>
+          <thead>
+            <tr className="text-left text-muted">
+              <th className="px-4 py-2 font-semibold">Bill</th>
+              <th className="px-4 py-2 text-right font-semibold">Each time</th>
+              <th className="px-4 py-2 text-right font-semibold">A month</th>
+              <th className="px-4 py-2 font-semibold">Next</th>
+              <th className="px-4 py-2 text-right font-semibold">Set aside by now</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {rows.map((r) => (
+              <tr key={r.template_id}>
+                <td className="px-4 py-2">
+                  <Link className="font-semibold hover:underline" to="/recurring">
+                    {r.name}
+                  </Link>
+                  <span className="block text-xs text-muted">
+                    {EVERY[r.every_months] ?? `every ${r.every_months} months`}
+                  </span>
+                </td>
+                <td className="num px-4 py-2 text-right">{money(r.amount)}</td>
+                <td className="num px-4 py-2 text-right font-semibold">{money(r.monthly)}</td>
+                <td className="px-4 py-2">
+                  {shortMonth(r.next_due)}
+                  <span className="block text-xs text-muted">
+                    {r.months_to_go === 1 ? "this month" : `in ${r.months_to_go} months`}
+                  </span>
+                </td>
+                <td className="num px-4 py-2 text-right">{money(r.should_have)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

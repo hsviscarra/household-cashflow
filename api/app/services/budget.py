@@ -10,8 +10,8 @@ from decimal import ROUND_CEILING, Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import BudgetPlan, Category
-from app.services import spending
+from app.models import BudgetPlan, Category, RecurringTemplate
+from app.services import recurring, spending
 from app.services.recurring import add_months, first
 
 ZERO = Decimal(0)
@@ -234,3 +234,55 @@ def start_from_average(db: Session, month: date, user: str) -> int:
         n += 1
     db.commit()
     return n
+
+
+@dataclass
+class SinkingFund:
+    """A bill that comes every few months, as an amount to set aside each month (ADR-041)."""
+
+    template_id: int
+    name: str
+    every_months: int
+    amount: Decimal  # what the bill costs each time
+    monthly: Decimal  # amount / every_months
+    next_due: date
+    months_to_go: int  # this month through the due month
+    should_have: Decimal  # set aside by now since the last time it was due
+
+
+def sinking_funds(db: Session, month: date) -> list[SinkingFund]:
+    """Every active bill that repeats every 2 to 12 months: its share per month, when it's next
+    due and how much should already be put aside for it."""
+    month = first(month)
+    templates = [
+        t
+        for t in db.scalars(select(RecurringTemplate).where(RecurringTemplate.is_active))
+        if (t.every_months or 1) > 1
+        and t.type not in recurring.INCOME_TYPES
+        and (t.end_month is None or t.end_month >= month)
+    ]
+    history = recurring.amounts(db, [t.template_id for t in templates])
+    out = []
+    for t in templates:
+        every = t.every_months
+        nxt = max(month, t.start_month)
+        while not recurring.due_in(t, nxt):
+            nxt = add_months(nxt, 1)
+        amount = abs(recurring.amount_for(history.get(t.template_id, []), nxt) or ZERO)
+        if not amount:
+            continue
+        to_go = (nxt.year - month.year) * 12 + nxt.month - month.month + 1
+        monthly = (amount / every).quantize(Decimal("0.01"), ROUND_CEILING)
+        out.append(
+            SinkingFund(
+                t.template_id,
+                t.name,
+                every,
+                amount,
+                monthly,
+                nxt,
+                to_go,
+                min(amount, monthly * (every - to_go + 1)) if t.start_month < nxt else ZERO,
+            )
+        )
+    return sorted(out, key=lambda f: (f.next_due, f.name))

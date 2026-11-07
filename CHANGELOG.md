@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.57.0] — Bills that don't come every month
+
+### Added
+- **Budget page: bills that don't come every month** (ADR-041): insurance, matrícula and other
+  bills that repeat every 2 to 12 months, as an amount to set aside each month, when each is next
+  due and how much should already be put aside.
+- `GET /api/budget/{YYYY-MM}/yearly-bills`.
+
 ## [0.56.0] — Saving goals
 
 ### Added

@@ -113,3 +113,48 @@ def test_deleting_a_group_moves_its_budget(client: TestClient, db: Session) -> N
     assert out.status_code == 200, out.text
     g = _group(_view(client, "2026-11"), "Pets")
     assert Decimal(g["budget"]) == 40
+
+
+def test_yearly_bills_as_a_monthly_set_aside(client: TestClient, db: Session) -> None:
+    market = _cat(db, "Supermarket")
+    from tests.unit.test_recurring_api import _template
+
+    _template(
+        client,
+        name="Car insurance",
+        category_id=market.category_id,
+        amount="1200",
+        start_month="2026-03-01",
+        every_months=12,
+    )
+    _template(
+        client,
+        name="Water",
+        category_id=market.category_id,
+        amount="90",
+        start_month="2026-01-01",
+        every_months=3,
+    )
+    _template(client, name="Phone", category_id=market.category_id, amount="40")
+    _template(
+        client,
+        name="Bonus",
+        category_id=market.category_id,
+        amount="500",
+        start_month="2026-12-01",
+        every_months=12,
+        type="income",
+    )
+    out = client.get("/api/budget/2026-11/yearly-bills")
+    assert out.status_code == 200, out.text
+    rows = {r["name"]: r for r in out.json()}
+    assert set(rows) == {"Car insurance", "Water"}
+    car, water = rows["Car insurance"], rows["Water"]
+    assert car["next_due"] == "2027-03-01" and car["months_to_go"] == 5
+    assert Decimal(car["monthly"]) == 100 and Decimal(car["should_have"]) == 800
+    assert water["next_due"] == "2027-01-01" and Decimal(water["monthly"]) == 30
+    assert Decimal(water["should_have"]) == 30
+    assert [r["name"] for r in out.json()] == ["Water", "Car insurance"]  # soonest first
+    # In its due month the whole amount should be there.
+    march = {r["name"]: r for r in client.get("/api/budget/2027-03/yearly-bills").json()}
+    assert Decimal(march["Car insurance"]["should_have"]) == 1200

@@ -1577,3 +1577,17 @@ export const fetchGoals = () => send<{ goals: Goal[]; places: GoalPlace[] }>("GE
 export const createGoal = (body: GoalInput) => send<Goal>("POST", "/api/goals", body);
 export const updateGoal = (id: number, body: GoalInput) => send<Goal>("PATCH", `/api/goals/${id}`, body);
 export const deleteGoal = (id: number) => send<void>("DELETE", `/api/goals/${id}`);
+
+// ---------- yearly bills as a monthly set-aside (ADR-041) ----------
+export type SinkingFund = {
+  template_id: number;
+  name: string;
+  every_months: number;
+  amount: Money;
+  monthly: Money;
+  next_due: string;
+  months_to_go: number;
+  should_have: Money;
+};
+export const fetchYearlyBills = (month: string) =>
+  send<SinkingFund[]>("GET", `/api/budget/${month}/yearly-bills`);
