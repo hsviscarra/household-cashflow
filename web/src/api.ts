@@ -649,6 +649,23 @@ export type ExcelRow = {
 export const fetchRecurringGrid = (year: number) =>
   send<RecurringGrid>("GET", `/api/recurring/grid?year=${year}`);
 export const fetchTemplates = () => send<RecurringTemplate[]>("GET", "/api/recurring/templates");
+export type FoundBill = {
+  merchant: string;
+  every_months: number;
+  amount: Money;
+  category_id: number;
+  category_path: string | null;
+  account_id: number | null;
+  account_name: string | null;
+  person: Owner | null;
+  match_pattern: string | null;
+  due_day: number;
+  times: number;
+  last_date: string;
+  next_expected: string | null;
+  examples: string[];
+};
+export const fetchFoundBills = () => send<FoundBill[]>("GET", "/api/recurring/found");
 export const createTemplate = (t: TemplateInput) =>
   send<RecurringTemplate>("POST", "/api/recurring/templates", t);
 export const updateTemplate = (id: number, t: TemplatePatch) =>

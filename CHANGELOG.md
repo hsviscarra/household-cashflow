@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.59.0] — Bills found in the statements
+
+### Added
+- **Found in your statements** on the Recurring and Bills pages (ADR-043): charges that repeat
+  monthly, every three months or yearly with a similar amount and that no recurring item covers
+  yet, with the amount, category, account, usual day and a match pattern. Add makes it a recurring
+  item in one click; Not now hides it.
+- `GET /api/recurring/found`.
+
 ## [0.58.0] — Smarter rules
 
 ### Added
