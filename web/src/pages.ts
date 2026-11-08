@@ -20,6 +20,13 @@ export const PAGES: PageDef[] = [
     summary: "What needs you, the month in numbers, what’s coming and your goals.",
   },
   {
+    path: "/todo",
+    label: "To do",
+    group: "Home",
+    feature: "P5",
+    summary: "Everything that needs you, in one list, with the action for each right there.",
+  },
+  {
     path: "/cashflow",
     label: "Cash flow",
     group: "Analyze",
@@ -53,6 +60,7 @@ export const PAGES: PageDef[] = [
     group: "Daily",
     feature: "F9",
     summary: "Merchants no rule knows: choose a category once, with Claude's suggestion.",
+    hidden: true, // inside To do now (ADR-047)
   },
   {
     path: "/people",
@@ -132,6 +140,7 @@ export const PAGES: PageDef[] = [
     group: "Reports",
     feature: "F12",
     summary: "Coverage per source and month completeness.",
+    hidden: true, // inside To do now (ADR-047)
   },
   {
     path: "/settings",

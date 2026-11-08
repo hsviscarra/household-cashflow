@@ -163,6 +163,20 @@ export type BankSync = {
   ran?: boolean;
   added?: number;
 };
+// ---------------- To do (ADR-047) ----------------
+export type TodoTask = {
+  key: string;
+  kind: string; // categorize, who, transfer, statement, import, recurring, balance, note, stale, duplicate, rule, bill, invoices
+  title: string;
+  detail: string;
+  amount: Money | null;
+  on: string | null;
+  link: string;
+  data: Record<string, unknown>;
+};
+export type TodoSection = { key: string; title: string; hint: string; tasks: TodoTask[]; count: number };
+export type Todo = { today: string; total: number; sections: TodoSection[] };
+export const fetchTodo = () => send<Todo>("GET", "/api/todo");
 export const fetchBankSync = () => send<BankSync>("GET", "/api/bank-sync");
 export const runBankSync = (auto = false) =>
   send<BankSync>("POST", `/api/bank-sync/run${auto ? "?auto=true" : ""}`);

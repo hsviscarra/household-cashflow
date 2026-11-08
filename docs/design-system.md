@@ -173,6 +173,14 @@ how many lines wait for a category. URLs stay as they were.
 - Each invoice row uses the shared CategoryPicker (label hidden, "Category for <supplier>") and a
   pill with what it deducts as; muted when not deductible or not known yet.
 
+## To do (ADR-047)
+
+- Section chips at the top (secondary buttons, h-8, count in a rounded surface badge) jump to each
+  section card. A card: title with count, a muted hint, then rows: title in semibold with the
+  amount in tabular numerals, a muted detail line with a statement link, and the action on the
+  right (category picker + Always, a person select, or a small primary/secondary button). "And N
+  more" under a card when it shows the first 25.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

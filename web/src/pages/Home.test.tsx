@@ -167,6 +167,15 @@ beforeEach(() => {
       }
       if (url.startsWith("/api/cashflow/flows")) return json(FLOWS);
       if (url.startsWith("/api/review")) return json(review);
+      if (url === "/api/todo")
+        return json({
+          today: "2026-11-06",
+          total: 6,
+          sections: [
+            { key: "categorize", title: "Needs a category", hint: "", tasks: [], count: 5 },
+            { key: "books", title: "Statements, imports and bills", hint: "", tasks: [], count: 1 },
+          ],
+        });
       if (url === "/api/status")
         return json({
           today: "2026-11-06",
@@ -219,12 +228,12 @@ describe("Home", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "October 2026" })).toBeInTheDocument();
     const needs = await screen.findByText("Needs you:");
     const strip = needs.parentElement!;
-    expect(await within(strip).findByRole("link", { name: "5 lines to review" })).toHaveAttribute(
+    expect(await within(strip).findByRole("link", { name: "Needs a category: 5" })).toHaveAttribute(
       "href",
-      "/review",
+      "/todo#categorize",
     );
     expect(
-      await within(strip).findByRole("link", { name: "Capital One statement not uploaded" }),
+      await within(strip).findByRole("link", { name: "Statements, imports and bills: 1" }),
     ).toBeInTheDocument();
     expect(await within(strip).findByRole("link", { name: /Cash runs short on Nov 19/ })).toBeInTheDocument();
 

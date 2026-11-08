@@ -26,6 +26,7 @@ function mockApi(health: object, me: object) {
       if (url.startsWith("/api/cashflow/flows")) return body(EMPTY_FLOWS);
       if (url.startsWith("/api/review"))
         return body({ month: null, groups: [], uncategorized_lines: 12, suggestions_available: false });
+      if (url === "/api/todo") return body({ today: "2026-11-08", total: 12, sections: [] });
       if (url.startsWith("/api/me/settings")) return body({ user: "local", settings: {} });
       if (url === "/api/me") return body(me);
       return body({ detail: "not here" }, 404);
@@ -64,16 +65,16 @@ describe("App shell", () => {
     }
   });
 
-  it("groups the sidebar and counts the Inbox", async () => {
+  it("groups the sidebar and counts what's to do", async () => {
     mockApi(okHealth, { name: null, authenticated: false });
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Main" });
     for (const group of ["Analyze", "Daily", "Plan", "Reports"]) {
       expect(within(nav).getByText(group)).toBeInTheDocument();
     }
-    const inbox = within(nav).getByRole("link", { name: /^Inbox/ });
-    expect(inbox).toHaveAttribute("href", "/review");
-    expect(await within(inbox).findByText("12")).toBeInTheDocument();
+    const todo = within(nav).getByRole("link", { name: /^To do/ });
+    expect(todo).toHaveAttribute("href", "/todo");
+    expect(await within(todo).findByText("12")).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Upload statements" })).toHaveAttribute("href", "/import");
   });
 

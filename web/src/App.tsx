@@ -1,9 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { runBankSync } from "./api";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
-import { fetchHealth, fetchMe, fetchReview } from "./api";
+import { fetchHealth, fetchMe, fetchTodo, runBankSync } from "./api";
 import { PersonSwitch, SavedViewLinks } from "./components/Personalize";
 import { GROUPS, PAGES, type PageDef } from "./pages";
 import BatchPage from "./pages/Batch";
@@ -23,6 +22,7 @@ import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
 import SpendingPage from "./pages/Spending";
 import StatusPage from "./pages/Status";
+import TodoPage from "./pages/Todo";
 import TransactionsPage from "./pages/Transactions";
 import { useDensity } from "./prefs";
 
@@ -77,9 +77,9 @@ function SignedIn() {
 }
 
 /** Lines waiting for a category: the Inbox badge. */
-function InboxCount() {
-  const { data } = useQuery({ queryKey: ["review", "count"], queryFn: () => fetchReview() });
-  const n = data?.uncategorized_lines ?? 0;
+function TodoCount() {
+  const { data } = useQuery({ queryKey: ["todo"], queryFn: fetchTodo, staleTime: 5 * 60_000 });
+  const n = data?.total ?? 0;
   if (!n) return null;
   return (
     <span className="num ml-auto rounded-full bg-primary px-2 text-xs font-bold text-on-primary">
@@ -91,11 +91,11 @@ function InboxCount() {
 
 const NAV_ORDER = [
   "/",
+  "/todo",
   "/cashflow",
   "/spending",
   "/purchases",
   "/debt",
-  "/review",
   "/transactions",
   "/people",
   "/recurring",
@@ -104,7 +104,6 @@ const NAV_ORDER = [
   "/goals",
   "/taxes",
   "/report",
-  "/status",
   "/import",
 ];
 
@@ -145,7 +144,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 }
               >
                 {p.label}
-                {p.path === "/review" && <InboxCount />}
+                {p.path === "/todo" && <TodoCount />}
               </NavLink>
             ))}
         </div>
@@ -203,6 +202,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/people": <PeoplePage />,
   "/recurring": <BillsPage />,
   "/status": <StatusPage />,
+  "/todo": <TodoPage />,
   "/spending": <SpendingPage />,
   "/purchases": <PurchasesPage />,
   "/subscriptions": <BillsPage start="found" />,
