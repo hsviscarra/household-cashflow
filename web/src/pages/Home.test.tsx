@@ -238,16 +238,14 @@ describe("Home", () => {
     expect(await within(strip).findByRole("link", { name: /Cash runs short on Nov 19/ })).toBeInTheDocument();
 
     expect(screen.getByText("Money in", { selector: "dt" }).nextSibling).toHaveTextContent("5,000.00");
+    expect(screen.getByRole("button", { name: "Money in: 5,000.00. See the lines" })).toBeInTheDocument();
     expect(screen.getByText("+25% vs Sep")).toBeInTheDocument();
     expect(await screen.findByText("480,000.00")).toBeInTheDocument();
     expect(screen.getByText("Lowest cash ahead", { selector: "dt" }).nextSibling).toHaveTextContent(
       "-120.00",
     );
 
-    expect(screen.getByRole("link", { name: /Groceries/ })).toHaveAttribute(
-      "href",
-      "/cashflow?month=2026-10&side=out&g=1",
-    );
+    expect(screen.getByRole("button", { name: /Groceries/ })).toBeInTheDocument();
     const coming = screen.getByRole("region", { name: "Coming up, next 14 days" });
     expect(await within(coming).findByText("BIESS mortgage")).toBeInTheDocument();
     expect(within(coming).getByText("3,580.55")).toBeInTheDocument();

@@ -4,11 +4,13 @@ export default function KpiCard({
   value,
   note,
   tone,
+  onOpen,
 }: {
   label: string;
   value: string;
   note?: string;
   tone?: "good" | "bad" | "attention";
+  onOpen?: () => void; // the value opens what's behind it (ADR-048)
 }) {
   const box =
     tone === "attention" ? "border-transparent bg-attention-bg text-attention-ink" : "border-line bg-ground";
@@ -25,7 +27,20 @@ export default function KpiCard({
       <dt className="kpi-label" style={tone === "attention" ? { color: "inherit" } : undefined}>
         {label}
       </dt>
-      <dd className={`num kpi-value ${tone === "bad" ? "text-danger-ink" : ""}`}>{value}</dd>
+      <dd className={`num kpi-value ${tone === "bad" ? "text-danger-ink" : ""}`}>
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`${label}: ${value}. See the lines`}
+            className="underline decoration-line-strong decoration-dotted underline-offset-8 hover:text-primary"
+          >
+            {value}
+          </button>
+        ) : (
+          value
+        )}
+      </dd>
       {note && <dd className={`mt-1 text-sm ${noteTone}`}>{note}</dd>}
     </div>
   );
