@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.61.0] — Tax deductions in English, with the app's categories
+
+### Changed
+- "Gastos personales" is now **Tax deductions**, in English throughout (ADR-045): SRI groups,
+  dependents, VAT, supplier, and the annex CSV headers.
+- Invoices take a category from the **same category list as the rest of the app**; the SRI group
+  it deducts as follows from it. Migration 0036 (`invoice.category_id`).
+
+### Fixed
+- Settings → Bank sync says what went wrong, with Try again, instead of loading forever.
+
 ## [0.60.1] — Deploys always start a fresh revision
 
 ### Fixed

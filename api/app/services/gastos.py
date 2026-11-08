@@ -1,5 +1,6 @@
-"""Gastos personales (ADR-036): the deductible personal expenses of each person for a tax year,
-from the SRI invoices, against the cap their cargas familiares allow, and the 18% rebate.
+"""Personal expense deductions (gastos personales, ADR-036): each person's deductible expenses
+for a tax year, from the SRI invoices, against the cap their dependents (cargas familiares)
+allow, and the 18% rebate.
 
 Each invoice gets a person and one of SRI's six categories:
 - person: the buyer named in INVOICE_BUYERS when the XML was read, else a person's choice, else
@@ -38,13 +39,14 @@ CANASTA = {2026: Decimal("821.80")}
 BASKETS = {0: 7, 1: 9, 2: 11, 3: 14, 4: 17}
 CATASTROPHIC_BASKETS = 100
 
+# SRI's six groups; the keys stay as the SRI names them, the labels are in English (ADR-045).
 LABELS = {
-    "vivienda": "Vivienda",
-    "educacion": "Educación, arte y cultura",
-    "salud": "Salud",
-    "alimentacion": "Alimentación",
-    "vestimenta": "Vestimenta",
-    "turismo": "Turismo nacional",
+    "vivienda": "Housing",
+    "educacion": "Education, arts & culture",
+    "salud": "Health",
+    "alimentacion": "Food",
+    "vestimenta": "Clothing",
+    "turismo": "Domestic tourism",
 }
 
 # The paying line's category → SRI category. Only clear cases; the rest wait for a person.
@@ -116,6 +118,23 @@ class Row:
     category_source: str | None  # chosen, issuer, paid, products
     transaction_id: int | None
     paid_as: str | None = None
+    category_id: int | None = (
+        None  # the app category: chosen for the invoice, else the paying line's
+    )
+    category_path: str | None = None
+
+
+def sri_group(paths: dict[int, tuple[str, str | None]], category_id: int) -> str:
+    """The SRI group an app category counts in, or "none" (not deductible)."""
+    name, group = paths.get(category_id, ("", None))
+    return BY_CATEGORY.get(name) or BY_CATEGORY.get(group or "") or "none"
+
+
+def _path(paths: dict[int, tuple[str, str | None]], category_id: int | None) -> str | None:
+    if category_id is None or category_id not in paths:
+        return None
+    name, group = paths[category_id]
+    return f"{group} / {name}" if group else name
 
 
 def _paths(db: Session) -> dict[int, tuple[str, str | None]]:
@@ -184,7 +203,9 @@ def rows(db: Session, year: int) -> list[Row]:
         else:
             person, p_src = None, None
         category: str | None
-        if inv.gp_category:
+        if inv.category_id is not None:
+            category, c_src = sri_group(paths, inv.category_id), "chosen"
+        elif inv.gp_category:
             category, c_src = inv.gp_category, "chosen"
         elif inv.issuer_ruc in rules:
             category, c_src = rules[inv.issuer_ruc], "issuer"
@@ -209,6 +230,8 @@ def rows(db: Session, year: int) -> list[Row]:
                 c_src,
                 inv.transaction_id,
                 f"{group} / {name}" if group and name else name,
+                inv.category_id or (t.category_id if t else None),
+                _path(paths, inv.category_id or (t.category_id if t else None)),
             )
         )
     return out
@@ -297,6 +320,8 @@ def choose(
     person: str | None = None,
     set_category: bool = False,
     category: str | None = None,
+    set_app_category: bool = False,
+    category_id: int | None = None,
     remember_issuer: bool = False,
 ) -> Invoice:
     """A person's choice of whose invoice it is and its category; with remember_issuer, every
@@ -308,9 +333,18 @@ def choose(
         if person is not None and person not in PEOPLE:
             raise GastosError(f"Person must be one of {', '.join(PEOPLE)}.")
         inv.person = person
+    if set_app_category:
+        # An app category (the same list as everywhere else); its SRI group follows from it.
+        if category_id is not None and db.get(Category, category_id) is None:
+            raise GastosError(f"Category {category_id} not found.")
+        inv.category_id = category_id
+        set_category = True
+        category = None if category_id is None else sri_group(_paths(db), category_id)
     if set_category:
         if category is not None and category != "none" and category not in GP_CATEGORIES:
             raise GastosError(f"Unknown category {category}.")
+        if not set_app_category:
+            inv.category_id = None
         inv.gp_category = category
         if remember_issuer:
             if category is None:

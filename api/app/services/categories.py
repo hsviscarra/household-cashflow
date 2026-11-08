@@ -15,6 +15,7 @@ from app.models import (
     ChangeLog,
     Counterparty,
     Holding,
+    Invoice,
     MerchantRule,
     MerchantSuggestion,
     RecurringTemplate,
@@ -43,7 +44,7 @@ class Uses:
         return self.lines + self.rules + self.bills + self.budgets + self.other
 
 
-_OTHER: Sequence[type] = (Counterparty, Holding, TransferNote, StgTransaction)
+_OTHER: Sequence[type] = (Counterparty, Holding, TransferNote, StgTransaction, Invoice)
 
 
 def _count(db: Session, model: type, category_id: int) -> int:

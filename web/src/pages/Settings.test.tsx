@@ -227,6 +227,7 @@ function fakeFetch(input: string, init?: RequestInit) {
     });
   }
   if (path === "/api/merchant-rules" && method === "GET") return json(db.rules);
+  if (path === "/api/bank-sync" && !db.sync) return json({ detail: "Database is busy." }, 500);
   if (path === "/api/bank-sync" || path === "/api/bank-sync/run" || path === "/api/bank-sync/link") {
     if (path.endsWith("/link")) db.sync.accounts[0].sync_id = body.account_id ? body.sync_id : null;
     if (path.endsWith("/run")) return json({ ...db.sync, ran: true, added: 2 });
@@ -518,6 +519,13 @@ describe("Settings: merchant rules", () => {
     fireEvent.click(within(table).getByRole("button", { name: "Delete rule UBER EATS" }));
     expect(await screen.findByText("Rule deleted: UBER EATS.")).toBeInTheDocument();
     await waitFor(() => expect(within(table).queryByText("UBER EATS")).not.toBeInTheDocument());
+  });
+
+  it("says when bank sync can't load", async () => {
+    db.sync = null as unknown as BankSync; // the fake answers 500 below
+    renderSettings("sync");
+    expect(await screen.findByText("Bank sync didn’t load")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("links a bank account and syncs now", async () => {

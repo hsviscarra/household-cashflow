@@ -122,7 +122,7 @@ how many lines wait for a category. URLs stay as they were.
 - Delete lives inside the edit form as a quiet button in danger ink; the confirmation is a
   bordered box that says what moves where, never a browser dialog.
 
-## Gastos personales (ADR-036)
+## Tax deductions (gastos personales, ADR-036)
 
 - One card per person: the rebate as the KPI in primary, what counts toward the cap with a
   primary bar on a surface track, then the six categories as a plain table and the cargas form.
@@ -167,6 +167,11 @@ how many lines wait for a category. URLs stay as they were.
 - Settings tab: a card with the last sync, the pending count and Sync now (primary); SimpleFIN
   errors as warn-bordered alerts; a table of bank accounts (org in semibold, balance in tabular
   numerals) with a select of the app account each feeds.
+
+## Tax deductions (ADR-045)
+
+- Each invoice row uses the shared CategoryPicker (label hidden, "Category for <supplier>") and a
+  pill with what it deducts as; muted when not deductible or not known yet.
 
 ## KPI tiles
 
