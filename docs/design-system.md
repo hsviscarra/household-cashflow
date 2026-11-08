@@ -193,6 +193,11 @@ how many lines wait for a category. URLs stay as they were.
 - Auto / Light / Dark segmented control in the sidebar footer (nav-well track, the chosen option
   on ground with a small shadow). Dark tokens: device dark unless Light, or Dark chosen.
 
+## Purchases categories (ADR-050)
+
+- Products to categorize use the shared CategoryPicker (w-64) with the old grocery group as a
+  muted hint; the split offer is a surface box under the invoice's table with a secondary button.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

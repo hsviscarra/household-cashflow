@@ -3,8 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Purchases } from "../api";
-import PurchasesPage, { coverageLine, sriFoundLine } from "./Purchases";
+import type { CategoryGroup, Purchases } from "../api";
+import { pickCategory } from "../test/pick";
+import PurchasesPage, { coverageLine, splitParts, sriFoundLine } from "./Purchases";
 
 const P: Purchases = {
   month: "2026-10",
@@ -77,6 +78,24 @@ const P: Purchases = {
   suggestions_available: true,
 };
 
+const CAT = { kind: "expense", color: null, is_fixed: false, is_active: true, sort_order: 0 } as const;
+const GROUPS: CategoryGroup[] = [
+  {
+    ...CAT,
+    category_id: 40,
+    parent_id: null,
+    name: "Groceries",
+    children: [{ ...CAT, category_id: 41, parent_id: 40, name: "Supermarket" }],
+  },
+  {
+    ...CAT,
+    category_id: 50,
+    parent_id: null,
+    name: "Education",
+    children: [{ ...CAT, category_id: 51, parent_id: 50, name: "School fees" }],
+  },
+];
+
 function renderWith(data: Purchases | Response, posts: Record<string, Response> = {}) {
   const calls: string[] = [];
   vi.stubGlobal(
@@ -88,6 +107,7 @@ function renderWith(data: Purchases | Response, posts: Record<string, Response> 
         const path = url.split("?")[0];
         return Promise.resolve(posts[`${method} ${path}`] ?? new Response("{}"));
       }
+      if (url === "/api/categories") return Promise.resolve(new Response(JSON.stringify(GROUPS)));
       return Promise.resolve(data instanceof Response ? data : new Response(JSON.stringify(data)));
     }),
   );
@@ -128,31 +148,44 @@ describe("purchases", () => {
     expect(list).toHaveTextContent("Payment not found yet");
     fireEvent.click(within(list).getByRole("button", { name: /SUPER PRUEBA/ }));
     expect(within(list).getByRole("table")).toHaveTextContent("LECHE ENTERA 1L21.052.10Dairy & Eggs");
-    expect(list).toHaveTextContent("Invoice 072-140-000123456: 15.00 before tax, IVA 0.98");
+    expect(list).toHaveTextContent("Invoice 072-140-000123456: 15.00 before tax, VAT 0.98");
   });
 
-  it("confirms a product's group, starting from the suggestion", async () => {
+  it("gives a product an app category, kept for every invoice", async () => {
     const calls = renderWith(P, {
       "PUT /api/invoices/products": new Response(
-        JSON.stringify({ product_key: "LECHE ENTERA 1L", product_group: "Dairy & Eggs", lines_updated: 2 }),
+        JSON.stringify({ product_key: "LECHE ENTERA 1L", category_id: 41, lines_updated: 2 }),
       ),
     });
-    const section = await screen.findByRole("region", { name: "Products to group" });
-    expect(section).toHaveTextContent("2 products need a group");
-    expect(section).toHaveTextContent("4.20 on 2 invoices; suggested Dairy & Eggs");
-    const buttons = within(section).getAllByRole("button", { name: "Save group" });
-    expect(buttons[0]).toBeDisabled(); // nothing chosen for the yogurt yet
-    fireEvent.click(buttons[1]);
-    await waitFor(() =>
-      expect(calls).toContain(
-        'PUT /api/invoices/products {"product_key":"LECHE ENTERA 1L","product_group":"Dairy & Eggs"}',
-      ),
+    const section = await screen.findByRole("region", { name: "Products to categorize" });
+    expect(section).toHaveTextContent("2 products need a category");
+    expect(section).toHaveTextContent("4.20 on 2 invoices · looks like Dairy & Eggs");
+    pickCategory(
+      await within(section).findByRole("combobox", { name: /Category for LECHE ENTERA 1L/ }),
+      "Super",
+      "Supermarket",
     );
-    expect(await within(section).findByText("LECHE ENTERA 1L: saved as Dairy & Eggs.")).toBeInTheDocument();
-    fireEvent.change(within(section).getByLabelText("Group for YOG TONI FRUT 1L"), {
-      target: { value: "Other" },
-    });
-    expect(buttons[0]).toBeEnabled();
+    await waitFor(() =>
+      expect(calls).toContain('PUT /api/invoices/products {"product_key":"LECHE ENTERA 1L","category_id":41}'),
+    );
+    expect(await within(section).findByText(/LECHE ENTERA 1L: saved/)).toBeInTheDocument();
+  });
+
+  it("works out the split of the paying line by category", () => {
+    const inv = {
+      ...P.invoices[0],
+      total: "10.00",
+      lines: [
+        { ...P.invoices[0].lines[0], total: "6.30", category_id: 41 },
+        { ...P.invoices[0].lines[0], line_no: 2, total: "3.69", category_id: 51 },
+      ],
+    };
+    expect(splitParts(inv)).toEqual([
+      { category_id: 41, amount: 6.31 }, // the invoice total wins: the cent goes to the biggest
+      { category_id: 51, amount: 3.69 },
+    ]);
+    expect(splitParts({ ...inv, paid_with: null })).toBeNull();
+    expect(splitParts({ ...inv, lines: [{ ...inv.lines[0], category_id: null }, inv.lines[1]] })).toBeNull();
   });
 
   it("asks Claude and uploads XMLs", async () => {
@@ -216,6 +249,7 @@ describe("purchases", () => {
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
         const json = (b: unknown) => Promise.resolve(new Response(JSON.stringify(b)));
+        if (url === "/api/categories") return json(GROUPS);
         if (url === "/api/invoices/sri/keys") return json({ new: keys, stored: 3, other: 1 });
         if (url === "/api/invoices/sri/fetch") {
           bodies.push(init!.body as string);

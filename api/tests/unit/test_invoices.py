@@ -202,6 +202,35 @@ def test_purchases_month_and_groups(client: TestClient, db: Session) -> None:
     db.expire_all()
     assert db.scalars(select(ProductRule)).one().product_group == "Snacks & Sweets"
 
+    # ADR-050: an app category for a product, on every line with it, now and later.
+    sub = db.scalars(select(Category).where(Category.parent_id.is_not(None))).first()
+    assert sub is not None
+    put = client.put(
+        "/api/invoices/products",
+        json={"product_key": "LECHE ENTERA 1L", "category_id": sub.category_id},
+    )
+    assert put.status_code == 200 and put.json()["category_id"] == sub.category_id
+    oct_ = client.get("/api/invoices", params={"month": "2026-10"}).json()
+    milk = next(
+        ln for i in oct_["invoices"] for ln in i["lines"] if ln["description"] == "LECHE ENTERA 1L"
+    )
+    assert milk["category_id"] == sub.category_id and sub.name in milk["category_path"]
+    assert "LECHE ENTERA 1L" not in {u["description"] for u in oct_["to_group"]}
+    upload(client, ("c.xml", factura(key="9" * 49, day="03/11/2026")))
+    later = db.scalar(select(Invoice).where(Invoice.access_key == "9" * 49))
+    if later is not None:
+        assert (
+            next(ln for ln in later.lines if ln.description == "LECHE ENTERA 1L").category_id
+            == sub.category_id
+        )
+    assert (
+        client.put(
+            "/api/invoices/products", json={"product_key": "X", "category_id": 99999}
+        ).status_code
+        == 422
+    )
+    assert client.put("/api/invoices/products", json={"product_key": "X"}).status_code == 422
+
     bad = client.put("/api/invoices/products", json={"product_key": "X", "product_group": "Nope"})
     assert bad.status_code == 422
     assert client.get("/api/invoices", params={"month": "Oct"}).status_code == 422
