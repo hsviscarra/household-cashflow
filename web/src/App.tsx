@@ -24,7 +24,7 @@ import SpendingPage from "./pages/Spending";
 import StatusPage from "./pages/Status";
 import TodoPage from "./pages/Todo";
 import TransactionsPage from "./pages/Transactions";
-import { useDensity } from "./prefs";
+import { useDensity, useTheme, type Theme } from "./prefs";
 
 /** The free Azure SQL database pauses after an hour without use and takes up to a minute or two
  * to resume: until then it's "waking up", not down. */
@@ -171,11 +171,39 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         >
           Settings
         </NavLink>
+        <ThemeSwitch />
         <div className="flex flex-col gap-2 px-3 pt-2">
           <SignedIn />
           <StatusPill />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Light, dark or as the device is (ADR-049). */
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme();
+  const opts: [Theme, string][] = [
+    ["auto", "Auto"],
+    ["light", "Light"],
+    ["dark", "Dark"],
+  ];
+  return (
+    <div role="radiogroup" aria-label="Theme" className="flex rounded-xl bg-nav-well p-1 text-xs">
+      {opts.map(([v, label]) => (
+        <button
+          key={v}
+          role="radio"
+          aria-checked={theme === v}
+          onClick={() => setTheme(v)}
+          className={`flex-1 rounded-lg py-1.5 font-semibold ${
+            theme === v ? "bg-ground text-nav-strong shadow-sm" : "text-nav-muted hover:text-nav-strong"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -220,6 +248,12 @@ export default function App() {
   useEffect(() => setMenu(false), [pathname]);
   // Row size is one choice for every table (ADR-026); index.css reads it from <html>.
   const [density] = useDensity();
+  const [theme] = useTheme();
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "auto") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", theme);
+  }, [theme]);
   // Bank sync (ADR-044): once per app open; the server runs it only when 12 hours have passed.
   useEffect(() => {
     runBankSync(true).catch(() => undefined);

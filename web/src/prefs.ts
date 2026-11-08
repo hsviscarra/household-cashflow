@@ -54,6 +54,14 @@ export function useDensity(): [Density, (d: Density) => void] {
   return [settings.density === "compact" ? "compact" : "comfortable", (d) => set("density", d)];
 }
 
+export type Theme = "auto" | "light" | "dark";
+/** Light, dark or as the device is (ADR-049); kept with each person's settings. */
+export function useTheme(): [Theme, (t: Theme) => void] {
+  const { settings, set } = useSettings();
+  const t = settings.theme;
+  return [t === "light" || t === "dark" ? t : "auto", (v) => set("theme", v)];
+}
+
 /** Which optional columns of a table are shown; every column when nothing is saved. */
 export function useColumns(
   table: string,

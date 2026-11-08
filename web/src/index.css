@@ -59,8 +59,9 @@
   --color-flow-out: #175cd3;
 }
 
+/* Dark: when the device is dark and Light isn't chosen, or when Dark is chosen (ADR-049). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-canvas: #0c0d10;
     --color-ground: #15171c;
     --color-surface: #1c1f26;
@@ -96,6 +97,43 @@
     --color-flow-in: #34d399;
     --color-flow-out: #60a5fa;
   }
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: #0c0d10;
+  --color-ground: #15171c;
+  --color-surface: #1c1f26;
+  --color-line: #2a2d35;
+  --color-line-strong: #3a3e48;
+  --color-ink: #f5f6f7;
+  --color-muted: #a9aeb8;
+
+  --color-primary: #34d399;
+  --color-primary-hover: #6ee7b7;
+  --color-on-primary: #052e1f;
+
+  --color-attention-bg: #2a2210;
+  --color-attention-line: #5c4a1a;
+  --color-attention-ink: #fcd889;
+  --color-good-bg: #13291c;
+  --color-good-ink: #86efac;
+  --color-danger-bg: #331716;
+  --color-danger-ink: #fca5a5;
+  --color-warn: #f59e0b;
+  --color-info-bg: #16223a;
+  --color-info-ink: #93c5fd;
+
+  --color-nav: #0c0d10;
+  --color-nav-line: #24262d;
+  --color-nav-ink: #b4b9c4;
+  --color-nav-muted: #8a909c;
+  --color-nav-strong: #f5f6f7;
+  --color-nav-active: #13291c;
+  --color-nav-active-ink: #86efac;
+  --color-nav-well: #1c1f26;
+
+  --color-flow-in: #34d399;
+  --color-flow-out: #60a5fa;
 }
 
 body {

@@ -78,6 +78,18 @@ describe("App shell", () => {
     expect(within(nav).getByRole("link", { name: "Upload statements" })).toHaveAttribute("href", "/import");
   });
 
+  it("switches between light, dark and the device's theme", async () => {
+    mockApi(okHealth, { name: null, authenticated: false });
+    renderAt("/");
+    await screen.findByRole("heading", { name: "No cash flow yet" }); // settings loaded
+    const group = screen.getByRole("radiogroup", { name: "Theme" });
+    expect(within(group).getByRole("radio", { name: "Auto" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(group).getByRole("radio", { name: "Dark" }));
+    await vi.waitFor(() => expect(document.documentElement.getAttribute("data-theme")).toBe("dark"));
+    fireEvent.click(within(group).getByRole("radio", { name: "Auto" }));
+    await vi.waitFor(() => expect(document.documentElement.hasAttribute("data-theme")).toBe(false));
+  });
+
   it("opens and closes the menu on a phone", () => {
     mockApi(okHealth, { name: null, authenticated: false });
     renderAt("/");
