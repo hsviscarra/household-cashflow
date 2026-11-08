@@ -83,7 +83,9 @@ def run(
     now = datetime.now(UTC).replace(tzinfo=None)
     if auto and not bank_sync.due(db, now):
         return {"ran": False, **_status(db)}
-    if not auto and last is not None and now - last.loaded_at < BY_HAND:
+    # By hand: every 30 minutes, or right away after linking an account the last run skipped.
+    soon = last is not None and now - last.loaded_at < BY_HAND
+    if not auto and soon and not bank_sync.newly_linked(db, last):
         raise HTTPException(429, "Synced a few minutes ago; try again in half an hour.")
     user = _user(request)
     try:

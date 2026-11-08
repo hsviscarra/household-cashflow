@@ -530,7 +530,7 @@ describe("Settings: merchant rules", () => {
 
   it("links a bank account and syncs now", async () => {
     renderSettings("sync");
-    expect(await screen.findByText(/3 lines wait for its statement/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 synced lines wait for a statement/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Capital One needs you to sign in again.");
     fireEvent.change(screen.getByLabelText("App account for Bank of America Adv Plus Banking"), {
       target: { value: "1" },
