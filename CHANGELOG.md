@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.61.1] — Bank sync page on SQL Server
+
+### Fixed
+- Settings → Bank sync failed with 500 on Azure SQL ("Connection is busy with results for another
+  command"): the accounts list was still open when the next query ran. It is read in full first.
+
 ## [0.61.0] — Tax deductions in English, with the app's categories
 
 ### Changed
