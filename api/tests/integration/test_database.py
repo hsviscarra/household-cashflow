@@ -1081,6 +1081,11 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     assert moved.status_code == 200, moved.text
     client.put("/api/bank-sync/link", json={"sync_id": "CI-ACT", "account_id": None})
 
+    # ADR-047: the To do list on SQL Server (one open result per connection).
+    todo = client.get("/api/todo")
+    assert todo.status_code == 200, todo.text
+    assert todo.json()["total"] == sum(x["count"] for x in todo.json()["sections"])
+
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()
     reader.get_reader_engine.cache_clear()

@@ -5,6 +5,20 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.62.0] — To do
+
+### Added
+- **To do** (ADR-047): one list of everything that needs you (lines to categorize, transfers
+  that don't say who, statements and imports, transfers missing their other side, out-of-date
+  values, suggested rules and bills, tax invoices), with the action right there: a category with
+  Always, a person or a category for a transfer, Pause it, Save rule, Add to bills. The sidebar
+  shows its count; Inbox and Data status are inside it now.
+- `GET /api/todo`.
+
+### Changed
+- A transfer given an income or expense category (Salary from your employer) no longer asks who.
+- Home's "Needs you" shows To do's sections.
+
 ## [0.61.3] — Database keeps running
 
 ### Changed

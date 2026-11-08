@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import FROM_BANKS, ChangeLog, Counterparty, MerchantRule, Transaction
+from app.models import FROM_BANKS, Category, ChangeLog, Counterparty, MerchantRule, Transaction
 from app.services import classify, people, transfers
 from app.services import suggest as suggestions
 
@@ -214,12 +214,16 @@ def who_lines(
     """Transfers without a person whose description doesn't say who: the last 90 days, or a
     month. Card payments and transfers between your own accounts are left out."""
     paired = transfers._paired_categories(db)
+    # Explained already: a line given an income or expense category (Salary from an employer,
+    # rent paid by Zelle) needs no person (ADR-047).
+    explained = select(Category.category_id).where(Category.kind.in_(("income", "expense")))
     q = select(Transaction).where(
         Transaction.source.in_(FROM_BANKS),
         Transaction.counterparty_id.is_(None),
         Transaction.transfer_group_id.is_(None),
         Transaction.parent_transaction_id.is_(None),
         Transaction.category_id.is_(None) | Transaction.category_id.not_in(paired),
+        Transaction.category_id.is_(None) | Transaction.category_id.not_in(explained),
         ~classify._has_parts(),
     )
     if month:

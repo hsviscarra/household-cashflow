@@ -9,7 +9,7 @@ import {
   fetchPeople,
   fetchProjection,
   fetchReview,
-  fetchStatus,
+  fetchTodo,
   type Flows,
   type Projection,
 } from "../api";
@@ -218,15 +218,13 @@ function Card({
 }
 
 function Needs() {
-  const review = useQuery({ queryKey: ["review", "count"], queryFn: () => fetchReview() });
-  const status = useQuery({ queryKey: ["status"], queryFn: fetchStatus });
+  // Everything to do lives on To do (ADR-047); Home shows how much, by kind.
+  const todo = useQuery({ queryKey: ["todo"], queryFn: fetchTodo, staleTime: 5 * 60_000 });
   const projection = useQuery({ queryKey: ["projections"], queryFn: () => fetchProjection() });
-  const items: { text: string; to: string }[] = [];
-  const n = review.data?.uncategorized_lines ?? 0;
-  if (n) items.push({ text: `${n} ${n === 1 ? "line" : "lines"} to review`, to: "/review" });
-  for (const m of status.data?.months.filter((x) => !x.complete) ?? [])
-    for (const i of m.items.filter((x) => x.kind === "statement" || x.kind === "import"))
-      if (items.length < 4) items.push({ text: i.text, to: i.link });
+  const items: { text: string; to: string }[] = (todo.data?.sections ?? []).map((s) => ({
+    text: `${s.title}: ${s.count}`,
+    to: `/todo#${s.key}`,
+  }));
   const low = projection.data?.lowest;
   if (low && num(low.balance) < 0)
     items.push({ text: `Cash runs short on ${day(low.day)} (${money(low.balance)})`, to: "/projections" });
