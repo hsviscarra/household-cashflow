@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.65.0] — Where's the money
+
+### Added
+- **Where's the money?** on Cash flow (ADR-051): what you kept this year against how your bank and
+  card balances changed, the gap, and what usually explains it (missing balances or statements,
+  transfers with one side loaded, money with people, income that came by transfer, lines without a
+  category), each linking to where it's fixed; the accounts on demand.
+- `GET /api/reconcile?from=&to=`.
+
 ## [0.64.0] — Purchases use the app's categories
 
 ### Changed

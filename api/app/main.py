@@ -29,6 +29,7 @@ from app.routers import (
     networth,
     people,
     projections,
+    reconcile,
     recurring,
     reference,
     report,
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(report.router)
     app.include_router(bank_sync.router)
     app.include_router(todo.router)
+    app.include_router(reconcile.router)
 
     app.router.routes.append(mcp_route)
 

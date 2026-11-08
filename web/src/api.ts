@@ -176,6 +176,30 @@ export type TodoTask = {
 };
 export type TodoSection = { key: string; title: string; hint: string; tasks: TodoTask[]; count: number };
 export type Todo = { today: string; total: number; sections: TodoSection[] };
+// ---------------- Where's the money (ADR-051) ----------------
+export type Reconcile = {
+  start: string;
+  end: string;
+  money_in: Money;
+  money_out: Money;
+  kept: Money;
+  balances_change: Money;
+  gap: Money;
+  accounts: {
+    account_id: number;
+    name: string;
+    kind: "cash" | "card";
+    start: Money | null;
+    start_on: string | null;
+    end: Money | null;
+    end_on: string | null;
+    change: Money | null;
+  }[];
+  causes: { key: string; title: string; detail: string; amount: Money; link: string }[];
+  workbook_months: number;
+};
+export const fetchReconcile = (from: string, to: string) =>
+  send<Reconcile>("GET", `/api/reconcile?from=${from}&to=${to}`);
 export const fetchTodo = () => send<Todo>("GET", "/api/todo");
 export const fetchBankSync = () => send<BankSync>("GET", "/api/bank-sync");
 export const runBankSync = (auto = false) =>
