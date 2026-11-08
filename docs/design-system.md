@@ -188,6 +188,11 @@ how many lines wait for a category. URLs stay as they were.
   date and description, a muted detail line with the statement link, the amount (money in green)
   and a category picker. Clickable amounts in tables use a dotted underline.
 
+## Theme (ADR-049)
+
+- Auto / Light / Dark segmented control in the sidebar footer (nav-well track, the chosen option
+  on ground with a small shadow). Dark tokens: device dark unless Light, or Dark chosen.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note
