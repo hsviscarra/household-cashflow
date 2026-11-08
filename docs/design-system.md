@@ -198,6 +198,12 @@ how many lines wait for a category. URLs stay as they were.
 - Products to categorize use the shared CategoryPicker (w-64) with the old grocery group as a
   muted hint; the split offer is a surface box under the invoice's table with a secondary button.
 
+## Where's the money (ADR-051)
+
+- A card under Cash flow's KPIs: one sentence with kept, the change in balances and the gap (good
+  ink when they agree, attention ink when not), causes as surface rows with a link and amount, and
+  an accounts table behind "See the accounts".
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

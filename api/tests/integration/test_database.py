@@ -1103,6 +1103,9 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
         json={"product_key": "CI PRODUCT", "category_id": cat["category_id"]},
     )
     assert prod.status_code == 200, prod.text
+    # ADR-051: where's the money on SQL Server.
+    rec = client.get("/api/reconcile", params={"from": "2026-01-01", "to": "2026-10-01"})
+    assert rec.status_code == 200, rec.text
 
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()

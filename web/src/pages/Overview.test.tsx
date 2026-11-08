@@ -93,7 +93,9 @@ beforeEach(() => {
     "fetch",
     vi.fn((url: string) => {
       urls.push(url);
-      const body = url.includes("/monthly?view=cash")
+      const body = url.includes("/reconcile")
+        ? RECON
+        : url.includes("/monthly?view=cash")
         ? CASH
         : url.includes("/monthly")
           ? MONTHLY
@@ -116,6 +118,38 @@ function renderAt(path = "/") {
     </QueryClientProvider>,
   );
 }
+
+const RECON = {
+  start: "2026-01-01",
+  end: "2026-10-01",
+  money_in: "119106.93",
+  money_out: "80667.50",
+  kept: "38439.43",
+  balances_change: "12000.00",
+  gap: "26439.43",
+  accounts: [
+    {
+      account_id: 1,
+      name: "BofA Adv Plus Banking",
+      kind: "cash",
+      start: "5000.00",
+      start_on: "2025-12-22",
+      end: "7453.01",
+      end_on: "2026-10-22",
+      change: "2453.01",
+    },
+  ],
+  causes: [
+    {
+      key: "people",
+      title: "Money with people",
+      detail: "Transfers to or from people move your balances.",
+      amount: "-9000.00",
+      link: "/people",
+    },
+  ],
+  workbook_months: 0,
+};
 
 describe("Cash flow history (the former Overview)", () => {
   it("leads with the latest year in a sentence and shows the tiles", async () => {
@@ -160,6 +194,15 @@ describe("Cash flow history (the former Overview)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("February 2026In9,200.00");
     fireEvent.mouseEnter(screen.getByTestId("col-2026-01-01"));
     expect(screen.getByRole("status")).toHaveTextContent("Kept-500.00");
+  });
+
+  it("says where the money went and what explains the gap", async () => {
+    renderAt();
+    const box = await screen.findByRole("region", { name: "Where's the money" });
+    expect(box).toHaveTextContent("+26,439.43 isn’t explained yet");
+    expect(within(box).getByRole("link", { name: "Money with people" })).toHaveAttribute("href", "/people");
+    fireEvent.click(within(box).getByRole("button", { name: "See the accounts" }));
+    expect(within(box).getByRole("table")).toHaveTextContent("BofA Adv Plus Banking");
   });
 
   it("breaks the year down by category group", async () => {

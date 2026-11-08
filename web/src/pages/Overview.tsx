@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import {
   fetchCategoryMonths,
+  fetchReconcile,
   fetchMonthly,
   fetchPlan,
   type CashView,
@@ -176,6 +177,9 @@ export default function Overview() {
         + savings and investing <span className="num">{money(saved)}</span> + loan payments{" "}
         <span className="num">{money(debt)}</span>.
       </p>
+      {inYear.length > 0 && (
+        <WhereMoney from={inYear[0].cash_month} to={inYear[inYear.length - 1].cash_month} />
+      )}
 
       <div className="mt-8 rounded-2xl bg-surface p-4 md:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -377,6 +381,89 @@ function CategoryTable({ year, months }: { year: number; months: string[] }) {
         </table>
       </div>
     </div>
+  );
+}
+
+/** Kept vs what the balances did, and what explains the gap (ADR-051). */
+function WhereMoney({ from, to }: { from: string; to: string }) {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({ queryKey: ["cashflow", "reconcile", from, to], queryFn: () => fetchReconcile(from, to) });
+  const r = q.data;
+  if (!r?.accounts) return null;
+  const gap = num(r.gap);
+  const ok = Math.abs(gap) < 50;
+  return (
+    <section aria-label="Where's the money" className="card mt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="font-display text-xl font-bold">Where’s the money?</h2>
+        <button className="text-sm font-semibold text-primary" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Hide the accounts" : "See the accounts"}
+        </button>
+      </div>
+      <p className="mt-2">
+        You kept <span className="num font-semibold">{signed(num(r.kept))}</span> from {monthShort(r.start)} to{" "}
+        {monthShort(r.end)}; your bank and card balances changed by{" "}
+        <span className="num font-semibold">{signed(num(r.balances_change))}</span>.{" "}
+        {ok ? (
+          <span className="text-good-ink">They agree.</span>
+        ) : (
+          <span className="text-attention-ink">
+            <span className="num font-semibold">{signed(gap)}</span> isn’t explained yet.
+          </span>
+        )}
+      </p>
+      {r.workbook_months > 0 && (
+        <p className="mt-1 text-sm text-muted">
+          {r.workbook_months} of these months come from the Cash Flow workbook, which has no balances to compare.
+        </p>
+      )}
+      {!ok && r.causes.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {r.causes.map((c) => (
+            <li key={c.key} className="rounded-xl bg-surface px-4 py-3 text-sm">
+              <Link to={c.link} className="font-semibold text-primary underline">
+                {c.title}
+              </Link>
+              {num(c.amount) !== 0 && <span className="num ml-2 font-semibold">{money(c.amount)}</span>}
+              <span className="block text-muted">{c.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-muted">
+              <tr>
+                <th className="py-1 text-left font-semibold">Account</th>
+                <th className="py-1 text-right font-semibold">Start</th>
+                <th className="py-1 text-right font-semibold">End</th>
+                <th className="py-1 text-right font-semibold">Adds</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {r.accounts.map((a) => (
+                <tr key={a.account_id}>
+                  <td className="py-1.5">
+                    {a.name}
+                    {a.kind === "card" && <span className="text-muted"> · owed</span>}
+                  </td>
+                  <td className="num py-1.5 text-right">
+                    {a.start !== null ? money(a.start) : "—"}
+                    {a.start_on && <span className="block text-xs text-muted">{monthShort(a.start_on)}</span>}
+                  </td>
+                  <td className="num py-1.5 text-right">
+                    {a.end !== null ? money(a.end) : "—"}
+                    {a.end_on && <span className="block text-xs text-muted">{monthShort(a.end_on)}</span>}
+                  </td>
+                  <td className="num py-1.5 text-right font-semibold">{a.change !== null ? signed(num(a.change)) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 
