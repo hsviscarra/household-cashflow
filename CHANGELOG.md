@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.61.3] — Database keeps running
+
+### Changed
+- Azure SQL keeps running past the free monthly allowance (billed), capped at 1 vCore; the
+  budget alert is $10 with a forecast alert (ADR-046).
+
 ## [0.61.2] — Bank sync polish
 
 ### Fixed

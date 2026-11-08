@@ -65,7 +65,7 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
 ## Deploy
 
 - **One-time setup:** [`infra/azure/bootstrap.sh`](infra/azure/bootstrap.sh) creates the Azure
-  resources (Container App, Azure SQL free offer with auto-pause, storage, $1 budget alert), the
+  resources (Container App, Azure SQL free offer, billed past the allowance at 1 vCore (ADR-046), storage, $10 budget alert), the
   Microsoft sign-in, and the GitHub OIDC identity used by deploys.
 - **Every merge to `main`:** CI passes → `deploy.yml` builds the image to GHCR, rolls the Container
   App and smoke-tests `/api/health` for the new git SHA.
