@@ -1,5 +1,6 @@
-// Gastos personales (ADR-036): each person's deductible expenses for the tax year from the SRI
-// invoices, against the cap their cargas allow, the 18% rebate, and the invoices to sort out.
+// Tax deductions (gastos personales, ADR-036/045): each person's deductible expenses for the tax
+// year from the SRI invoices, against the cap their dependents allow, the 18% rebate, and the
+// invoices to sort out. Invoices take the app's own categories; the SRI group follows from them.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -7,6 +8,7 @@ import {
   chooseGastos,
   fetchGastos,
   fetchGastosInvoices,
+  fetchCategories,
   gastosCsvUrl,
   setGastosProfile,
   type GastosChoice,
@@ -15,11 +17,11 @@ import {
   type GastosSummary,
   type GpCategory,
 } from "../api";
+import CategoryPicker from "../components/CategoryPicker";
 import { PersonNote } from "../components/Personalize";
 import { localToday, money, num } from "../money";
 import { usePerson } from "../prefs";
 
-const CATEGORIES: GpCategory[] = ["alimentacion", "salud", "educacion", "vivienda", "vestimenta", "turismo"];
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
@@ -31,7 +33,7 @@ const day = (iso: string) =>
 export function guessWords(r: GastosInvoice): string | null {
   switch (r.category_source) {
     case "issuer":
-      return "every invoice from this issuer";
+      return "same as every invoice from this supplier";
     case "paid":
       return `paid as ${r.paid_as ?? "its category"}`;
     case "products":
@@ -62,10 +64,10 @@ export default function TaxesPage() {
     <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-bold tracking-tight">Gastos personales {year}</h1>
+          <h1 className="font-display text-4xl font-bold tracking-tight">Tax deductions {year}</h1>
           <p className="mt-2 max-w-3xl text-lg text-muted">
-            What each of you can deduct from your SRI invoices this year, against your cap, and the 18% rebate
-            on your income tax it gives back.
+            The personal expenses each of you can deduct from your SRI invoices this year, against your cap,
+            and the 18% income tax rebate they give back.
           </p>
         </div>
         <label>
@@ -88,7 +90,7 @@ export default function TaxesPage() {
               <strong>
                 {s.unassigned} {s.unassigned === 1 ? "invoice isn't" : "invoices aren't"} anyone's yet
               </strong>{" "}
-              ({money(s.unassigned_amount)} before IVA): choose whose they are below, or set INVOICE_BUYERS so
+              ({money(s.unassigned_amount)} before VAT): choose whose they are below, or set INVOICE_BUYERS so
               new ones are recognized.{" "}
               <button type="button" className="font-semibold underline" onClick={() => setFilter("nobody")}>
                 Show them
@@ -108,10 +110,10 @@ export default function TaxesPage() {
           </div>
           <Invoices year={year} filter={filter} setFilter={setFilter} person={person} />
           <p className="mt-8 max-w-3xl text-sm text-muted">
-            Amounts are the invoices' value before IVA. The cap is 7 basic baskets with no cargas, more with
-            each carga, 100 for a catastrophic, rare or orphan illness
-            {s.canasta ? ` (basket ${money(s.canasta)})` : ""}. This is a projection to fill the SRI form and
-            annex; check the deadlines in the SRI calendar and the final numbers with your accountant.
+            Amounts are the invoices' value before VAT. The cap is 7 basic family baskets with no dependents,
+            more with each dependent, 100 for a catastrophic, rare or orphan illness
+            {s.canasta ? ` (basket ${money(s.canasta)})` : ""}. This is a projection to fill in the SRI form
+            and annex; check the deadlines in the SRI calendar and the final numbers with your accountant.
           </p>
         </>
       )}
@@ -129,7 +131,7 @@ function PersonCard({ p, s, onFilter }: { p: GastosPerson; s: GastosSummary; onF
   });
   const share = p.cap ? Math.min(100, (num(p.deductible) / num(p.cap)) * 100) : 0;
   return (
-    <section className="card" aria-label={`${p.person}'s gastos personales`}>
+    <section className="card" aria-label={`${p.person}'s tax deductions`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-2xl font-bold">{p.person}</h2>
         <a className="text-sm font-semibold text-primary underline" href={gastosCsvUrl(s.year, p.person)}>
@@ -165,7 +167,7 @@ function PersonCard({ p, s, onFilter }: { p: GastosPerson; s: GastosSummary; onF
           <tr className="text-left text-muted">
             <th className="py-1 font-semibold">Category</th>
             <th className="py-1 text-right font-semibold">Invoices</th>
-            <th className="py-1 text-right font-semibold">Before IVA</th>
+            <th className="py-1 text-right font-semibold">Before VAT</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -200,7 +202,7 @@ function PersonCard({ p, s, onFilter }: { p: GastosPerson; s: GastosSummary; onF
         }}
       >
         <label>
-          <span className="label">Cargas familiares</span>
+          <span className="label">Dependents</span>
           <input
             className="field num w-24"
             type="number"
@@ -297,6 +299,8 @@ function Invoices({
 
 function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
   const qc = useQueryClient();
+  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  const groups = cats.data ?? [];
   const [everyIssuer, setEveryIssuer] = useState(false);
   const save = useMutation({
     mutationFn: (body: GastosChoice) => chooseGastos(r.invoice_id, body),
@@ -311,7 +315,7 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
         </p>
         <p className="text-sm text-muted">
           {day(r.issue_date)} · invoice {r.number} · <span className="num">{money(r.subtotal)}</span> before
-          IVA, <span className="num">{money(r.total)}</span> paid
+          VAT, <span className="num">{money(r.total)}</span> paid
           {r.person_source === "paid" && " · whose: from the line that paid it"}
           {why && ` · category: ${why}`}
         </p>
@@ -331,32 +335,24 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
           <option value="Hernan">Hernan</option>
           <option value="Lauren">Lauren</option>
         </select>
-        <label className="sr-only" htmlFor={`cat-${r.invoice_id}`}>
-          SRI category
-        </label>
-        <select
-          id={`cat-${r.invoice_id}`}
-          className="field h-10 md:!w-56"
-          value={r.category ?? ""}
-          disabled={save.isPending}
-          onChange={(e) =>
-            save.mutate({
-              category: (e.target.value || null) as GastosChoice["category"],
-              remember_issuer: everyIssuer,
-            })
-          }
-        >
-          <option value="">Choose a category</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {LABEL[c]}
-            </option>
-          ))}
-          <option value="none">Not deductible</option>
-        </select>
+        <div className="md:w-72">
+          <CategoryPicker
+            label={`Category for ${r.issuer_name}`}
+            hideLabel
+            groups={groups}
+            value={r.category_id ?? ""}
+            placeholder="Choose a category"
+            onChange={(id) =>
+              save.mutate({ category_id: id === "" ? null : id, remember_issuer: everyIssuer })
+            }
+          />
+        </div>
+        <span className={`pill ${r.category && r.category !== "none" ? "" : "text-muted"}`}>
+          {sriWords(r)}
+        </span>
         <label className="flex items-center gap-1.5 text-sm">
           <input type="checkbox" checked={everyIssuer} onChange={(e) => setEveryIssuer(e.target.checked)} />
-          All from this issuer
+          All from this supplier
         </label>
       </div>
       {save.error && <p className="text-sm text-danger-ink">{(save.error as Error).message}</p>}
@@ -365,10 +361,17 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
 }
 
 const LABEL: Record<GpCategory, string> = {
-  alimentacion: "Alimentación",
-  salud: "Salud",
-  educacion: "Educación, arte y cultura",
-  vivienda: "Vivienda",
-  vestimenta: "Vestimenta",
-  turismo: "Turismo nacional",
+  alimentacion: "Food",
+  salud: "Health",
+  educacion: "Education, arts & culture",
+  vivienda: "Housing",
+  vestimenta: "Clothing",
+  turismo: "Domestic tourism",
 };
+
+/** What the invoice counts as for the SRI, from its category. */
+export function sriWords(r: Pick<GastosInvoice, "category">): string {
+  if (r.category === "none") return "Not deductible";
+  if (!r.category) return "No SRI group yet";
+  return `Deducts as ${LABEL[r.category]}`;
+}

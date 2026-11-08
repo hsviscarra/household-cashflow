@@ -114,10 +114,10 @@ export const PAGES: PageDef[] = [
   },
   {
     path: "/taxes",
-    label: "Gastos personales",
+    label: "Tax deductions",
     group: "Plan",
     feature: "P1",
-    summary: "Each person's deductible expenses from the SRI invoices, the cap and the 18% rebate.",
+    summary: "Each person's deductible personal expenses from the SRI invoices, the cap and the 18% rebate.",
   },
   {
     path: "/report",

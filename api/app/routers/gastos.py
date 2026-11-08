@@ -69,13 +69,17 @@ class GastosInvoiceOut(BaseModel):
     category_source: str | None
     transaction_id: int | None
     paid_as: str | None
+    category_id: int | None
+    category_path: str | None
 
 
 class GastosChoiceIn(BaseModel):
-    """Send only what changes: `person` and/or `category` (null clears a choice)."""
+    """Send only what changes: `person`, and `category_id` (an app category; its SRI group
+    follows) or `category` (an SRI group directly); null clears a choice."""
 
     person: Person | None = None
     category: GpCategory | None = None
+    category_id: int | None = None
     remember_issuer: bool = False
 
 
@@ -133,6 +137,8 @@ def choose(invoice_id: int, body: GastosChoiceIn, db: DB, request: Request) -> G
             person=body.person,
             set_category="category" in sent,
             category=body.category,
+            set_app_category="category_id" in sent,
+            category_id=body.category_id,
             remember_issuer=body.remember_issuer,
         )
     except gastos.GastosError as exc:
@@ -158,7 +164,7 @@ def export(year: Year, person: Person, db: DB) -> Response:
     """One row per issuer and category: RUC, name, category, invoices, base and total."""
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["RUC", "Proveedor", "Categoría", "Comprobantes", "Base imponible", "Total"])
+    w.writerow(["RUC", "Supplier", "Category", "Invoices", "Before VAT", "Total"])
     for line in gastos.by_issuer(db, year, person):
         w.writerow(
             [

@@ -1546,10 +1546,13 @@ export type GastosInvoice = {
   category_source: "chosen" | "issuer" | "paid" | "products" | null;
   transaction_id: number | null;
   paid_as: string | null;
+  category_id: number | null; // the app category: chosen for the invoice, else the paying line's
+  category_path: string | null;
 };
 export type GastosChoice = {
   person?: "Hernan" | "Lauren" | null;
   category?: GpCategory | "none" | null;
+  category_id?: number | null;
   remember_issuer?: boolean;
 };
 export const fetchGastos = (year: number) => send<GastosSummary>("GET", `/api/gastos/${year}`);

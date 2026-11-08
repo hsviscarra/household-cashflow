@@ -176,6 +176,16 @@ function BankSyncTab({ notify }: { notify: Notify }) {
     onError: (e: Error) => notify(e.message, "bad"),
   });
   const b = sync.data;
+  if (sync.error)
+    return (
+      <section role="alert" className="card space-y-3 p-5">
+        <h2 className="text-lg font-semibold">Bank sync didn’t load</h2>
+        <p className="text-sm text-muted">{(sync.error as Error).message}</p>
+        <button className="btn btn-secondary" onClick={() => void sync.refetch()}>
+          Try again
+        </button>
+      </section>
+    );
   if (!b) return <p className="text-muted">Loading…</p>;
   if (!b.configured)
     return (

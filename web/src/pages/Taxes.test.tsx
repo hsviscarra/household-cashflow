@@ -3,15 +3,16 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GastosInvoice, GastosPerson, GastosSummary } from "../api";
-import TaxesPage, { guessWords, rebateLine } from "./Taxes";
+import type { CategoryGroup, GastosInvoice, GastosPerson, GastosSummary } from "../api";
+import { pickCategory } from "../test/pick";
+import TaxesPage, { sriWords, guessWords, rebateLine } from "./Taxes";
 
 const cats = (food: string) =>
   [
     ["vivienda", "Vivienda"],
     ["educacion", "Educación, arte y cultura"],
-    ["salud", "Salud"],
-    ["alimentacion", "Alimentación"],
+    ["salud", "Health"],
+    ["alimentacion", "Food"],
     ["vestimenta", "Vestimenta"],
     ["turismo", "Turismo nacional"],
   ].map(([category, label]) => ({
@@ -52,6 +53,17 @@ const SUMMARY: GastosSummary = {
   labels: {} as GastosSummary["labels"],
 };
 
+const CAT = { kind: "expense", color: null, is_fixed: false, is_active: true, sort_order: 0 } as const;
+const GROUPS: CategoryGroup[] = [
+  {
+    ...CAT,
+    category_id: 20,
+    parent_id: null,
+    name: "Health",
+    children: [{ ...CAT, category_id: 21, parent_id: 20, name: "Pharmacy" }],
+  },
+];
+
 const INVOICE: GastosInvoice = {
   invoice_id: 7,
   issue_date: "2026-04-10",
@@ -66,6 +78,8 @@ const INVOICE: GastosInvoice = {
   category_source: null,
   transaction_id: 3,
   paid_as: "Health / Pharmacy",
+  category_id: null,
+  category_path: null,
 };
 
 afterEach(() => vi.unstubAllGlobals());
@@ -80,7 +94,8 @@ function renderPage(calls: { method: string; url: string; body?: string }[]) {
       if (url.startsWith("/api/me/settings")) return json({ user: "h", settings: {} });
       if (url.startsWith("/api/gastos/2026/invoices")) return json([INVOICE]);
       if (url === "/api/invoices/7/gastos")
-        return json({ ...INVOICE, category: "salud", category_source: "chosen" });
+        return json({ ...INVOICE, category: "salud", category_source: "chosen", category_id: 21 });
+      if (url === "/api/categories") return json(GROUPS);
       if (url.startsWith("/api/gastos/2026/profile")) return json({ cap: "7396.20" });
       if (url.startsWith("/api/gastos/")) return json({ ...SUMMARY, year: Number(url.split("/")[3]) });
       return json({});
@@ -96,36 +111,37 @@ function renderPage(calls: { method: string; url: string; body?: string }[]) {
   );
 }
 
-describe("Gastos personales", () => {
+describe("Tax deductions", () => {
   it("shows each person's rebate, cap and categories, and lets invoices be sorted out", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-07T12:00:00"));
     const calls: { method: string; url: string; body?: string }[] = [];
     renderPage(calls);
-    const hernan = await screen.findByRole("region", { name: "Hernan's gastos personales" });
+    const hernan = await screen.findByRole("region", { name: "Hernan's tax deductions" });
     expect(hernan).toHaveTextContent("Rebate so far180.00");
     expect(hernan).toHaveTextContent("1,000.00 of 5,752.60");
-    expect(hernan).toHaveTextContent("Alimentación31,000.00");
+    expect(hernan).toHaveTextContent("Food31,000.00");
     expect(within(hernan).getByRole("link", { name: "Numbers for the annex (CSV)" })).toHaveAttribute(
       "href",
       "/api/gastos/2026/Hernan.csv",
     );
     expect(within(hernan).getByRole("button", { name: "2 invoices need a category" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Lauren's gastos personales" })).toHaveTextContent(
+    expect(screen.getByRole("region", { name: "Lauren's tax deductions" })).toHaveTextContent(
       "1 not deductible",
     );
     expect(screen.getByText(/1 invoice isn't anyone's yet/)).toBeInTheDocument();
 
     const row = (await screen.findAllByRole("listitem")).find((li) => li.textContent?.includes("FARMACIA"))!;
-    expect(row).toHaveTextContent("Apr 10, 2026 · invoice 001-001-000000123 · 12.00 before IVA, 13.80 paid");
+    expect(row).toHaveTextContent("Apr 10, 2026 · invoice 001-001-000000123 · 12.00 before VAT, 13.80 paid");
     expect(row).toHaveTextContent("whose: from the line that paid it");
-    fireEvent.click(within(row).getByLabelText("All from this issuer"));
-    fireEvent.change(within(row).getByLabelText("SRI category"), { target: { value: "salud" } });
+    fireEvent.click(within(row).getByLabelText("All from this supplier"));
+    expect(row).toHaveTextContent("No SRI group yet");
+    pickCategory(await within(row).findByRole("combobox", { name: /Category for FARMACIA/ }), "Pharm", "Pharmacy");
     await vi.waitFor(() =>
       expect(calls.some((c) => c.method === "PUT" && c.url === "/api/invoices/7/gastos")).toBe(true),
     );
     expect(JSON.parse(calls.find((c) => c.url === "/api/invoices/7/gastos")!.body!)).toEqual({
-      category: "salud",
+      category_id: 21,
       remember_issuer: true,
     });
     fireEvent.change(within(row).getByLabelText("Whose invoice"), { target: { value: "" } });
@@ -135,7 +151,7 @@ describe("Gastos personales", () => {
       ),
     );
 
-    fireEvent.change(within(hernan).getByLabelText("Cargas familiares"), { target: { value: "1" } });
+    fireEvent.change(within(hernan).getByLabelText("Dependents"), { target: { value: "1" } });
     fireEvent.click(within(hernan).getByRole("button", { name: "Save" }));
     await vi.waitFor(() =>
       expect(calls.find((c) => c.url === "/api/gastos/2026/profile/Hernan")?.body).toBe(
@@ -150,7 +166,7 @@ describe("Gastos personales", () => {
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     await vi.waitFor(() => expect(calls.some((c) => c.url === "/api/gastos/2026/invoices")).toBe(true));
     fireEvent.change(screen.getByLabelText("Tax year"), { target: { value: "2025" } });
-    expect(await screen.findByRole("heading", { name: "Gastos personales 2025" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Tax deductions 2025" })).toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -165,9 +181,11 @@ describe("Gastos personales", () => {
       "mostly food",
     );
     expect(guessWords({ ...INVOICE, category: "salud", category_source: "issuer" })).toBe(
-      "every invoice from this issuer",
+      "same as every invoice from this supplier",
     );
     expect(guessWords(INVOICE)).toBeNull();
+    expect(sriWords({ category: "salud" })).toBe("Deducts as Health");
+    expect(sriWords({ category: "none" })).toBe("Not deductible");
     expect(rebateLine(person("Hernan", "1000.00"), "0.18")).toBe(
       "4,752.60 more in invoices would still count, up to 1,035.47 back.",
     );

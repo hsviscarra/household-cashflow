@@ -1024,7 +1024,13 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     assert profile.json()["cap"] == "7396.20"
     hernan = client.get("/api/gastos/2026").json()["people"][0]
     assert hernan["cargas"] == 1 and float(hernan["deductible"]) == 15.0
-    assert ",Alimentación,1,15.00,15.98" in client.get("/api/gastos/2026/Hernan.csv").text
+    assert ",Food,1,15.00,15.98" in client.get("/api/gastos/2026/Hernan.csv").text
+    # ADR-045: an app category on the invoice (migration 0036).
+    sub = next(c for g in client.get("/api/categories").json() for c in g["children"])
+    picked = client.put(
+        f"/api/invoices/{row['invoice_id']}/gastos", json={"category_id": sub["category_id"]}
+    )
+    assert picked.status_code == 200 and picked.json()["category_id"] == sub["category_id"]
 
     # ADR-039: a budget per group on SQL Server (migration 0032).
     groups = client.get("/api/categories").json()

@@ -599,6 +599,8 @@ class Invoice(Base):
     # Gastos personales (ADR-036): whose invoice (never the buyer's ID) and a chosen category.
     person: Mapped[str | None] = mapped_column(Unicode(20))
     gp_category: Mapped[str | None] = mapped_column(Unicode(20))
+    # The app category chosen for it (ADR-045); gp_category then follows from it.
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
 
     lines: Mapped[list["InvoiceLine"]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceLine.line_no"

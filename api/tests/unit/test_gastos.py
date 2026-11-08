@@ -130,6 +130,22 @@ def test_year_summary_choices_rules_and_export(
     assert out.json()["person_source"] == "invoice" and out.json()["category"] == "none"
     h = client.get("/api/gastos/2026").json()["people"][0]
     assert h["not_deductible"] == 1 and Decimal(h["total"]) == Decimal("13.10")
+    # An app category picks the SRI group: Pharmacy counts as Health, Electronics as nothing.
+    pharmacy = _cat(db, "Pharmacy").category_id
+    out = client.put(f"/api/invoices/{sid}/gastos", json={"category_id": pharmacy})
+    body = out.json()
+    assert (body["category"], body["category_id"]) == ("salud", pharmacy)
+    assert body["category_path"].endswith("Pharmacy")
+    other = db.scalars(
+        select(Category).where(Category.parent_id.is_not(None), Category.name == "Electronics")
+    ).first()
+    if other is not None:
+        out = client.put(f"/api/invoices/{sid}/gastos", json={"category_id": other.category_id})
+        assert out.json()["category"] == "none"
+    assert client.put(f"/api/invoices/{sid}/gastos", json={"category_id": 99999}).status_code == 422
+    # An SRI group chosen directly clears the app category.
+    out = client.put(f"/api/invoices/{sid}/gastos", json={"category": "none"}).json()
+    assert out["category"] == "none" and out["category_source"] == "chosen"
     # Clearing the person sends it back to nobody.
     client.put(f"/api/invoices/{sid}/gastos", json={"person": None})
     assert client.get("/api/gastos/2026").json()["unassigned"] == 1
@@ -144,8 +160,8 @@ def test_year_summary_choices_rules_and_export(
     csv = client.get("/api/gastos/2026/Lauren.csv")
     assert csv.status_code == 200 and "attachment" in csv.headers["content-disposition"]
     text = csv.content.decode("utf-8-sig").splitlines()
-    assert text[0].startswith("RUC,Proveedor") and text[1].startswith(f"{pharmacy_ruc},")
-    assert text[1].endswith(",Salud,2,20.00,21.80")
+    assert text[0].startswith("RUC,Supplier") and text[1].startswith(f"{pharmacy_ruc},")
+    assert text[1].endswith(",Health,2,20.00,21.80")
 
     # Forgetting the issuer rule leaves the pharmacy without a category again.
     client.put(f"/api/invoices/{lid}/gastos", json={"category": None, "remember_issuer": True})
