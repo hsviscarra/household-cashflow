@@ -200,6 +200,11 @@ export type Reconcile = {
 };
 export const fetchReconcile = (from: string, to: string) =>
   send<Reconcile>("GET", `/api/reconcile?from=${from}&to=${to}`);
+export const markInstallmentPaid = (holding_id: number, number: number) =>
+  send<{ number: number; period: string; balance_after: Money }>(
+    "POST",
+    `/api/holdings/${holding_id}/installments/${number}/paid`,
+  );
 export const fetchTodo = () => send<Todo>("GET", "/api/todo");
 export const fetchBankSync = () => send<BankSync>("GET", "/api/bank-sync");
 export const runBankSync = (auto = false) =>

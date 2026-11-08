@@ -119,6 +119,8 @@ beforeEach(() => {
       if (url === "/api/merchant-rules") return json({ rule_id: 12, pattern: "X", category_path: "Income / Salary" }, 201);
       if (url === "/api/review/who") return json({ transaction_id: 7 });
       if (url === "/api/holdings/3") return json({ holding_id: 3 });
+      if (url === "/api/holdings/5/installments/41/paid")
+        return json({ number: 41, period: "2026-11-01", balance_after: "98000.00" });
       return json({ detail: "not here" }, 404);
     }),
   );
@@ -185,6 +187,32 @@ describe("To do", () => {
     fireEvent.click(within(box).getByRole("button", { name: "Pause it" }));
     expect(await screen.findByText(/Paused Stock Market/)).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/api/holdings/3")!.body).toEqual({ is_active: false });
+  });
+
+  it("confirms a loan installment", async () => {
+    todo.sections.push({
+      key: "loans",
+      title: "Loan payments to confirm",
+      hint: "",
+      count: 1,
+      tasks: [
+        {
+          key: "loan:5:41",
+          kind: "loan",
+          title: "Did you pay BIESS installment 41?",
+          detail: "November 2026",
+          amount: "-3580.55",
+          on: "2026-11-01",
+          link: "/debt",
+          data: { holding_id: 5, number: 41 },
+        },
+      ],
+    });
+    renderPage();
+    const box = await screen.findByRole("region", { name: "Loan payments to confirm" });
+    fireEvent.click(within(box).getByRole("button", { name: "Yes, paid" }));
+    expect(await screen.findByText("Marked paid. The balance is now 98,000.00.")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/holdings/5/installments/41/paid")).toBe(true);
   });
 
   it("says all clear when nothing is left", async () => {
