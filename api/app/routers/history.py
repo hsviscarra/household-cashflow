@@ -142,6 +142,11 @@ class FlowLineOut(BaseModel):
     person: str | None
     source: str
     notes: str | None
+    category_id: int | None = None
+    statement_file_id: int | None = None
+    counterparty: str | None = None
+    merchant_key: str = ""
+    cash_month: date | None = None
 
 
 @router.get("/cashflow/flows", response_model=FlowsOut)
@@ -173,8 +178,10 @@ def cash_flow_lines(
     category_id: int | None = None,
     merchant: str | None = None,
     person: Person = None,
+    type: Literal["income", "expense", "savings", "debt_payment", "refund", "fee_interest"]
+    | None = None,
 ) -> list[FlowLineOut]:
-    """The lines behind a band, group, category or merchant of one month."""
+    """The lines behind a band, group, category, merchant or type of one month."""
     found = cashflow.lines(
         db,
         month,
@@ -183,8 +190,18 @@ def cash_flow_lines(
         category_id=category_id,
         merchant=merchant,
         person=person,
+        type_=type,
     )
     return [FlowLineOut(**asdict(x)) for x in found]
+
+
+@router.get("/cashflow/search", response_model=list[FlowLineOut])
+def cash_flow_search(
+    db: DB, q: Annotated[str, Query(min_length=2, max_length=100)], month: date
+) -> list[FlowLineOut]:
+    """Any line around a month whose description, merchant or notes hold the text, counted
+    or not: to find what's missing from a number (ADR-048)."""
+    return [FlowLineOut(**asdict(x)) for x in cashflow.search(db, q, month)]
 
 
 @router.get("/cashflow/plan", response_model=list[PlanMonthOut])

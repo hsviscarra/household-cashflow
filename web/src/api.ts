@@ -1415,6 +1415,11 @@ export type FlowLine = {
   person: string | null;
   source: string;
   notes: string | null;
+  category_id?: number | null;
+  statement_file_id?: number | null;
+  counterparty?: string | null;
+  merchant_key?: string;
+  cash_month?: string | null;
 };
 export type FlowFilter = {
   side?: "in" | "out";
@@ -1422,6 +1427,7 @@ export type FlowFilter = {
   category_id?: number;
   merchant?: string;
   person?: string;
+  type?: string;
 };
 const query = (o: Record<string, string | number | undefined | null>) => {
   const q = new URLSearchParams();
@@ -1433,6 +1439,8 @@ export const fetchFlows = (month?: string | null, person?: string) =>
   send<Flows>("GET", `/api/cashflow/flows${query({ month, person })}`);
 export const fetchFlowLines = (month: string, f: FlowFilter) =>
   send<FlowLine[]>("GET", `/api/cashflow/lines${query({ month, ...f })}`);
+export const searchLines = (q: string, month: string) =>
+  send<FlowLine[]>("GET", `/api/cashflow/search${query({ q, month })}`);
 
 // ---------- Spending, one level deeper (ADR-028) ----------
 export type MerchantRow = {

@@ -1,6 +1,6 @@
 import KpiCard from "../components/KpiCard";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import {
@@ -12,6 +12,7 @@ import {
   type MonthlyCashflow,
 } from "../api";
 import { ExportLinks } from "../components/ExportLinks";
+import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
 import { InOutColumns, Legend, TrendLine, type ColumnDatum } from "../components/charts";
 import { money, monthLong, monthShort, num, parts, pct, signed } from "../money";
 
@@ -252,13 +253,23 @@ const TYPE_LABEL: Record<string, string> = {
   debt_payment: "Card and loan payments",
 };
 
-type Row = { key: string; name: string; color: string | null; byMonth: Map<string, number>; total: number };
+type Row = {
+  key: string;
+  name: string;
+  color: string | null;
+  byMonth: Map<string, number>;
+  total: number;
+  type: string;
+  id: number;
+  detail: boolean;
+};
 
 function CategoryTable({ year, months }: { year: number; months: string[] }) {
   const { data } = useQuery({
     queryKey: ["cashflow", "categories", year],
     queryFn: () => fetchCategoryMonths(year),
   });
+  const [target, setTarget] = useState<LinesTarget | null>(null);
   if (!data) return null;
 
   const sections = new Map<string, Map<string, Row>>();
@@ -275,6 +286,9 @@ function CategoryTable({ year, months }: { year: number; months: string[] }) {
       color: c.group_color,
       byMonth: new Map(),
       total: 0,
+      type: c.type,
+      id: detail ? c.category_id : c.group_id,
+      detail,
     };
     row.byMonth.set(c.cash_month, (row.byMonth.get(c.cash_month) ?? 0) + num(c.amount));
     row.total += num(c.amount);
@@ -285,6 +299,8 @@ function CategoryTable({ year, months }: { year: number; months: string[] }) {
   return (
     <div className="mt-6">
       <h2 className="font-display text-2xl font-bold">By category, {year}</h2>
+      <p className="text-sm text-muted">Click any amount to see its lines and fix them.</p>
+      {target && <LinesPanel target={target} onClose={() => setTarget(null)} />}
       <div className="mt-3 overflow-x-auto rounded-2xl border border-line">
         <table className="w-full min-w-max text-sm">
           <thead className="bg-surface text-muted">
@@ -329,7 +345,27 @@ function CategoryTable({ year, months }: { year: number; months: string[] }) {
                     </th>
                     {months.map((m) => (
                       <td key={m} className="num px-3 py-2 text-right">
-                        {r.byMonth.has(m) ? money(r.byMonth.get(m)!) : ""}
+                        {r.byMonth.has(m) ? (
+                          <button
+                            type="button"
+                            className="num underline decoration-line-strong decoration-dotted underline-offset-4 hover:text-primary"
+                            aria-label={`${r.name}, ${monthShort(m)}: ${money(r.byMonth.get(m)!)}. See the lines`}
+                            onClick={() =>
+                              setTarget({
+                                title: r.name,
+                                month: m,
+                                filter: r.detail
+                                  ? { category_id: r.id, type: r.type }
+                                  : { group_id: r.id, type: r.type },
+                                moveTo: r.detail ? r.id : null,
+                              })
+                            }
+                          >
+                            {money(r.byMonth.get(m)!)}
+                          </button>
+                        ) : (
+                          ""
+                        )}
                       </td>
                     ))}
                     <td className="num px-4 py-2 text-right font-semibold">{money(r.total)}</td>
