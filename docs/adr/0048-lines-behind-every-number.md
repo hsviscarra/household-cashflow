@@ -29,5 +29,5 @@ Cash flow had no way into its numbers, and drill-downs elsewhere were read-only.
 
 ## Consequences
 
-- Any suspicious number can be explained and corrected without leaving the page. Home's numbers
-  and the other pages adopt the panel next.
+- Any suspicious number can be explained and corrected without leaving the page. Since 0.63.2
+  Home's Money in, Money out and Where it went bars open the panel too (KpiCard `onOpen`).

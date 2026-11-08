@@ -14,6 +14,7 @@ import {
   type Projection,
 } from "../api";
 import KpiCard from "../components/KpiCard";
+import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
 import { PersonNote } from "../components/Personalize";
 import { localToday, money, monthLong, monthShort, num, pct } from "../money";
 import { personParam, usePerson, useSettings } from "../prefs";
@@ -262,16 +263,20 @@ function Numbers({ f }: { f: Flows }) {
       ? `${now >= before ? "+" : "−"}${Math.abs(Math.round(((now - before) / before) * 100))}% vs ${monthShort(f.prev_month)}`
       : undefined;
   const low = projection.data?.lowest;
+  const [target, setTarget] = useState<LinesTarget | null>(null);
   return (
     <dl className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      {target && <LinesPanel target={target} onClose={() => setTarget(null)} />}
       <KpiCard
         label="Money in"
+        onOpen={() => setTarget({ title: "Money in", month: f.month, filter: { side: "in" } })}
         value={money(moneyIn)}
         note={vs(moneyIn, prevIn)}
         tone={moneyIn >= prevIn ? "good" : "bad"}
       />
       <KpiCard
         label="Money out"
+        onOpen={() => setTarget({ title: "Money out", month: f.month, filter: { side: "out" } })}
         value={money(moneyOut)}
         note={vs(moneyOut, prevOut)}
         tone={moneyOut <= prevOut ? "good" : "bad"}
@@ -308,16 +313,27 @@ function Where({ f }: { f: Flows }) {
     .slice(0, 7);
   const top = Math.max(1, ...out.map((r) => r.amount));
   const ym = f.month.slice(0, 7);
+  const [target, setTarget] = useState<LinesTarget | null>(null);
   return (
     <Card id="where" title="Where it went" link={[`/cashflow?month=${ym}`, "Cash flow"]}>
+      {target && <LinesPanel target={target} onClose={() => setTarget(null)} />}
       {!out.length && <p className="text-muted">Nothing went out in {monthLong(f.month)}.</p>}
       <ul className="space-y-2">
         {out.map((r) => {
           const [side, id] = r.key.split(":");
-          const to = `/cashflow?month=${ym}&side=${side}&${id.startsWith("g") ? "g" : "c"}=${id.slice(1)}`;
+          const n = Number(id.slice(1));
+          const open = () =>
+            setTarget({
+              title: r.label,
+              month: f.month,
+              filter: id.startsWith("g")
+                ? { side: side as "in" | "out", group_id: n }
+                : { side: side as "in" | "out", category_id: n },
+              moveTo: id.startsWith("c") ? n : null,
+            });
           return (
             <li key={r.key}>
-              <Link to={to} className="block rounded-lg hover:bg-surface">
+              <button type="button" onClick={open} className="block w-full rounded-lg text-left hover:bg-surface">
                 <span className="flex justify-between gap-3 text-sm">
                   <span>{r.label}</span>
                   <span className="num">{money(r.amount)}</span>
@@ -331,12 +347,12 @@ function Where({ f }: { f: Flows }) {
                     }}
                   />
                 </span>
-              </Link>
+              </button>
             </li>
           );
         })}
       </ul>
-      <p className="mt-3 text-sm text-muted">Click a bar to open its categories, merchants and lines.</p>
+      <p className="mt-3 text-sm text-muted">Click a bar to see its lines and fix them.</p>
     </Card>
   );
 }

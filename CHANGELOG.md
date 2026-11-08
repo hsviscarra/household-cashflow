@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.63.2] — Home numbers open their lines
+
+### Changed
+- On Home, **Money in** and **Money out** and each bar of **Where it went** open the lines panel
+  (ADR-048) instead of another page.
+
 ## [0.63.0] — See and fix the lines behind a number
 
 ### Added
