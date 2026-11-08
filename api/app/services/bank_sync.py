@@ -42,7 +42,7 @@ from app.services import classify
 from app.services import rules as rule_engine
 
 SOURCE = "bank_sync"
-LOOKBACK = timedelta(days=45)  # SimpleFIN serves at most 90 days per request
+LOOKBACK = timedelta(days=44)  # SimpleFIN recommends 45 days or fewer (90 at most)
 EVERY = timedelta(hours=12)  # SimpleFIN asks for 24 requests a day or fewer; we use 2 at most
 MATCH_DAYS = 5  # a statement line and its synced line: same account and amount, dates this close
 
@@ -129,6 +129,18 @@ def last_run(db: Session) -> LoadLog | None:
     return db.scalars(
         select(LoadLog).where(LoadLog.source == SOURCE).order_by(LoadLog.load_id.desc()).limit(1)
     ).first()
+
+
+def newly_linked(db: Session, last: LoadLog | None) -> bool:
+    """Whether an account is linked now that wasn't at the last run (so a sync can't wait)."""
+    if last is None:
+        return False
+    try:
+        before = {a["sync_id"]: a.get("account_id") for a in json.loads(last.summary)["accounts"]}
+    except (ValueError, KeyError, TypeError):
+        return False
+    now = set(db.scalars(select(Account.sync_id).where(Account.sync_id.is_not(None))))
+    return any(sid in before and before[sid] is None for sid in now)
 
 
 def due(db: Session, now: datetime | None = None) -> bool:

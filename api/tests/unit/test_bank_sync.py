@@ -148,7 +148,7 @@ def test_sync_then_statement_takes_over(
         "/api/bank-sync/link", json={"sync_id": "ACT-BOFA", "account_id": checking.account_id}
     ).json()
     assert {a["sync_id"] for a in linked["accounts"]} >= {"ACT-BOFA"}
-    _age_last_run(db)
+    # Just linked an account the last run skipped: Sync now doesn't wait.
     out = client.post("/api/bank-sync/run", params=today, headers=USER).json()
     assert out["added"] == 3 and out["pending_lines"] == 3  # the pending one waits
     rows = _synced(db)

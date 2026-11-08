@@ -205,7 +205,7 @@ function BankSyncTab({ notify }: { notify: Notify }) {
           <h2 className="text-lg font-semibold">Bank sync</h2>
           <p className="text-sm text-muted">
             {last ? `Last synced ${new Date(last.at + "Z").toLocaleString()}` : "Not synced yet"} ·{" "}
-            {b.pending_lines} {b.pending_lines === 1 ? "line waits" : "lines wait"} for its statement.
+            {b.pending_lines} synced {b.pending_lines === 1 ? "line waits" : "lines wait"} for a statement.
             It syncs by itself when you open the app, twice a day at most.
           </p>
         </div>
@@ -223,9 +223,9 @@ function BankSyncTab({ notify }: { notify: Notify }) {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-line">
-                <th className="label px-4 py-2">Bank account</th>
-                <th className="label px-4 py-2 text-right">Balance</th>
-                <th className="label px-4 py-2">Feeds this account</th>
+                <th className="px-4 py-2 text-sm font-semibold text-muted">Bank account</th>
+                <th className="px-4 py-2 text-right text-sm font-semibold text-muted">Balance</th>
+                <th className="px-4 py-2 text-sm font-semibold text-muted">Feeds this account</th>
               </tr>
             </thead>
             <tbody>
@@ -235,7 +235,7 @@ function BankSyncTab({ notify }: { notify: Notify }) {
                   <tr key={a.sync_id} className="border-b border-line last:border-0">
                     <td className="px-4 py-2">
                       <span className="font-semibold">{a.org}</span> · {a.name}
-                      <span className="block text-sm text-muted">{a.movements} movements in 45 days</span>
+                      <span className="block text-sm text-muted">{a.movements} movements in the last 44 days</span>
                     </td>
                     <td className="num px-4 py-2 text-right">{a.balance ? money(a.balance) : "—"}</td>
                     <td className="px-4 py-2">

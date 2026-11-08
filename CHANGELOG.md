@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.61.2] — Bank sync polish
+
+### Fixed
+- Sync now runs right away after linking an account the last sync skipped, instead of waiting
+  half an hour.
+- Each sync asks SimpleFIN for 44 days, inside its recommended 45, so the range warning is gone.
+- The Bank sync table headers sit on one row.
+
 ## [0.61.1] — Bank sync page on SQL Server
 
 ### Fixed
