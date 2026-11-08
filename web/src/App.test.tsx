@@ -69,7 +69,7 @@ describe("App shell", () => {
     mockApi(okHealth, { name: null, authenticated: false });
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Main" });
-    for (const group of ["Analyze", "Daily", "Plan", "Reports"]) {
+    for (const group of ["Money", "Wealth", "Plan", "Taxes & reports"]) {
       expect(within(nav).getByText(group)).toBeInTheDocument();
     }
     const todo = within(nav).getByRole("link", { name: /^To do/ });

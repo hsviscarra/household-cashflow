@@ -204,6 +204,12 @@ how many lines wait for a category. URLs stay as they were.
   ink when they agree, attention ink when not), causes as surface rows with a link and amount, and
   an accounts table behind "See the accounts".
 
+## Bills: This month (ADR-052)
+
+- One card per status (Late, Still to pay, Paid, Skipped) with count and total; rows: "Day N" in
+  muted tabular numerals, name in semibold over a muted detail line (category · account · how
+  often · price change in danger/good ink), a status pill and the amount right-aligned.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

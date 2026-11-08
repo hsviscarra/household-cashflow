@@ -157,7 +157,16 @@ describe("Bills & subscriptions", () => {
     expect(screen.getByText("1 of 5")).toBeInTheDocument();
     expect(screen.getByText("Ecuasanitas", { selector: "dd *, dd" })).toBeInTheDocument();
     expect(await screen.findByText("1,200.00")).toBeInTheDocument(); // subscriptions a year
-    const cal = screen.getByRole("table", { name: "Bills by day" });
+    // This month, by what needs attention first (ADR-052).
+    const late = screen.getByRole("region", { name: "Late" });
+    expect(late).toHaveTextContent("Ecuasanitas");
+    expect(screen.getByRole("region", { name: "Paid" })).toHaveTextContent("Anthropic");
+    expect(screen.getByRole("region", { name: "Paid" })).toHaveTextContent("was 18.00 until Sep");
+    expect(screen.getByRole("region", { name: "Money coming in" })).toHaveTextContent("Salary Lauren");
+    const prices = screen.getByRole("region", { name: /Price changes/ });
+    expect(prices).toHaveTextContent("18.00 → 20.00 (+11%)");
+    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
+    const cal = await screen.findByRole("table", { name: "Bills by day" });
     const cells = within(cal).getAllByRole("cell");
     const day = (n: number) => cells.find((c) => c.querySelector("span")?.textContent === String(n))!;
     expect(day(1)).toHaveTextContent("Ecuasanitas 172.71, late");
@@ -169,7 +178,7 @@ describe("Bills & subscriptions", () => {
     expect(urls).toContain("/api/recurring/bills?month=2026-10-01");
   });
 
-  it("groups items with totals and shows price changes", async () => {
+  it("groups items with totals", async () => {
     renderAt("/recurring?month=2026-11&view=group");
     const table = await screen.findByRole("table");
     const housing = within(table).getByRole("button", { name: /Housing/ });
@@ -181,17 +190,12 @@ describe("Bills & subscriptions", () => {
     expect(within(table).getByText("1 price change")).toBeInTheDocument();
     fireEvent.click(housing);
     expect(within(table).queryByText("New house")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Price changes" }));
-    const prices = await screen.findByRole("region", { name: /Price changes/ });
-    expect(prices).toHaveTextContent("Anthropic · from September 2026");
-    expect(prices).toHaveTextContent("18.00 → 20.00 (+11%)");
   });
 
   it("opens the year grid, the subscriptions found and the form to add a bill", async () => {
     renderAt("/recurring?month=2026-11&view=grid");
     expect(await screen.findByRole("heading", { level: 2, name: "Recurring" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Found in statements" }));
+    fireEvent.click(screen.getByRole("button", { name: "Subscriptions" }));
     expect(await screen.findByRole("heading", { level: 2, name: /subscriptions/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add a bill" }));
     const form = await screen.findByRole("form", { name: "New template" });

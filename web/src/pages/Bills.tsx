@@ -8,15 +8,16 @@ import { addMonths, localToday, money, monthLong, monthShort, num, pct } from ".
 import RecurringPage, { EVERY, TemplateForm } from "./Recurring";
 import SubscriptionsPage from "./Subscriptions";
 
-// Bills & subscriptions (ADR-031): one page for what repeats. The month as a calendar or by
-// group, price changes, the year grid (editing) and the subscriptions found in the statements.
+// Bills & subscriptions (ADR-031, ADR-052): one page for what repeats. This month as one list by
+// what needs attention (late, due, paid) with price changes inline; the calendar, by group, the
+// year grid (editing) and the subscriptions found in the statements are the other views.
 
 export const VIEWS = {
+  month: "This month",
   calendar: "Calendar",
   group: "By group",
-  prices: "Price changes",
-  grid: "Year grid",
-  found: "Found in statements",
+  grid: "Edit (year grid)",
+  found: "Subscriptions",
 };
 type View = keyof typeof VIEWS;
 
@@ -61,7 +62,7 @@ export default function BillsPage({ start }: { start?: View }) {
   const raw = params.get("month");
   const month = raw && /^\d{4}-\d{2}$/.test(raw) ? raw : localToday().slice(0, 7);
   const view: View =
-    (params.get("view") as View) in VIEWS ? (params.get("view") as View) : (start ?? "calendar");
+    (params.get("view") as View) in VIEWS ? (params.get("view") as View) : (start ?? "month");
   const [adding, setAdding] = useState(false);
   const q = useQuery({ queryKey: ["recurring", "bills", month], queryFn: () => fetchBills(`${month}-01`) });
   const subs = useQuery({ queryKey: ["subscriptions"], queryFn: fetchSubscriptions });
@@ -118,7 +119,7 @@ export default function BillsPage({ start }: { start?: View }) {
               type="button"
               aria-pressed={view === v}
               className={`h-9 rounded-lg px-3 font-semibold ${view === v ? "bg-ground text-ink shadow-sm" : "text-muted"}`}
-              onClick={() => set({ view: v === "calendar" ? null : v })}
+              onClick={() => set({ view: v === "month" ? null : v })}
             >
               {VIEWS[v]}
             </button>
@@ -194,15 +195,20 @@ export default function BillsPage({ start }: { start?: View }) {
           Could not load the bills: {(q.error as Error).message}
         </p>
       )}
-      {q.data && !all.length && (view === "calendar" || view === "group" || view === "prices") && (
+      {q.data && !all.length && (view === "month" || view === "calendar" || view === "group") && (
         <p className="mt-6 rounded-2xl bg-info-bg px-4 py-3">
           Nothing repeats in {monthLong(`${month}-01`)} yet. Add a bill, or open the Year grid to create items
           from the Cash Flow sheet.
         </p>
       )}
+      {q.data && all.length > 0 && view === "month" && (
+        <>
+          <MonthList bills={all} />
+          {all.some((b) => b.price_from && b.price_changed) && <Prices bills={all} />}
+        </>
+      )}
       {q.data && all.length > 0 && view === "calendar" && <Calendar month={month} bills={all} />}
       {q.data && all.length > 0 && view === "group" && <ByGroup bills={all} month={month} />}
-      {q.data && view === "prices" && <Prices bills={all} />}
       {view === "grid" && (
         <div className="mt-8">
           <RecurringPage embedded />
@@ -214,6 +220,85 @@ export default function BillsPage({ start }: { start?: View }) {
         </div>
       )}
     </section>
+  );
+}
+
+const ORDER: { status: BillStatus; title: string; hint: string }[] = [
+  { status: "late", title: "Late", hint: "Past their day and not found in a statement yet." },
+  { status: "due", title: "Still to pay", hint: "Coming this month." },
+  { status: "paid", title: "Paid", hint: "Matched to a statement line." },
+  { status: "skipped", title: "Skipped this month", hint: "" },
+];
+
+/** This month as one list, by what needs attention first (ADR-052). */
+function MonthList({ bills }: { bills: Bill[] }) {
+  const out = bills.filter((b) => !isIn(b));
+  const income = bills.filter(isIn);
+  const day = (b: Bill) => b.due_day ?? 99;
+  return (
+    <div className="mt-6 space-y-6">
+      {ORDER.map(({ status, title, hint }) => {
+        const rows = out.filter((b) => b.status === status).sort((a, b) => day(a) - day(b));
+        if (!rows.length) return null;
+        const total = rows.reduce((s, b) => s + size(b), 0);
+        return (
+          <section key={status} aria-label={title} className="card">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-display text-xl font-bold">
+                {title} <span className="num text-muted">· {rows.length}</span>
+              </h2>
+              <span className="num font-semibold">{money(total)}</span>
+            </div>
+            {hint && <p className="text-sm text-muted">{hint}</p>}
+            <ul className="mt-3 divide-y divide-line">
+              {rows.map((b) => (
+                <BillRow key={b.template_id} b={b} />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+      {income.length > 0 && (
+        <section aria-label="Money coming in" className="card">
+          <h2 className="font-display text-xl font-bold">Money coming in</h2>
+          <ul className="mt-3 divide-y divide-line">
+            {income.map((b) => (
+              <BillRow key={b.template_id} b={b} />
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function BillRow({ b }: { b: Bill }) {
+  const s = STATUS[b.status];
+  const was = b.price_from ? Math.abs(num(b.price_from)) : null;
+  const now = Math.abs(num(b.expected));
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
+      <span className="num w-12 shrink-0 text-sm text-muted">{b.due_day ? `Day ${b.due_day}` : "—"}</span>
+      <span className="min-w-48 flex-1">
+        <span className="font-semibold">{b.name}</span>
+        <span className="block text-sm text-muted">
+          {[b.category_path, b.account_name, repeats(b)].filter(Boolean).join(" · ")}
+          {was !== null && b.price_changed && (
+            <span className={now > was ? " text-danger-ink" : " text-good-ink"}>
+              {" "}
+              · was {money(was)} until {monthShort(b.price_changed)}
+            </span>
+          )}
+        </span>
+      </span>
+      {!isIn(b) && <span className={`pill ${s.cls}`}>{s.label}</span>}
+      <span className="num w-28 text-right font-semibold">
+        {money(size(b))}
+        {b.paid !== null && num(b.paid) !== num(b.expected) && (
+          <span className="block text-xs font-normal text-muted">expected {money(Math.abs(num(b.expected)))}</span>
+        )}
+      </span>
+    </li>
   );
 }
 
