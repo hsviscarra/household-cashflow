@@ -181,6 +181,13 @@ how many lines wait for a category. URLs stay as they were.
   right (category picker + Always, a person select, or a small primary/secondary button). "And N
   more" under a card when it shows the first 25.
 
+## Lines panel (ADR-048)
+
+- A right-hand sheet (max-w-2xl, full width on phones) over a 30% ink scrim; sticky header with
+  the title, month, line count and total, a Back button and the "make it a rule" checkbox. Rows:
+  date and description, a muted detail line with the statement link, the amount (money in green)
+  and a category picker. Clickable amounts in tables use a dotted underline.
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

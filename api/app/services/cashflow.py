@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import Select, and_, case, exists, func, not_, or_, select
 from sqlalchemy.orm import Session, aliased
 
-from app.models import FROM_BANKS, Account, Category, Transaction, v_excel_month
+from app.models import FROM_BANKS, Account, Category, Counterparty, Transaction, v_excel_month
 from app.services.recurring import add_months, first
 
 ZERO = Decimal("0")
@@ -185,6 +185,57 @@ class Line:
     person: str | None
     source: str
     notes: str | None
+    # What the lines panel needs to fix a line in place (ADR-048).
+    category_id: int | None = None
+    statement_file_id: int | None = None
+    counterparty: str | None = None
+    merchant_key: str = ""
+    cash_month: date | None = None
+
+
+def _line(r: Transaction, cname: str | None, aname: str | None, who: str | None) -> Line:
+    from app.services.classify import merchant_key
+
+    return Line(
+        transaction_id=r.transaction_id,
+        txn_date=r.txn_date,
+        description=r.description_raw,
+        merchant=r.merchant,
+        amount=r.amount,
+        type=r.type,
+        category_name=cname,
+        account_name=aname,
+        person=r.person,
+        source=r.source,
+        notes=r.notes,
+        category_id=r.category_id,
+        statement_file_id=r.statement_file_id,
+        counterparty=who,
+        merchant_key=merchant_key(r.description_raw),
+        cash_month=r.cash_month,
+    )
+
+
+def search(db: Session, text: str, month: date, around: int = 1) -> list[Line]:
+    """Any line, counted or not, whose description or merchant holds the text, from `around`
+    months before to `around` after: to find what's missing from a number (ADR-048)."""
+    t = Transaction
+    like = f"%{text.strip()}%"
+    start, end = add_months(first(month), -around), add_months(first(month), around)
+    q = (
+        select(t, Category.name, Account.name, Counterparty.name)
+        .outerjoin(Category, Category.category_id == t.category_id)
+        .outerjoin(Account, Account.account_id == t.account_id)
+        .outerjoin(Counterparty, Counterparty.counterparty_id == t.counterparty_id)
+        .where(
+            t.cash_month >= start,
+            t.cash_month <= end,
+            or_(t.description_raw.ilike(like), t.merchant.ilike(like), t.notes.ilike(like)),
+        )
+        .order_by(t.txn_date.desc(), t.transaction_id)
+        .limit(100)
+    )
+    return [_line(r, c, a, w) for r, c, a, w in db.execute(q)]
 
 
 def lines(
@@ -196,18 +247,23 @@ def lines(
     category_id: int | None = None,
     merchant: str | None = None,
     person: str | None = None,
+    type_: str | None = None,
 ) -> list[Line]:
     """The lines behind one band or row: money in or out, a group (0: no category), a category,
-    a merchant. Amounts keep their sign (negative = money out)."""
+    a merchant, a type (income, expense, savings, debt_payment). Amounts keep their sign
+    (negative = money out)."""
     t = Transaction
     q = (
-        select(t, Category.name, Account.name)
+        select(t, Category.name, Account.name, Counterparty.name)
         .outerjoin(Category, Category.category_id == t.category_id)
         .outerjoin(Account, Account.account_id == t.account_id)
+        .outerjoin(Counterparty, Counterparty.counterparty_id == t.counterparty_id)
         .where(t.cash_month == first(month))
         .order_by(t.txn_date, t.transaction_id)
         .limit(LINE_LIMIT)
     )
+    if type_:
+        q = q.where(t.type == type_)
     if side == "in":
         q = q.where(t.type == "income")
     elif side == "out":
@@ -226,19 +282,4 @@ def lines(
     if merchant:
         q = q.where(func.coalesce(t.merchant, t.description_raw) == merchant)
     found = db.execute(counted(q, person))
-    return [
-        Line(
-            transaction_id=r.transaction_id,
-            txn_date=r.txn_date,
-            description=r.description_raw,
-            merchant=r.merchant,
-            amount=r.amount,
-            type=r.type,
-            category_name=cname,
-            account_name=aname,
-            person=r.person,
-            source=r.source,
-            notes=r.notes,
-        )
-        for r, cname, aname in found
-    ]
+    return [_line(r, c, a, w) for r, c, a, w in found]

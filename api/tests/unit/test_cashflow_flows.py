@@ -131,6 +131,18 @@ def test_a_month_by_category_with_the_month_before(client: TestClient, db: Sessi
     assert len(lines(merchant="SUPERMAXI", side="out")) == 1
     assert lines(category_id=market.category_id)[0]["account_name"]
     assert len(lines(person="Joint")) == 0
+    # ADR-048: a type filter, and what the lines panel needs to fix a line.
+    assert len(lines(type="income")) == 2 and lines(type="debt_payment") == []
+    first_line = lines(category_id=market.category_id)[0]
+    assert first_line["category_id"] == market.category_id
+    assert first_line["merchant_key"] and first_line["cash_month"] == "2026-10-01"
+    # Search finds any line around the month, counted or not (the transfer too).
+    found = client.get("/api/cashflow/search", params={"q": "supermaxi", "month": "2026-10-01"})
+    assert found.status_code == 200 and len(found.json()) >= 1
+    assert (
+        client.get("/api/cashflow/search", params={"q": "x", "month": "2026-10-01"}).status_code
+        == 422
+    )
 
 
 def test_workbook_months_keep_the_workbook(client: TestClient, db: Session) -> None:

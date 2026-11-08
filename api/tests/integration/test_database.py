@@ -1085,6 +1085,17 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     todo = client.get("/api/todo")
     assert todo.status_code == 200, todo.text
     assert todo.json()["total"] == sum(x["count"] for x in todo.json()["sections"])
+    # ADR-048: lines by type and the search, on SQL Server.
+    assert (
+        client.get(
+            "/api/cashflow/lines", params={"month": "2026-10-01", "type": "income"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get("/api/cashflow/search", params={"q": "ci", "month": "2026-10-01"}).status_code
+        == 200
+    )
 
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()

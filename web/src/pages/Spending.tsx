@@ -13,6 +13,7 @@ import {
 import { MonthBars } from "../components/charts";
 import { money, monthLong, monthShort, num, parts } from "../money";
 import { ExportLinks } from "../components/ExportLinks";
+import LinesPanel from "../components/LinesPanel";
 import KpiCard from "../components/KpiCard";
 import { PersonNote, SaveView } from "../components/Personalize";
 import { personParam, usePerson } from "../prefs";
@@ -513,16 +514,41 @@ function Lines({ month, drill, onClose }: { month: string; drill: NonNullable<Dr
     queryFn: () => fetchSpendLines(month, filter),
   });
   const total = (q.data ?? []).reduce((sum, l) => sum + num(l.amount), 0);
+  const [fix, setFix] = useState(false);
+  const f = drill.filter;
+  const canFix = f.category_id !== undefined || f.group_id !== undefined;
   return (
     <section className="mt-6 rounded-2xl bg-surface p-4 md:p-5" aria-label={`Lines: ${drill.title}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-2xl font-bold">
           {drill.title} · {monthLong(month)}
         </h2>
-        <button className="btn btn-quiet h-9 px-3" onClick={onClose}>
-          Close
-        </button>
+        <span className="flex gap-2">
+          {canFix && (
+            <button className="btn btn-primary h-9 px-3" onClick={() => setFix(true)}>
+              Fix or find lines
+            </button>
+          )}
+          <button className="btn btn-quiet h-9 px-3" onClick={onClose}>
+            Close
+          </button>
+        </span>
       </div>
+      {fix && (
+        <LinesPanel
+          target={{
+            title: drill.title,
+            month,
+            filter: {
+              ...(f.category_id !== undefined ? { category_id: f.category_id } : { group_id: f.group_id }),
+              side: "out",
+              ...(who ? { person: who } : {}),
+            },
+            moveTo: f.category_id ?? null,
+          }}
+          onClose={() => setFix(false)}
+        />
+      )}
       {!q.data && <p className="mt-2 text-muted">Loading the lines…</p>}
       {q.data && (
         <>

@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.63.0] — See and fix the lines behind a number
+
+### Added
+- **Lines panel** (ADR-048): click any amount in Cash flow's yearly table (or "Fix or find lines"
+  in Spending) to see every line behind it: date, account, person, who with, the statement link.
+  Change a category in place, optionally as a rule, and search for lines missing from it ("Move
+  here").
+- `GET /api/cashflow/search`; `/api/cashflow/lines` filters by type and returns more about each line.
+
 ## [0.62.0] — To do
 
 ### Added
