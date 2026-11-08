@@ -100,14 +100,16 @@ resource db 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   name: 'cashflow'
   location: location
   sku: {
-    name: 'GP_S_Gen5_2'
+    name: 'GP_S_Gen5_1'
     tier: 'GeneralPurpose'
     family: 'Gen5'
-    capacity: 2
+    capacity: 1 // at most 1 vCore: enough for two people, half the cost when billed
   }
   properties: {
     useFreeLimit: true
-    freeLimitExhaustionBehavior: 'AutoPause' // never bill: pause until next month instead
+    // Keep running past the free allowance (Hernan, Nov 2026): the app must not stop for weeks.
+    // The budget below emails at $5, $10 and when the month is forecast to pass $10.
+    freeLimitExhaustionBehavior: 'BillOverUsage'
     autoPauseDelay: 60
     minCapacity: json('0.5')
     maxSizeBytes: 34359738368 // 32 GB
@@ -255,7 +257,7 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
   name: '${prefix}-budget'
   properties: {
     category: 'Cost'
-    amount: 1
+    amount: 10
     timeGrain: 'Monthly'
     timePeriod: { startDate: budgetStartDate }
     notifications: {
@@ -272,6 +274,13 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
         threshold: 100
         contactEmails: [ alertEmail ]
         thresholdType: 'Actual'
+      }
+      forecastOver100: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 100
+        contactEmails: [ alertEmail ]
+        thresholdType: 'Forecasted'
       }
     }
   }
