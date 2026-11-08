@@ -1,5 +1,6 @@
 // Every page of the app, with the roadmap feature that fills it in and its sidebar group (ADR-025).
-export type NavGroup = "Home" | "Analyze" | "Daily" | "Plan" | "Reports" | "More";
+// Sidebar groups (ADR-052): what happened (Money), what you have (Wealth), what's ahead (Plan).
+export type NavGroup = "Home" | "Money" | "Wealth" | "Plan" | "Taxes & reports" | "More";
 export type PageDef = {
   path: string;
   label: string;
@@ -9,7 +10,7 @@ export type PageDef = {
   hidden?: boolean; // reachable by address, not listed in the sidebar
 };
 
-export const GROUPS: NavGroup[] = ["Home", "Analyze", "Daily", "Plan", "Reports", "More"];
+export const GROUPS: NavGroup[] = ["Home", "Money", "Wealth", "Plan", "Taxes & reports", "More"];
 
 export const PAGES: PageDef[] = [
   {
@@ -29,35 +30,35 @@ export const PAGES: PageDef[] = [
   {
     path: "/cashflow",
     label: "Cash flow",
-    group: "Analyze",
+    group: "Money",
     feature: "F2",
     summary: "Money in and out by month, where it went, and why it changed.",
   },
   {
     path: "/spending",
     label: "Spending",
-    group: "Analyze",
+    group: "Money",
     feature: "F13",
     summary: "Categories, people, countries, fixed vs variable.",
   },
   {
     path: "/purchases",
     label: "Purchases",
-    group: "Analyze",
+    group: "Money",
     feature: "F21",
     summary: "Product by product, from electronic invoices.",
   },
   {
     path: "/transactions",
     label: "Transactions",
-    group: "Daily",
+    group: "Money",
     feature: "F4",
     summary: "Every loaded line, searchable and editable.",
   },
   {
     path: "/review",
     label: "Inbox",
-    group: "Daily",
+    group: "Money",
     feature: "F9",
     summary: "Merchants no rule knows: choose a category once, with Claude's suggestion.",
     hidden: true, // inside To do now (ADR-047)
@@ -65,28 +66,28 @@ export const PAGES: PageDef[] = [
   {
     path: "/people",
     label: "People & transfers",
-    group: "Daily",
+    group: "Money",
     feature: "F24",
     summary: "Whose money a transfer was, notes before the statement, money held for others.",
   },
   {
     path: "/recurring",
     label: "Bills & subscriptions",
-    group: "Plan",
+    group: "Money",
     feature: "F11",
     summary: "What repeats: a calendar of the month, by group, price changes, the year grid.",
   },
   {
     path: "/import",
     label: "Import",
-    group: "Reports",
+    group: "Taxes & reports",
     feature: "F3",
     summary: "Upload statements, review the preview, approve.",
   },
   {
     path: "/subscriptions",
     label: "Subscriptions",
-    group: "Plan",
+    group: "Money",
     feature: "F14",
     summary: "Recurring charges and weekly app billing.",
     // Part of Bills & subscriptions now (ADR-031): the address still works, the sidebar doesn't list it.
@@ -95,7 +96,7 @@ export const PAGES: PageDef[] = [
   {
     path: "/debt",
     label: "Net worth",
-    group: "Analyze",
+    group: "Wealth",
     feature: "F14",
     summary: "Interest and fees per card, balances.",
   },
@@ -123,21 +124,21 @@ export const PAGES: PageDef[] = [
   {
     path: "/taxes",
     label: "Tax deductions",
-    group: "Plan",
+    group: "Taxes & reports",
     feature: "P1",
     summary: "Each person's deductible personal expenses from the SRI invoices, the cap and the 18% rebate.",
   },
   {
     path: "/report",
     label: "Monthly report",
-    group: "Reports",
+    group: "Taxes & reports",
     feature: "F16",
     summary: "The month in 3 to 5 findings, and exports.",
   },
   {
     path: "/status",
     label: "Data health",
-    group: "Reports",
+    group: "Taxes & reports",
     feature: "F12",
     summary: "Coverage per source and month completeness.",
     hidden: true, // inside To do now (ADR-047)

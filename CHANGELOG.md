@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.66.0] — A sidebar by question, and a simpler Bills page
+
+### Changed
+- Sidebar groups (ADR-052): **Money** (Cash flow, Spending, Bills & subscriptions, Purchases,
+  Transactions, People & transfers), **Wealth** (Net worth), **Plan** (Budget, Goals, Forecast),
+  **Taxes & reports** (Tax deductions, Monthly report, Import).
+- **Bills & subscriptions** opens on This month: one list by Late, Still to pay, Paid, with price
+  changes inline; Calendar, By group, Edit (year grid) and Subscriptions are the other views.
+
 ## [0.65.0] — Where's the money
 
 ### Added
