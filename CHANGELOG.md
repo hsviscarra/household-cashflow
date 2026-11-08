@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.60.1] — Deploys always start a fresh revision
+
+### Fixed
+- The deploy workflow names each revision after its run, so a redeploy (or a rollback to the
+  same image) always starts new replicas that pull the image with the current registry
+  credentials, instead of leaving a failed revision in place.
+
 ## [0.60.0] — Bank sync
 
 ### Added

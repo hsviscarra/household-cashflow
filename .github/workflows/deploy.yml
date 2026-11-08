@@ -74,6 +74,7 @@ jobs:
             --name "${{ vars.AZURE_APP_NAME }}" --resource-group "${{ vars.AZURE_RG }}" \
             --image "${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}" \
             --set-env-vars GIT_SHA=${{ steps.tag.outputs.tag }} \
+            --revision-suffix "r${{ github.run_number }}-${{ github.run_attempt }}" \
             --output none
           az containerapp ingress update \
             --name "${{ vars.AZURE_APP_NAME }}" --resource-group "${{ vars.AZURE_RG }}" \
