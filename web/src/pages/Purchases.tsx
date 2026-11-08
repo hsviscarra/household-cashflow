@@ -6,7 +6,9 @@ import {
   fetchPurchases,
   fetchSriInvoices,
   findSriKeys,
-  setProductGroup,
+  setProductCategory,
+  fetchCategories,
+  splitTransaction,
   suggestProductGroups,
   uploadInvoices,
   type Invoice,
@@ -14,6 +16,7 @@ import {
   type Purchases,
 } from "../api";
 import { localToday, money, monthLong, num } from "../money";
+import CategoryPicker from "../components/CategoryPicker";
 
 const NOT_GROUPED = "Not grouped yet";
 const day = (iso: string) =>
@@ -316,24 +319,25 @@ function GroupBars({ p }: { p: Purchases }) {
   );
 }
 
-/** Products a person hasn't grouped yet: a keyword's or Claude's guess, or nothing. */
+/** Products without a category yet (ADR-050): the app's own categories, chosen once per product. */
 function ToGroup({ p, onSaved }: { p: Purchases; onSaved: () => void }) {
-  const [choice, setChoice] = useState<Record<string, string>>({});
+  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [done, setDone] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: ({ key, group }: { key: string; group: string }) => setProductGroup(key, group),
+    mutationFn: ({ key, id }: { key: string; id: number }) => setProductCategory(key, id),
     onSuccess: (r) => {
-      setDone(`${r.product_key}: saved as ${r.product_group}.`);
+      setDone(`${r.product_key}: saved. It gets that category on every invoice, now and later.`);
       onSaved();
     },
   });
   return (
-    <section aria-label="Products to group" className="mt-10">
+    <section aria-label="Products to categorize" className="mt-10">
       <h2 className="font-display text-2xl font-bold">
-        {p.to_group.length} {p.to_group.length === 1 ? "product needs" : "products need"} a group
+        {p.to_group.length} {p.to_group.length === 1 ? "product needs" : "products need"} a category
       </h2>
       <p className="mt-1 text-muted">
-        Confirm once: the same product gets that group on every invoice, now and later.
+        The same categories as the rest of the app. Choose once: the product keeps it on every invoice, and
+        you can add a category from the list (for example School fees).
       </p>
       <p
         aria-live="polite"
@@ -347,43 +351,76 @@ function ToGroup({ p, onSaved }: { p: Purchases; onSaved: () => void }) {
         </p>
       )}
       <ul className="mt-3 divide-y divide-line rounded-2xl border border-line">
-        {p.to_group.map((u) => {
-          const value = choice[u.product_key] ?? u.suggested_group ?? "";
-          return (
-            <li key={u.product_key} className="flex flex-wrap items-center gap-3 px-4 py-2">
-              <span className="min-w-48 flex-1">
-                {u.description}
-                <span className="num block text-sm text-muted">
-                  {money(u.amount)}
-                  {u.lines > 1 ? ` on ${u.lines} invoices` : ""}
-                  {u.suggested_group ? `; suggested ${u.suggested_group}` : ""}
-                </span>
+        {p.to_group.map((u) => (
+          <li key={u.product_key} className="flex flex-wrap items-center gap-3 px-4 py-2">
+            <span className="min-w-48 flex-1">
+              {u.description}
+              <span className="num block text-sm text-muted">
+                {money(u.amount)}
+                {u.lines > 1 ? ` on ${u.lines} invoices` : ""}
+                {u.suggested_group ? ` · looks like ${u.suggested_group}` : ""}
               </span>
-              <select
-                className="field w-56"
-                aria-label={`Group for ${u.description}`}
-                value={value}
-                onChange={(e) => setChoice({ ...choice, [u.product_key]: e.target.value })}
-              >
-                <option value="">Choose a group</option>
-                {p.product_groups.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="btn btn-secondary"
-                disabled={!value || save.isPending}
-                onClick={() => save.mutate({ key: u.product_key, group: value })}
-              >
-                Save group
-              </button>
-            </li>
-          );
-        })}
+            </span>
+            <div className="w-64">
+              <CategoryPicker
+                label={`Category for ${u.description}`}
+                hideLabel
+                groups={cats.data ?? []}
+                value=""
+                placeholder="Choose a category"
+                onChange={(id) => id !== "" && save.mutate({ key: u.product_key, id })}
+              />
+            </div>
+          </li>
+        ))}
       </ul>
     </section>
+  );
+}
+
+/** What the paying bank line would split into, by the items' categories (ADR-050). */
+export function splitParts(inv: Invoice): { category_id: number; amount: number }[] | null {
+  if (!inv.paid_with) return null;
+  const by = new Map<number, number>();
+  for (const ln of inv.lines) {
+    if (!ln.category_id) return null; // every item needs a category first
+    by.set(ln.category_id, (by.get(ln.category_id) ?? 0) + num(ln.total));
+  }
+  if (by.size < 2) return null;
+  const parts = [...by.entries()].map(([category_id, amount]) => ({ category_id, amount: Math.round(amount * 100) / 100 }));
+  // The invoice total wins over rounding: put the cents on the biggest part.
+  const diff = Math.round((num(inv.total) - parts.reduce((s, x) => s + x.amount, 0)) * 100) / 100;
+  parts.sort((a, b) => b.amount - a.amount);
+  parts[0].amount = Math.round((parts[0].amount + diff) * 100) / 100;
+  return parts;
+}
+
+function SplitByCategory({ inv }: { inv: Invoice }) {
+  const qc = useQueryClient();
+  const parts = splitParts(inv);
+  const split = useMutation({
+    mutationFn: () =>
+      splitTransaction(
+        inv.paid_with!.transaction_id,
+        parts!.map((x) => ({ category_id: x.category_id, amount: (-x.amount).toFixed(2), notes: inv.issuer_name })),
+      ),
+    onSuccess: () => ["cashflow", "spending", "transactions", "purchases"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })),
+  });
+  if (!parts) return null;
+  return (
+    <div className="mt-3 rounded-2xl bg-surface p-3 text-sm">
+      <p>
+        This invoice has items in {parts.length} categories. Split the bank line so the cash flow shows each one.
+      </p>
+      {split.error && <p className="mt-1 text-danger-ink">{(split.error as Error).message}</p>}
+      {split.isSuccess ? (
+        <p className="mt-1 text-good-ink">Split. The cash flow now counts each category.</p>
+      ) : (
+        <button className="btn btn-secondary mt-2 h-9 px-3 text-sm" disabled={split.isPending} onClick={() => split.mutate()}>
+          Split the bank line by category
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -417,7 +454,7 @@ function InvoiceList({ invoices }: { invoices: Invoice[] }) {
                   </caption>
                   <thead className="text-muted">
                     <tr>
-                      {["Product", "Quantity", "Price", "Total", "Group"].map((h, i) => (
+                      {["Product", "Quantity", "Price", "Total", "Category"].map((h, i) => (
                         <th
                           key={h}
                           scope="col"
@@ -435,14 +472,15 @@ function InvoiceList({ invoices }: { invoices: Invoice[] }) {
                         <td className="num py-1 text-right">{qty(ln.quantity)}</td>
                         <td className="num py-1 text-right">{money(ln.unit_price)}</td>
                         <td className="num py-1 text-right">{money(ln.total)}</td>
-                        <td className="py-1 pl-4 text-muted">{ln.product_group ?? "—"}</td>
+                        <td className="py-1 pl-4 text-muted">{ln.category_path ?? ln.product_group ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 <p className="num mt-2 text-sm text-muted">
-                  Invoice {inv.number}: {money(inv.subtotal)} before tax, IVA {money(inv.tax)}
+                  Invoice {inv.number}: {money(inv.subtotal)} before tax, VAT {money(inv.tax)}
                 </p>
+                <SplitByCategory inv={inv} />
               </div>
             )}
           </li>

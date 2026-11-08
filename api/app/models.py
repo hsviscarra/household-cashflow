@@ -637,6 +637,8 @@ class InvoiceLine(Base):
     total: Mapped[Decimal] = mapped_column(Money)  # what was paid for this line
     product_group: Mapped[str | None] = mapped_column(Unicode(40))
     group_source: Mapped[str | None] = mapped_column(Unicode(10))
+    # The app category of this item (ADR-050): the same list as everywhere else.
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")
 
@@ -653,7 +655,8 @@ class ProductRule(Base):
 
     rule_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     product_key: Mapped[str] = mapped_column(Unicode(300), unique=True)
-    product_group: Mapped[str] = mapped_column(Unicode(40))
+    product_group: Mapped[str | None] = mapped_column(Unicode(40))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
     created_by: Mapped[str] = mapped_column(Unicode(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

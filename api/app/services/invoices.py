@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import (
     PRODUCT_GROUPS,
+    Category,
     Invoice,
     InvoiceLine,
     LoadLog,
@@ -289,11 +290,12 @@ def keyword_group(key: str) -> str | None:
 def group_lines(db: Session, lines: list[InvoiceLine]) -> None:
     """A group for each line without a person's choice: the product's rule, else a keyword."""
     keys = {ln.product_key for ln in lines}
-    rules = {
-        r.product_key: r.product_group
-        for r in db.scalars(select(ProductRule).where(ProductRule.product_key.in_(keys)))
-    }
+    found = list(db.scalars(select(ProductRule).where(ProductRule.product_key.in_(keys))))
+    rules = {r.product_key: r.product_group for r in found if r.product_group}
+    cats = {r.product_key: r.category_id for r in found if r.category_id}
     for ln in lines:
+        if ln.category_id is None and ln.product_key in cats:
+            ln.category_id = cats[ln.product_key]  # the product's category, chosen once (ADR-050)
         if ln.group_source == "confirmed":
             continue
         if ln.product_key in rules:
@@ -316,6 +318,23 @@ def confirm(db: Session, key: str, group: str, user: str) -> int:
     lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.product_key == key)))
     for ln in lines:
         ln.product_group, ln.group_source = group, "confirmed"
+    db.commit()
+    return len(lines)
+
+
+def confirm_category(db: Session, key: str, category_id: int | None, user: str) -> int:
+    """A person's app category for a product (ADR-050): kept as the product's rule and set on
+    every line with it, now and on later invoices. Returns how many lines changed."""
+    if category_id is not None and db.get(Category, category_id) is None:
+        raise InvoiceError(f"Category {category_id} not found.", 422)
+    rule = db.scalar(select(ProductRule).where(ProductRule.product_key == key))
+    if rule is None:
+        db.add(ProductRule(product_key=key, category_id=category_id, created_by=user[:320]))
+    else:
+        rule.category_id, rule.created_by = category_id, user[:320]
+    lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.product_key == key)))
+    for ln in lines:
+        ln.category_id = category_id
     db.commit()
     return len(lines)
 

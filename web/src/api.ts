@@ -1240,6 +1240,8 @@ export type InvoiceLine = {
   total: string;
   product_group: string | null;
   group_source: "rule" | "keyword" | "claude" | "confirmed" | null;
+  category_id?: number | null; // the app category (ADR-050)
+  category_path?: string | null;
 };
 export type Invoice = {
   invoice_id: number;
@@ -1285,6 +1287,12 @@ export const setProductGroup = (product_key: string, product_group: string) =>
       product_key,
       product_group,
     },
+  );
+export const setProductCategory = (product_key: string, category_id: number | null) =>
+  send<{ product_key: string; category_id: number | null; lines_updated: number }>(
+    "PUT",
+    "/api/invoices/products",
+    { product_key, category_id },
   );
 export const suggestProductGroups = (month: string) =>
   send<{ products: number }>("POST", `/api/invoices/suggest?month=${encodeURIComponent(month)}`);

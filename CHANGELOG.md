@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.64.0] — Purchases use the app's categories
+
+### Changed
+- **Purchases** asks for the app's own categories (the same list as everywhere, and you can add
+  one, e.g. School fees) instead of grocery groups; a product keeps its category on every invoice,
+  now and later (ADR-050). Migration 0037.
+
+### Added
+- **Split the bank line by category**: an invoice whose items fall in several categories splits
+  the card or bank line that paid it, so the cash flow counts each category.
+
 ## [0.63.2] — Home numbers open their lines
 
 ### Changed

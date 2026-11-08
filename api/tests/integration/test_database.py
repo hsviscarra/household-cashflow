@@ -1096,6 +1096,13 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
         client.get("/api/cashflow/search", params={"q": "ci", "month": "2026-10-01"}).status_code
         == 200
     )
+    # ADR-050: a product's app category (migration 0037).
+    cat = next(c for g in client.get("/api/categories").json() for c in g["children"])
+    prod = client.put(
+        "/api/invoices/products",
+        json={"product_key": "CI PRODUCT", "category_id": cat["category_id"]},
+    )
+    assert prod.status_code == 200, prod.text
 
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()

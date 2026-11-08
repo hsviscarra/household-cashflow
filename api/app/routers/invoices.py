@@ -7,11 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
-from app.models import PRODUCT_GROUPS, Account, Invoice, Transaction
+from app.models import PRODUCT_GROUPS, Account, Category, Invoice, Transaction
 from app.schemas import (
     GroupTotalOut,
     InvoiceLineOut,
@@ -157,6 +158,14 @@ def _paid_with(db: Session, inv: Invoice) -> PaidWithOut | None:
     )
 
 
+def _category_paths(db: Session) -> dict[int, str]:
+    cats = {c.category_id: c for c in db.scalars(select(Category))}
+    return {
+        cid: f"{cats[c.parent_id].name} / {c.name}" if c.parent_id in cats else c.name
+        for cid, c in cats.items()
+    }
+
+
 @router.get("", response_model=PurchasesOut)
 def purchases(month: str, db: DB) -> PurchasesOut:
     """A month of invoices (by invoice date): products, groups, and what's left to group."""
@@ -164,9 +173,10 @@ def purchases(month: str, db: DB) -> PurchasesOut:
     invoices.link_pending(db, since=date(m.year - 1, m.month, 1))
     invs = invoices.month_invoices(db, m)
     to_group: dict[str, UngroupedOut] = {}
+    paths = _category_paths(db)
     for inv in invs:
         for ln in inv.lines:
-            if ln.group_source in ("confirmed", "rule"):
+            if ln.group_source in ("confirmed", "rule") or ln.category_id is not None:
                 continue
             u = to_group.setdefault(
                 ln.product_key,
@@ -210,6 +220,8 @@ def purchases(month: str, db: DB) -> PurchasesOut:
                         total=ln.total,
                         product_group=ln.product_group,
                         group_source=ln.group_source,
+                        category_id=ln.category_id,
+                        category_path=paths.get(ln.category_id) if ln.category_id else None,
                     )
                     for ln in i.lines
                 ],
@@ -223,13 +235,22 @@ def purchases(month: str, db: DB) -> PurchasesOut:
 
 @router.put("/products", response_model=ProductGroupOut)
 def set_group(body: ProductGroupIn, request: Request, db: DB) -> ProductGroupOut:
-    """A product's group, for every invoice it's on, now and later."""
+    """A product's group or app category, for every invoice it's on, now and later."""
+    sent = body.model_fields_set
     try:
-        n = invoices.confirm(db, body.product_key, body.product_group, _user(request))
+        if "category_id" in sent:
+            n = invoices.confirm_category(db, body.product_key, body.category_id, _user(request))
+        elif body.product_group:
+            n = invoices.confirm(db, body.product_key, body.product_group, _user(request))
+        else:
+            raise HTTPException(422, "Send product_group or category_id.")
     except invoices.InvoiceError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return ProductGroupOut(
-        product_key=body.product_key, product_group=body.product_group, lines_updated=n
+        product_key=body.product_key,
+        product_group=body.product_group,
+        category_id=body.category_id,
+        lines_updated=n,
     )
 
 

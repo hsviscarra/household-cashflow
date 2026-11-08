@@ -1238,6 +1238,8 @@ class InvoiceLineOut(BaseModel):
     total: Decimal
     product_group: str | None
     group_source: str | None
+    category_id: int | None = None
+    category_path: str | None = None
 
 
 class PaidWithOut(BaseModel):
@@ -1293,13 +1295,17 @@ class InvoiceUploadOut(BaseModel):
 
 
 class ProductGroupIn(BaseModel):
+    """A product's grocery group, or its app category (ADR-050); send one of them."""
+
     product_key: str = Field(min_length=1, max_length=300)
-    product_group: str
+    product_group: str | None = None
+    category_id: int | None = None
 
 
 class ProductGroupOut(BaseModel):
     product_key: str
-    product_group: str
+    product_group: str | None
+    category_id: int | None = None
     lines_updated: int
 
 
