@@ -8,6 +8,7 @@ import {
   fetchCategories,
   fetchPeople,
   fetchTodo,
+  markInstallmentPaid,
   resolveMerchant,
   setWho,
   statementPageUrl,
@@ -159,6 +160,8 @@ function Action({ t, groups, notify }: { t: TodoTask; groups: CategoryGroup[]; n
       return <SaveRule t={t} notify={notify} />;
     case "bill":
       return <AddBill t={t} notify={notify} />;
+    case "loan":
+      return <LoanPaid t={t} notify={notify} />;
     default:
       return (
         <Link className="btn btn-secondary h-9 px-4 text-sm" to={t.link || "/"}>
@@ -305,6 +308,25 @@ function SaveRule({ t, notify }: { t: TodoTask; notify: Notify }) {
     <button className="btn btn-primary h-9 px-4 text-sm" disabled={save.isPending} onClick={() => save.mutate()}>
       Save rule
     </button>
+  );
+}
+
+function LoanPaid({ t, notify }: { t: TodoTask; notify: Notify }) {
+  const done = useDone(notify);
+  const paid = useMutation({
+    mutationFn: () => markInstallmentPaid(t.data.holding_id as number, t.data.number as number),
+    onSuccess: (r) => done(`Marked paid. The balance is now ${money(r.balance_after)}.`),
+    onError: (e: Error) => notify(e.message, "bad"),
+  });
+  return (
+    <>
+      <button className="btn btn-primary h-9 px-4 text-sm" disabled={paid.isPending} onClick={() => paid.mutate()}>
+        Yes, paid
+      </button>
+      <Link className="btn btn-quiet h-9 px-4 text-sm" to={t.link}>
+        See the loan
+      </Link>
+    </>
   );
 }
 

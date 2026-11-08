@@ -210,6 +210,10 @@ how many lines wait for a category. URLs stay as they were.
   muted tabular numerals, name in semibold over a muted detail line (category · account · how
   often · price change in danger/good ink), a status pill and the amount right-aligned.
 
+## Loan check-in (ADR-053)
+
+- A To do section like the others; the action is "Yes, paid" (primary) and "See the loan" (quiet).
+
 ## KPI tiles
 
 `components/KpiCard`: label (small caps, muted), the value in the display face, an optional note

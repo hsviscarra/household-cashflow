@@ -210,3 +210,29 @@ def test_payments_without_a_recurring_item(client: TestClient, db: Session) -> N
     sched = loans.schedule(db, hid, date(2026, 10, 27))
     assert sched is not None and sched.next_total == Decimal("1022.50")
     assert Decimal(_item(client, "Mortgage")["loan"]["monthly_payment"]) == Decimal("1022.5")
+
+
+def test_month_end_check_in(client: TestClient, db: Session) -> None:
+    """ADR-053: from the table loaded once, To do asks at month end; Yes updates the balance."""
+    hid = _loan(client)
+    assert _upload(client, hid, s.loan_table()).status_code == 200  # paid through October
+    early = client.get("/api/todo", params={"today": "2026-11-10"}).json()
+    assert not any(x["key"] == "loans" for x in early["sections"])
+    late = client.get("/api/todo", params={"today": "2026-11-26"}).json()
+    sec = next(x for x in late["sections"] if x["key"] == "loans")
+    task = sec["tasks"][0]
+    assert task["title"] == "Did you pay Mortgage installment 11?"
+    assert task["data"] == {"holding_id": hid, "number": 11}
+
+    out = client.post(f"/api/holdings/{hid}/installments/11/paid", headers=USER)
+    assert out.status_code == 200, out.text
+    assert Decimal(out.json()["balance_after"]) == 1000
+    assert Decimal(_item(client, "Mortgage", "2026-11-30")["value"]) == 1000
+    after = client.get("/api/todo", params={"today": "2026-11-26"}).json()
+    assert not any(x["key"] == "loans" for x in after["sections"])
+    # Overdue months ask any day; an installment that isn't there is refused.
+    assert any(
+        x["key"] == "loans"
+        for x in client.get("/api/todo", params={"today": "2027-01-03"}).json()["sections"]
+    )
+    assert client.post(f"/api/holdings/{hid}/installments/99/paid").status_code in (404, 422)

@@ -105,6 +105,15 @@ async def upload_schedule(
     return LoanImportOut(**asdict(r))
 
 
+@router.post("/holdings/{holding_id}/installments/{number}/paid")
+def installment_paid(holding_id: int, number: int, request: Request, db: DB) -> dict[str, object]:
+    """Confirm an installment was paid (ADR-053): it and every earlier one become paid and the
+    loan's balance follows the table. No new table needed."""
+    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    r = _run(lambda: loans.mark_paid(db, holding_id, number, user))
+    return {"number": r.number, "period": r.period, "balance_after": r.balance_after}
+
+
 @router.get("/holdings/{holding_id}/payments", response_model=list[LoanPaymentOut])
 def loan_payments(
     holding_id: int,

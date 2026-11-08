@@ -231,6 +231,58 @@ def import_table(db: Session, holding_id: int, data: bytes, user: str) -> Import
     )
 
 
+def mark_paid(db: Session, holding_id: int, number: int, user: str) -> LoanInstallment:
+    """Hernan confirms an installment was paid (ADR-053): no new table needed. Every installment
+    up to it is marked paid, and the balance after it becomes the loan's value, dated the 1st of
+    its month like an imported table."""
+    h = _loan(db, holding_id)
+    rows = list(
+        db.scalars(
+            select(LoanInstallment)
+            .where(LoanInstallment.holding_id == holding_id, LoanInstallment.number <= number)
+            .order_by(LoanInstallment.number)
+        )
+    )
+    if not rows or rows[-1].number != number:
+        raise LoanError(f"Installment {number} isn't in the table.")
+    for r in rows:
+        if r.status == "paid":
+            continue
+        r.status = "paid"
+        db.add(
+            BalanceSnapshot(
+                as_of=r.period,
+                name=h.name[:100],
+                kind="liability",
+                amount=r.balance_after,
+                source=SOURCE,
+                holding_id=holding_id,
+                notes=f"Installment {r.number} paid (confirmed by {user[:60]})",
+            )
+        )
+    db.commit()
+    return rows[-1]
+
+
+def asks(db: Session, today: date) -> list[tuple[Holding, LoanInstallment]]:
+    """Loans with an installment due this month or earlier still marked to come: from the 25th,
+    or any day for an earlier month, the app asks whether it was paid (ADR-053)."""
+    this = today.replace(day=1)
+    out = []
+    for h in db.scalars(select(Holding).where(Holding.is_active)):
+        nxt = db.scalars(
+            select(LoanInstallment)
+            .where(LoanInstallment.holding_id == h.holding_id, LoanInstallment.status != "paid")
+            .order_by(LoanInstallment.number)
+            .limit(1)
+        ).first()
+        if nxt is None:
+            continue
+        if nxt.period < this or (nxt.period == this and today.day >= 25):
+            out.append((h, nxt))
+    return out
+
+
 # ---------------------------------------------------------------- reading
 def installments(db: Session, holding_id: int) -> list[LoanInstallment]:
     return list(

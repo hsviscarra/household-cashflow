@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.67.0] — Confirm loan payments
+
+### Added
+- **Loan payments to confirm** in To do (ADR-053): from the amortization table loaded once, the app
+  asks at month end whether the installment was paid; **Yes, paid** updates the loan's balance. No
+  new table each month.
+- `POST /api/holdings/{id}/installments/{number}/paid`.
+
 ## [0.66.0] — A sidebar by question, and a simpler Bills page
 
 ### Changed

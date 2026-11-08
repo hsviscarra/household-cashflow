@@ -16,6 +16,7 @@ from app.services import (
     classify,
     gastos,
     inbox,
+    loans,
     networth,
     rules_suggest,
     status,
@@ -243,6 +244,31 @@ def _values(db: Session, today: date) -> Section:
     return sec
 
 
+def _loans(db: Session, today: date) -> Section:
+    sec = Section(
+        "loans",
+        "Loan payments to confirm",
+        "From the amortization table you loaded once: say Yes when it's paid and the balance "
+        "updates. No new table needed.",
+    )
+    for h, row in loans.asks(db, today):
+        sec.tasks.append(
+            Task(
+                key=f"loan:{h.holding_id}:{row.number}",
+                kind="loan",
+                title=f"Did you pay {h.name} installment {row.number}?",
+                detail=f"{row.period:%B %Y} · principal {row.principal:,.2f}, interest "
+                f"{row.interest:,.2f} · balance after {row.balance_after:,.2f}",
+                amount=-row.total,
+                on=row.period,
+                link="/debt",
+                data={"holding_id": h.holding_id, "number": row.number},
+            )
+        )
+    sec.count = len(sec.tasks)
+    return sec
+
+
 def _suggestions(db: Session, today: date) -> Section:
     sec = Section(
         "suggestions",
@@ -325,6 +351,7 @@ def build(db: Session, today: date | None = None) -> Todo:
         _categorize(db, accounts, asked),
         who,
         _books(db, today),
+        _loans(db, today),
         _transfers(db, accounts),
         _values(db, today),
         _suggestions(db, today),
