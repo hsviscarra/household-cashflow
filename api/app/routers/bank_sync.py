@@ -34,8 +34,11 @@ def _status(db: Session) -> dict[str, Any]:
     pending = db.scalar(
         select(func.count()).select_from(Transaction).where(Transaction.source == bank_sync.SOURCE)
     )
-    accounts = db.scalars(
-        select(Account).where(Account.is_active).order_by(Account.institution, Account.name)
+    # Read in full now: SQL Server allows one open result per connection (no MARS).
+    accounts = list(
+        db.scalars(
+            select(Account).where(Account.is_active).order_by(Account.institution, Account.name)
+        )
     )
     return {
         "configured": bank_sync.configured(),
