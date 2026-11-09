@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.73.0] — Grocery products by type and brand
+
+### Added
+- **Groceries → Products** (ADR-061): every supermarket product of the month, 3 or 12 months,
+  with where the money goes by aisle, type of product or brand, search, and each product's
+  quantity, unit price and spending. Claude labels new products (aisle, type, brand) on its own;
+  correct any product once and it sticks for every purchase. Migration 0042.
+
 ## [0.72.1] — Fewer menu items
 
 ### Changed

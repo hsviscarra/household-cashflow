@@ -5,10 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.schemas import (
     SpendCategoryOut,
@@ -20,7 +21,7 @@ from app.schemas import (
     SpendSliceOut,
     SpendTotalOut,
 )
-from app.services import groceries, shopping, spending
+from app.services import groceries, product_labels, shopping, spending
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])
 DB = Annotated[Session, Depends(get_session)]
@@ -149,6 +150,39 @@ def get_groceries(db: DB, month: date) -> dict[str, Any]:
     """Groceries (ADR-059): the month's supermarket spending next to what its invoices say it
     bought: by aisle, top products, stores, and the charges whose invoice hasn't arrived."""
     return asdict(groceries.build(db, month))
+
+
+@router.get("/groceries/products")
+def get_grocery_products(db: DB, start: date, months: int = 1) -> dict[str, Any]:
+    """Every supermarket product of the period with its aisle, type and brand (ADR-061)."""
+    return asdict(product_labels.products(db, start, max(1, min(months, 24))))
+
+
+@router.post("/groceries/label")
+def label_groceries(db: DB, start: date, months: int = 1) -> dict[str, int]:
+    """Claude labels the period's products that have no type yet (up to 120 a call)."""
+    try:
+        return {"labeled": product_labels.label(db, start, max(1, min(months, 24)))}
+    except product_labels.SuggestError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+class LabelsIn(BaseModel):
+    product_key: str = Field(min_length=1, max_length=300)
+    product_group: str | None = None
+    product_type: str | None = Field(default=None, max_length=60)
+    brand: str | None = Field(default=None, max_length=60)
+
+
+@router.put("/groceries/products")
+def put_grocery_labels(body: LabelsIn, db: DB, request: Request) -> dict[str, int]:
+    """A person's aisle, type or brand for a product, kept for every purchase of it."""
+    changes = body.model_dump(exclude_unset=True, exclude={"product_key"})
+    user = request.headers.get(PRINCIPAL_HEADER) or "local"
+    try:
+        return {"lines": product_labels.set_labels(db, body.product_key, changes, user)}
+    except product_labels.SuggestError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
 
 
 @router.get("/ideas", response_model=list[IdeaOut])

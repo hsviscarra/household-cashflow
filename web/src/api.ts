@@ -1539,6 +1539,40 @@ export type Groceries = {
 };
 export const fetchGroceries = (month: string) =>
   send<Groceries>("GET", `/api/spending/groceries${query({ month })}`);
+export type GroceryProduct = {
+  product_key: string;
+  description: string;
+  product_group: string | null;
+  product_type: string | null;
+  brand: string | null;
+  label_source: "claude" | "confirmed" | null;
+  times: number;
+  quantity: Money;
+  amount: Money;
+  unit_price: Money;
+  stores: string[];
+};
+export type GroceryTotal = { name: string; amount: Money; products: number };
+export type GroceryProducts = {
+  start: string;
+  months: number;
+  total: Money;
+  products: GroceryProduct[];
+  by_group: GroceryTotal[];
+  by_type: GroceryTotal[];
+  by_brand: GroceryTotal[];
+  unlabeled: number;
+};
+export const fetchGroceryProducts = (start: string, months: number) =>
+  send<GroceryProducts>("GET", `/api/spending/groceries/products${query({ start, months: String(months) })}`);
+export const labelGroceries = (start: string, months: number) =>
+  send<{ labeled: number }>("POST", `/api/spending/groceries/label${query({ start, months: String(months) })}`);
+export const setGroceryLabels = (body: {
+  product_key: string;
+  product_group?: string | null;
+  product_type?: string | null;
+  brand?: string | null;
+}) => send<{ lines: number }>("PUT", "/api/spending/groceries/products", body);
 export const fetchIdeas = (month: string, person?: string) =>
   send<Idea[]>("GET", `/api/spending/ideas${query({ month, person })}`);
 

@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { fetchGroceries, type Groceries } from "../api";
 import { addMonths, localToday, money, monthLong, monthShort, num, pct } from "../money";
+import GroceryProducts from "./GroceryProducts";
 
 // Groceries (ADR-059): the month's supermarket spending (statements) next to what the invoices
 // say it bought. Defaults to last month, the latest one whose statements are usually in.
@@ -14,9 +15,16 @@ const day = (iso: string) =>
 export default function GroceriesPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get("month");
-  const month = raw && /^\d{4}-\d{2}$/.test(raw) ? raw : addMonths(`${localToday().slice(0, 7)}-01`, -1).slice(0, 7);
-  const q = useQuery({ queryKey: ["groceries", month], queryFn: () => fetchGroceries(`${month}-01`) });
+  const month =
+    raw && /^\d{4}-\d{2}$/.test(raw) ? raw : addMonths(`${localToday().slice(0, 7)}-01`, -1).slice(0, 7);
+  const view = params.get("view") === "products" ? "products" : "overview";
+  const q = useQuery({
+    queryKey: ["groceries", month],
+    queryFn: () => fetchGroceries(`${month}-01`),
+    enabled: view === "overview",
+  });
   const g = q.data;
+  const show = (v: string) => setParams({ month, ...(v === "products" ? { view: v } : {}) });
 
   return (
     <section className="space-y-6">
@@ -24,27 +32,49 @@ export default function GroceriesPage() {
         <div>
           <h1 className="font-display text-4xl font-bold tracking-tight">Groceries</h1>
           <p className="mt-1 max-w-3xl text-muted">
-            What the supermarket money buys: the Groceries spending from your statements, and the products on the
-            Supermaxi, Megamaxi and other supermarket invoices that reach your email.
+            What the supermarket money buys: the Groceries spending from your statements, and the products on
+            the Supermaxi, Megamaxi and other supermarket invoices that reach your email.
           </p>
         </div>
-        <label>
-          <span className="label">Month</span>
-          <input
-            type="month"
-            className="field w-48"
-            value={month}
-            onChange={(e) => e.target.value && setParams({ month: e.target.value })}
-          />
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <div role="radiogroup" aria-label="View" className="flex rounded-[10px] bg-surface p-1 text-sm">
+            {[
+              ["overview", "Overview"],
+              ["products", "Products"],
+            ].map(([v, name]) => (
+              <button
+                key={v}
+                role="radio"
+                aria-checked={view === v}
+                onClick={() => show(v)}
+                className={`rounded-lg px-3 py-1.5 font-semibold ${view === v ? "bg-ground shadow-sm" : "text-muted"}`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          <label>
+            <span className="label">Month</span>
+            <input
+              type="month"
+              className="field w-48"
+              value={month}
+              onChange={(e) =>
+                e.target.value &&
+                setParams({ month: e.target.value, ...(view === "products" ? { view } : {}) })
+              }
+            />
+          </label>
+        </div>
       </header>
+      {view === "products" && <GroceryProducts month={month} />}
       {q.error && (
         <p role="alert" className="card border-danger-ink p-4 text-danger-ink">
           {(q.error as Error).message}
         </p>
       )}
-      {!g && !q.error && <p className="text-muted">Loading…</p>}
-      {g && <Body g={g} month={month} />}
+      {view === "overview" && !g && !q.error && <p className="text-muted">Loading…</p>}
+      {view === "overview" && g && <Body g={g} month={month} />}
     </section>
   );
 }
@@ -58,7 +88,9 @@ function Body({ g, month }: { g: Groceries; month: string }) {
     <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile label={`Spent in ${monthLong(`${month}-01`)}`} value={money(g.spent)}>
-          {vsUsual === null ? "No months before to compare" : `${vsUsual >= 0 ? "+" : ""}${pct(vsUsual)} vs usual`}
+          {vsUsual === null
+            ? "No months before to compare"
+            : `${vsUsual >= 0 ? "+" : ""}${pct(vsUsual)} vs usual`}
         </Tile>
         <Tile label="Usual month" value={num(g.usual) > 0 ? money(g.usual) : "—"}>
           {num(g.usual) > 0 ? "Average of the 3 months before" : "Not enough months before yet"}
@@ -80,8 +112,8 @@ function Body({ g, month }: { g: Groceries; month: string }) {
               Charges without their invoice · {g.missing.length}
             </h2>
             <p className="text-sm text-muted">
-              Give your cédula at the till so the invoice reaches your email, or download the month's list in SRI en
-              línea and upload it on{" "}
+              Give your cédula at the till so the invoice reaches your email, or download the month's list in
+              SRI en línea and upload it on{" "}
               <Link to={`/purchases?month=${month}`} className="text-primary underline">
                 Purchases
               </Link>
@@ -182,7 +214,10 @@ function Aisles({ g, month }: { g: Groceries; month: string }) {
               </span>
             </div>
             <div className="mt-1 h-2 rounded-full bg-surface">
-              <div className="h-2 rounded-full bg-flow-in" style={{ width: `${(num(a.amount) / top) * 100}%` }} />
+              <div
+                className="h-2 rounded-full bg-flow-in"
+                style={{ width: `${(num(a.amount) / top) * 100}%` }}
+              />
             </div>
           </li>
         ))}
@@ -211,7 +246,10 @@ function Stores({ g }: { g: Groceries }) {
         {g.stores.map((s) => (
           <li key={s.name} className="flex justify-between gap-4 py-2">
             <span className="min-w-0 truncate">
-              {s.name} <span className="text-muted">· {s.invoices} {s.invoices === 1 ? "invoice" : "invoices"}</span>
+              {s.name}{" "}
+              <span className="text-muted">
+                · {s.invoices} {s.invoices === 1 ? "invoice" : "invoices"}
+              </span>
             </span>
             <span className="num shrink-0">{money(s.amount)}</span>
           </li>
@@ -229,8 +267,8 @@ function Products({ g, month }: { g: Groceries; month: string }) {
         <h2 id="products" className="font-display text-xl font-bold">
           Top products
         </h2>
-        <Link to={`/spending?month=${month}&view=products`} className="text-sm text-primary underline">
-          Every product and cheaper stores
+        <Link to={`?month=${month}&view=products`} className="text-sm text-primary underline">
+          Every product, by type and brand
         </Link>
       </div>
       <div className="mt-3 overflow-x-auto">
