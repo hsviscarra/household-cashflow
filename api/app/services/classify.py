@@ -55,7 +55,10 @@ def merchant_key(description: str) -> str:
 
 def type_for(category: Category, amount: Decimal) -> str:
     """The transaction type a category gives a line: money back on a spending category is a
-    refund; transfers, income and savings follow the category's kind."""
+    refund; transfers, income and savings follow the category's kind; a debt category (a loan,
+    a house being paid off) makes it a debt payment (ADR-054)."""
+    if category.kind == "debt":
+        return "debt_payment"
     if category.kind in ("transfer", "income", "savings"):
         return category.kind
     return "refund" if amount > 0 else "expense"
@@ -468,7 +471,8 @@ def rule_type(kind: str, account: Account, amount: Decimal) -> str:
     # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
     money_in = "refund" if account.kind == "credit_card" else "income"
     default = money_in if amount > 0 else "expense"
-    return {"transfer": "transfer", "income": "income", "savings": "savings"}.get(kind, default)
+    kinds = {"transfer": "transfer", "income": "income", "savings": "savings"}
+    return "debt_payment" if kind == "debt" else kinds.get(kind, default)
 
 
 # ---------------- one line ----------------

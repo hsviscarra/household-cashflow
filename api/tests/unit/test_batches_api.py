@@ -317,7 +317,7 @@ def test_produbanco_statement_loads_with_iess_split(client: TestClient) -> None:
     by_amount = {ln["amount"]: ln for ln in b["lines"]}
     expect = {
         "-100.0000": ("expense", "Household Staff / Empleada IESS"),
-        "-500.0000": ("expense", "Housing / Mortgage BIESS"),
+        "-500.0000": ("debt_payment", "Housing / Mortgage BIESS"),  # ADR-054
         "-0.4100": ("fee_interest", "Financial Costs / Bank Fees"),
         "-1080.0000": ("transfer", "Transfers / Card Payment"),
         "0.0100": ("income", "Interest Earned"),
