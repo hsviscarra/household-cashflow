@@ -135,3 +135,36 @@ def test_patch_and_file_errors(client: TestClient) -> None:
 def test_local_store_refuses_paths_outside_its_folder(store: LocalStore) -> None:
     with pytest.raises(ValueError):
         store.put("../escape.pdf", b"x")
+
+
+def test_main_cardholder_beats_an_additional_cards_digits(client: TestClient, db: Session) -> None:
+    """A Diners statement lists additional cards too: their digits on another person's account
+    don't send the statement there (Lauren's statement went to Hernan's card, 2026-11-09). Reading
+    it again fixes an account the app chose, but not one Hernan picked."""
+    from app.models import StatementFile
+
+    db.execute(update(Account).where(Account.name == "Diners Club Lauren").values(last4="5678"))
+    db.commit()
+    st = _post(client, ("f.pdf", s.diners_full())).json()[0]["statement"]
+    assert st["accounts"][0]["name"] == "Diners Club Hernan" and st["account_match"] == "owner"
+
+    lauren = db.scalar(select(Account).where(Account.name == "Diners Club Lauren"))
+    sf = db.get(StatementFile, st["statement_file_id"])
+    assert lauren is not None and sf is not None
+    sf.accounts, sf.account_match = [lauren], "by_bank"  # as the old resolution chose
+    db.commit()
+    read = client.post(f"/api/statements/{st['statement_file_id']}/read")
+    assert read.status_code == 200, read.text
+    again = next(x for x in client.get("/api/statements").json() if x["file_name"] == "f.pdf")
+    assert again["accounts"][0]["name"] == "Diners Club Hernan"
+
+    batch = read.json()["batch_id"]
+    assert client.post(f"/api/batches/{batch}/reject").status_code == 200
+    db.expire_all()
+    sf = db.get(StatementFile, st["statement_file_id"])
+    assert sf is not None
+    sf.accounts, sf.account_match = [lauren], "manual"  # Hernan's choice stays
+    db.commit()
+    client.post(f"/api/statements/{st['statement_file_id']}/read")
+    again = next(x for x in client.get("/api/statements").json() if x["file_name"] == "f.pdf")
+    assert again["accounts"][0]["name"] == "Diners Club Lauren"

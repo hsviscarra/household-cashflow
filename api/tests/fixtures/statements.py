@@ -455,11 +455,25 @@ DINERS_DEBITS = [
 DINERS_IVA_LINE = "18/06 110 TARIFA CONSUMO GASOLINERA 0,20 0,03"  # VALOR 0,20 + IVA 0,03
 
 
+DINERS_GRACE = [
+    "Compras con meses de gracia por facturar",
+    "FECHA Nº VALE ESTABLECIMIENTO VALOR Nº CUOTAS FECHA FACTURACIÓN VALOR CUOTA",
+    "PRUEBA HERNAN TITULAR 0036-xxxx-xxxx-1234 * PRINCIPAL DC SPHAERA MILES PAGO MIN",
+    "23/06 191 COLEGIO DE PRUEBA PENSION 7.190,00 10 31/08 719,00",
+    "30/06 19 LIBRERIA DE PRUEBA 251,85 3 31/10 83,95",
+]
+
+
 def diners_full(
-    *, previous: str = "650,00", subtotal_delta: str = "0", with_iva: bool = False
+    *,
+    previous: str = "650,00",
+    subtotal_delta: str = "0",
+    with_iva: bool = False,
+    with_grace: bool = False,
 ) -> bytes:
     """Synthetic Diners statement: a main card, an additional card, deferred purchase, charges.
-    `with_iva`: a purchase with an IVA column (a gas station fee), which counts value plus IVA."""
+    `with_iva`: a purchase with an IVA column (a gas station fee), which counts value plus IVA.
+    `with_grace`: purchases with grace months, listed but billed in a later statement."""
     from decimal import Decimal
 
     from app.ingestion.parsers.pichincha import amount
@@ -503,6 +517,7 @@ def diners_full(
         *DINERS_ADDITIONAL,
         f"SUBTOTAL DE CONSUMOS: {ec(extra)}",
         f"TOTAL DE CONSUMOS: {ec(purchases)} 1.200,00",
+        *(DINERS_GRACE if with_grace else []),
         "Detalle débitos y créditos",
         "FECHA Nº VALE DESCRIPCIÓN VALOR",
         f"SALDO ANTERIOR {ec(prev)}",
