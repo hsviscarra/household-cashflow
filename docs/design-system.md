@@ -186,6 +186,12 @@ how many lines wait for a category. URLs stay as they were.
 - Confirmations are a toast centered at the bottom (good-bg, or danger-bg for errors) that goes
   after 6 seconds; a finished row leaves the list.
 
+## Page tabs (ADR-060)
+
+- A family's pages share one sidebar item; above the page, a row of tabs: text-sm semibold, muted,
+  the current one in ink with a 2 px primary underline on a line-colored rule; scrolls sideways
+  on phones.
+
 ## Groceries (ADR-059)
 
 - Four KPI cards (label, display-type number, a muted line), then the six-month chart: paired

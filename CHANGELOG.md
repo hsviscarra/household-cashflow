@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.72.1] — Fewer menu items
+
+### Changed
+- The sidebar has 12 links instead of 16 (ADR-060): Groceries and Purchases are tabs of
+  **Spending**, Budget and Goals one **Budget & goals** item, Tax deductions is **Taxes**, and
+  Import is the Upload statements button at the bottom. Old addresses still work.
+
 ## [0.72.0] — Groceries
 
 ### Added
