@@ -173,13 +173,18 @@ how many lines wait for a category. URLs stay as they were.
 - Each invoice row uses the shared CategoryPicker (label hidden, "Category for <supplier>") and a
   pill with what it deducts as; muted when not deductible or not known yet.
 
-## To do (ADR-047)
+## To do (ADR-047, ADR-058)
 
-- Section chips at the top (secondary buttons, h-8, count in a rounded surface badge) jump to each
-  section card. A card: title with count, a muted hint, then rows: title in semibold with the
-  amount in tabular numerals, a muted detail line with a statement link, and the action on the
-  right (category picker + Always, a person select, or a small primary/secondary button). "And N
-  more" under a card when it shows the first 25.
+- Two columns from `lg`: a 260 px sticky list of sections (the count of things left in display
+  type above it; each section a full-width button with its count in a rounded badge, the current
+  one in nav-active colors) and the current section. On phones the sections are a row of chips
+  that scrolls sideways.
+- A section: its title in display type with the count, an info-bg box saying what to do in plain
+  words, then one card with the rows. A row: title (semibold, truncated) and the amount on the
+  right (money in in flow-in), a muted detail line with the statement link, and the actions on
+  their own line below (pickers w-64/w-72, small buttons h-9; one primary per row).
+- Confirmations are a toast centered at the bottom (good-bg, or danger-bg for errors) that goes
+  after 6 seconds; a finished row leaves the list.
 
 ## Lines panel (ADR-048)
 

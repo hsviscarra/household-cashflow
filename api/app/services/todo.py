@@ -2,6 +2,7 @@
 about it. It gathers what the Inbox, Data status, Net worth, Settings → Rules, the Recurring
 page and Tax deductions each knew on their own, so nothing is missed by not opening a page."""
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -10,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Account, Category
+from app.models import Account, AppSetting, Category
 from app.services import (
     bills_found,
     classify,
@@ -19,6 +20,7 @@ from app.services import (
     loans,
     networth,
     rules_suggest,
+    sources,
     status,
     transfers,
 )
@@ -38,6 +40,72 @@ FRESH_DAYS = {
 }
 MONTHS = 3  # months of Data status to look back on
 MAX_TASKS = 25  # per section; the count says how many there are
+# Words of descriptions that say nothing about who or what ("TRANSFERENCIA INTERNET", "SU PAGO
+# MUCHAS GRACIAS"): a rule on them would catch unrelated payments, so Always is off for them.
+GENERIC_WORDS = frozenset(
+    (
+        "TRANSFERENCIA",
+        "TRANSFERENCIAS",
+        "INTERNET",
+        "SU",
+        "PAGO",
+        "PAGOS",
+        "MUCHAS",
+        "GRACIAS",
+        "DEPOSITO",
+        "DEPOSITOS",
+        "TRANSFER",
+        "ONLINE",
+        "BANKING",
+        "RETIRO",
+        "CAJERO",
+        "ATM",
+        "NOTA",
+        "CREDITO",
+        "DEBITO",
+        "ENVIADA",
+        "RECIBIDA",
+        "INTERBANCARIA",
+        "INTERBANCARIO",
+        "DE",
+        "A",
+        "POR",
+        "EN",
+        "MOVIL",
+        "BANCA",
+        "WEB",
+        "TO",
+        "FROM",
+        "PAYMENT",
+        "MOBILE",
+    )
+)
+DISMISSED = "todo-dismissed:"  # core.app_setting keys of tasks let go (ADR-058)
+
+
+def rule_ok(merchant_key: str | None) -> bool:
+    """Whether a rule on this description would be safe: it names someone or something."""
+    words = (merchant_key or "").upper().replace("*", " ").split()
+    return bool(words) and not all(w in GENERIC_WORDS for w in words)
+
+
+def _dismiss_key(task_key: str) -> str:
+    return DISMISSED + hashlib.sha1(task_key.encode()).hexdigest()[:32]
+
+
+def dismiss(db: Session, task_key: str, user: str) -> None:
+    """Let a suggestion or an out-of-date value go: it isn't asked again."""
+    k = _dismiss_key(task_key)
+    if db.get(AppSetting, k) is None:
+        db.add(AppSetting(setting_key=k, setting_value=task_key[:200], updated_by=user[:200]))
+        db.commit()
+
+
+def _dismissed(db: Session) -> set[str]:
+    return {
+        s.setting_key
+        for s in db.scalars(select(AppSetting).where(AppSetting.setting_key.startswith(DISMISSED)))
+    }
 
 
 @dataclass
@@ -105,6 +173,7 @@ def _categorize(db: Session, accounts: dict[int, str], skip: set[int]) -> Sectio
                     "transaction_ids": [ln.transaction_id for ln in g.lines],
                     "example": last.description,
                     "suggested_category_id": g.suggestion.category_id if g.suggestion else None,
+                    "rule_ok": rule_ok(g.merchant_key),
                     "statement_file_id": last.statement_file_id,
                     "page": last.page,
                 },
@@ -134,6 +203,7 @@ def _who(db: Session, today: date, accounts: dict[int, str]) -> Section:
                 data={
                     "transaction_id": t.transaction_id,
                     "merchant_key": classify.merchant_key(t.description_raw),
+                    "rule_ok": rule_ok(classify.merchant_key(t.description_raw)),
                     "category_id": t.category_id,
                     "statement_file_id": t.statement_file_id,
                 },
@@ -146,11 +216,15 @@ def _transfers(db: Session, accounts: dict[int, str]) -> Section:
     sec = Section(
         "transfers",
         "Transfers missing the other side",
-        "Money that left one of your accounts and didn't arrive in another you track (or the "
-        "other way round). A statement still to bring in, or a payment: if it paid the house or "
-        "a loan, choose that category.",
+        "Money that moved between accounts, but the other side isn't in the app. Say what it "
+        "was (the house, a loan, a person), or that the other side is an account the app "
+        "doesn't follow. If its statement is still to come, leave it: it pairs up on its own.",
     )
-    rows = transfers.unmatched(db)
+    kinds = {a.account_id: a.kind for a in db.scalars(select(Account))}
+    since = sources.statements_from(db)
+    # Workbook months count the workbook's rows, not these lines: nothing to ask about them.
+    rows = [t for t in transfers.unmatched(db) if since is None or t.cash_month >= since]
+    rows.sort(key=lambda t: (t.txn_date, t.transaction_id), reverse=True)
     sec.count = len(rows)
     for t in rows[:MAX_TASKS]:
         sec.tasks.append(
@@ -165,7 +239,9 @@ def _transfers(db: Session, accounts: dict[int, str]) -> Section:
                 data={
                     "transaction_id": t.transaction_id,
                     "merchant_key": classify.merchant_key(t.description_raw),
+                    "rule_ok": rule_ok(classify.merchant_key(t.description_raw)),
                     "statement_file_id": t.statement_file_id,
+                    "account_kind": kinds.get(t.account_id or 0),
                 },
             )
         )
@@ -209,8 +285,9 @@ def _values(db: Session, today: date) -> Section:
     sec = Section(
         "values",
         "Out-of-date values",
-        "Balances and values older than they should be. An old workbook row next to a real "
-        "account is probably the same money twice: pause it.",
+        "Values on Net worth that haven't been updated for a while. Enter today's value, or "
+        "stop counting it if you don't have it any more (or it's the same money as another "
+        "item).",
     )
     items = [i for i in networth.sheet(db, today, months=1).items if i.is_active]
     for i in items:
@@ -240,7 +317,12 @@ def _values(db: Session, today: date) -> Section:
                 amount=i.value,
                 on=i.as_of,
                 link="/networth",
-                data={"holding_id": i.holding_id, "account_id": i.account_id, "twin": twin},
+                data={
+                    "holding_id": i.holding_id,
+                    "account_id": i.account_id,
+                    "twin": twin,
+                    "source": i.source,
+                },
             )
         )
     sec.tasks.sort(key=lambda t: (t.kind != "duplicate", t.on or date.min))
@@ -278,7 +360,8 @@ def _suggestions(db: Session, today: date) -> Section:
     sec = Section(
         "suggestions",
         "Suggestions",
-        "Rules and bills the app noticed from what you did; save them or let them go.",
+        "Patterns the app noticed. A rule categorizes future lines on its own; a bill is "
+        "expected every month. Save it, change it, or say no.",
     )
     cats = {c.category_id: c for c in db.scalars(select(Category))}
     for s in rules_suggest.suggestions(db):
@@ -330,7 +413,8 @@ def _invoices(db: Session, today: date) -> Section:
     sec = Section(
         "invoices",
         "Tax deduction invoices",
-        "SRI invoices without a person or a category this year.",
+        "Electronic invoices (SRI) that reach your email count for the yearly personal "
+        "expenses deduction once they say whose they are and what they were for.",
     )
     g = gastos.summary(db, today.year)
     n = sum(x.to_classify for x in g.people) + g.unassigned
@@ -339,7 +423,8 @@ def _invoices(db: Session, today: date) -> Section:
             Task(
                 key=f"invoices:{today.year}",
                 kind="invoices",
-                title=f"{n} invoice{'' if n == 1 else 's'} to sort out for {today.year}",
+                title=f"{n} invoice{'' if n == 1 else 's'} without a person or a category "
+                f"in {today.year}",
                 link="/taxes",
             )
         )
@@ -362,4 +447,9 @@ def build(db: Session, today: date | None = None) -> Todo:
         _suggestions(db, today),
         _invoices(db, today),
     ]
+    gone = _dismissed(db)
+    for sec in sections:
+        kept = [t for t in sec.tasks if _dismiss_key(t.key) not in gone]
+        sec.count -= len(sec.tasks) - len(kept)
+        sec.tasks = kept
     return Todo(today, [s for s in sections if s.count])

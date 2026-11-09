@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.71.0] — To do, one list at a time
+
+### Changed
+- **To do** (ADR-058) shows one list at a time, picked on the left, each with a plain-words "what
+  to do" box; a finished task leaves the list and a message confirms it at the bottom.
+- Transfers missing the other side: only months whose statements count, newest first; "Other
+  side isn't in the app" settles a line whose other account the app doesn't follow, and choosing a
+  transfer category settles it too (it used to stay in the list).
+- "+ New person…" when saying who a transfer is; no rule from general texts like TRANSFERENCIA
+  INTERNET.
+- Out-of-date values: enter today's value or stop counting it, right there. Suggestions: save, a
+  different category, or No (remembered). Tax deduction invoices say what they need.
+
 ## [0.70.2] — Nelnet, and no money counted twice
 
 ### Changed
