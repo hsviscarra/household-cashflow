@@ -37,3 +37,5 @@ called Salary.
 
 - One place to work through, with a count that only goes down as things get done.
 - The page asks the server for everything at once; the sidebar count reuses it for 5 minutes.
+- 0.68.1: transfers missing the other side take a person or a category in place (a house or loan
+  payment made by transfer), like the Who list.

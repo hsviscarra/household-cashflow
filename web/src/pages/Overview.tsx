@@ -14,6 +14,7 @@ import {
 } from "../api";
 import { ExportLinks } from "../components/ExportLinks";
 import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
+import { SourcesSection } from "../components/SourcesSection";
 import { InOutColumns, Legend, TrendLine, type ColumnDatum } from "../components/charts";
 import { money, monthLong, monthShort, num, parts, pct, signed } from "../money";
 
@@ -24,18 +25,23 @@ const VIEWS: { id: CashView; label: string; help: string }[] = [
   {
     id: "spending",
     label: "Spending view",
-    help: "Card purchases count when you make them; paying the card is a transfer and doesn’t count again.",
+    help:
+      "Spending view answers “what did we spend on?”: a card purchase counts on the day you buy, in its " +
+      "category (groceries, school…); paying the card later is a transfer and doesn’t count again.",
   },
   {
     id: "cash",
     label: "Cash view",
-    help: "Only money in and out of the bank accounts: a card counts when you pay it, as a card payment.",
+    help:
+      "Cash view answers “when did money leave the bank?”: only bank accounts count, so a card shows up " +
+      "once, as one card payment on the day you pay it, without its categories.",
   },
 ];
 
 /** The year-by-year history (the former Overview), shown under the month on Cash flow. */
 export default function Overview() {
   const [params, setParams] = useSearchParams();
+  const [target, setTarget] = useState<LinesTarget | null>(null);
   const view: CashView = params.get("view") === "cash" ? "cash" : "spending";
   const monthly = useQuery({ queryKey: ["cashflow", "monthly", view], queryFn: () => fetchMonthly(view) });
   const plan = useQuery({ queryKey: ["cashflow", "plan"], queryFn: fetchPlan });
@@ -145,7 +151,7 @@ export default function Overview() {
           label={`every month (${view === "cash" ? "cash" : "spending"} view)`}
         />
       </div>
-      <p className="mt-2 text-sm text-muted">{VIEWS.find((v) => v.id === view)?.help}</p>
+      <p className="mt-2 max-w-3xl text-sm text-muted">{VIEWS.find((v) => v.id === view)?.help}</p>
 
       <div role="group" aria-label="Year" className="mt-4 flex gap-2 overflow-x-auto pb-1">
         {years.map((y) => (
@@ -180,6 +186,9 @@ export default function Overview() {
       {inYear.length > 0 && (
         <WhereMoney from={inYear[0].cash_month} to={inYear[inYear.length - 1].cash_month} />
       )}
+      <div id="sources">
+        <SourcesSection />
+      </div>
 
       <div className="mt-8 rounded-2xl bg-surface p-4 md:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -193,7 +202,13 @@ export default function Overview() {
           />
         </div>
         <div className="mt-4 overflow-hidden">
-          <InOutColumns data={columns} title={`Money in and out by month, ${year}`} />
+          <InOutColumns
+            data={columns}
+            title={`Money in and out by month, ${year}`}
+            onSelect={(m) => setTarget({ title: "Everything counted", month: m, filter: {} })}
+          />
+          <p className="mt-2 text-sm text-muted">Click a month to see every line it counts.</p>
+          {target && <LinesPanel target={target} onClose={() => setTarget(null)} />}
         </div>
       </div>
 

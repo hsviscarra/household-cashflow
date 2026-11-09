@@ -153,6 +153,7 @@ function Action({ t, groups, notify }: { t: TodoTask; groups: CategoryGroup[]; n
     case "categorize":
       return <Categorize t={t} groups={groups} notify={notify} />;
     case "who":
+    case "transfer":
       return <Who t={t} groups={groups} notify={notify} />;
     case "duplicate":
       return <Pause t={t} notify={notify} />;

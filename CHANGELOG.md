@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.68.1] — Cash flow explains itself
+
+### Changed
+- Clicking a month in Cash flow's **Money in and out** chart opens every line that month counts.
+- The Spending and Cash views say what question each answers.
+- **Where the numbers come from** (which months count the workbook and which the statements) is on
+  Cash flow, not only on Data status; the lines panel says when a month's amount is the
+  workbook's.
+- In To do, **Transfers missing the other side** can be given a category (a house or loan payment)
+  or a person, like the Who list.
+
 ## [0.68.0] — Loan and house payments are debt payments
 
 ### Fixed

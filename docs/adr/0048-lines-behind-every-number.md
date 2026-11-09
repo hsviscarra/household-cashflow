@@ -31,3 +31,5 @@ Cash flow had no way into its numbers, and drill-downs elsewhere were read-only.
 
 - Any suspicious number can be explained and corrected without leaving the page. Since 0.63.2
   Home's Money in, Money out and Where it went bars open the panel too (KpiCard `onOpen`).
+- 0.68.1: the Money in and out chart opens the month's lines; the panel explains workbook months
+  (one line per category, no payments behind it).
