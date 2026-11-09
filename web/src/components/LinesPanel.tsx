@@ -105,6 +105,13 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
         </header>
 
         <section aria-label="Lines" className="p-5">
+          {(lines.data ?? []).some((l) => l.source === "excel_history") && (
+            <p className="mb-3 rounded-xl bg-surface px-4 py-3 text-sm">
+              This month counts the <strong>Cash Flow workbook</strong>: its amount is one line per category,
+              so there are no payments to see here. The statements count from the month chosen under
+              “Where the numbers come from” on Cash flow.
+            </p>
+          )}
           {lines.error && <p className="text-warn">{(lines.error as Error).message}</p>}
           {!lines.data && !lines.error && <p className="text-muted">Loading the lines…</p>}
           {lines.data && !lines.data.length && <p className="text-muted">No lines.</p>}

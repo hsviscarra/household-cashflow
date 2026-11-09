@@ -146,8 +146,9 @@ def _transfers(db: Session, accounts: dict[int, str]) -> Section:
     sec = Section(
         "transfers",
         "Transfers missing the other side",
-        "Money moved between your accounts but only one side is loaded; usually a statement "
-        "still to bring in.",
+        "Money that left one of your accounts and didn't arrive in another you track (or the "
+        "other way round). A statement still to bring in, or a payment: if it paid the house or "
+        "a loan, choose that category.",
     )
     rows = transfers.unmatched(db)
     sec.count = len(rows)
@@ -161,7 +162,11 @@ def _transfers(db: Session, accounts: dict[int, str]) -> Section:
                 amount=t.amount,
                 on=t.txn_date,
                 link=f"/review?month={t.txn_date:%Y-%m}",
-                data={"transaction_id": t.transaction_id},
+                data={
+                    "transaction_id": t.transaction_id,
+                    "merchant_key": classify.merchant_key(t.description_raw),
+                    "statement_file_id": t.statement_file_id,
+                },
             )
         )
     return sec

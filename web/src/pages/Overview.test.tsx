@@ -93,7 +93,11 @@ beforeEach(() => {
     "fetch",
     vi.fn((url: string) => {
       urls.push(url);
-      const body = url.includes("/reconcile")
+      const body = url.includes("/api/cashflow/lines")
+        ? []
+        : url.includes("/api/sources")
+        ? { statements_from: "2026-07-01", workbook_first: "2021-01-01", workbook_last: "2026-06-01", check: [] }
+        : url.includes("/reconcile")
         ? RECON
         : url.includes("/monthly?view=cash")
         ? CASH
@@ -194,6 +198,13 @@ describe("Cash flow history (the former Overview)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("February 2026In9,200.00");
     fireEvent.mouseEnter(screen.getByTestId("col-2026-01-01"));
     expect(screen.getByRole("status")).toHaveTextContent("Kept-500.00");
+  });
+
+  it("opens every line of a month from the chart", async () => {
+    renderAt();
+    const cols = await screen.findAllByTestId(/^col-/);
+    fireEvent.click(cols[0]);
+    expect(await screen.findByRole("dialog", { name: "Everything counted" })).toBeInTheDocument();
   });
 
   it("says where the money went and what explains the gap", async () => {
