@@ -5,9 +5,10 @@ Page 1 has the period ("04 JUN 2026 AL 03 JUL 2026") and the summary, one figure
 "Total a pagar: 439,81"). "Consumo período actual" lists purchases in one block per card
 ("NAME 0036-xxxx-xxxx-1234 * PRINCIPAL …") ending in "SUBTOTAL DE CONSUMOS: 439,81"; a deferred
 purchase shows its installment and remaining balance ("10/11 1 COLEGIO … (8/12) 300,00
-1.200,00"). "Detalle débitos y créditos" lists interest and charges ("03/08 INT. FINANCIAMIENTO
-N/D 0,60") and payments ("16/06 11111 SU PAGO "MUCHAS GRACIAS" 708,82-") until "TOTAL A PAGAR".
-Amounts use the Ecuadorian format. Layout notes in docs/parsers.md.
+1.200,00"). "Compras con meses de gracia por facturar" lists purchases billed in a later
+statement; they are skipped. "Detalle débitos y créditos" lists interest and charges ("03/08 INT.
+FINANCIAMIENTO N/D 0,60") and payments ("16/06 11111 SU PAGO "MUCHAS GRACIAS" 708,82-") until
+"TOTAL A PAGAR". Amounts use the Ecuadorian format. Layout notes in docs/parsers.md.
 """
 
 import re
@@ -128,6 +129,10 @@ def parse(pages: list[str]) -> ParsedStatement:
                 continue
             if line == "Resumen consumos por cliente":
                 block = "clients"
+                continue
+            if line.startswith("Compras con meses de gracia"):
+                # Bought with grace months: billed (as installments) in a later statement.
+                block = None
                 continue
             if line.startswith("Consumo en el exterior"):
                 block = None  # repeats foreign purchases already listed above

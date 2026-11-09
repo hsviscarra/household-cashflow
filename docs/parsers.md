@@ -184,15 +184,21 @@ account is chosen by the main cardholder's name on the `* PRINCIPAL` card line (
   `DETALLE DE DÉBITOS` (`INT. FINANCIAMIENTO N/D`, `INTERESES DE MORA N/D`,
   `GASTO GESTION COBRANZAS N/D T15`, `CONT_FIN_SOLCA_C.ROT** N/D`), `DETALLE DE PAGOS Y CRÉDITOS`
   (`SU PAGO "MUCHAS GRACIAS" 708,82-`), up to `TOTAL A PAGAR:`.
-- **Ignored:** `Consumo en el exterior` repeats foreign purchases already listed (AWS); the
-  interest, minimum-payment and fee tables on pages 4–6.
+- **Ignored:** `Consumo en el exterior` repeats foreign purchases already listed (AWS);
+  `Compras con meses de gracia por facturar` lists purchases with grace months
+  (`23/06 191 COLEGIO … 7.190,00 10 31/08 719,00`: value, installments, first billing date,
+  installment), billed as installments in later statements; the interest, minimum-payment and fee tables on pages 4–6.
 - **Sections:** payment, interest (financing and late interest), fee (collection fee), charge
   (SOLCA, IVA withheld), purchase.
 - **Tie-out:** purchases, charges and payments against the summary; previous − payments +
   purchases + charges = total due; each card's subtotal; each cardholder in `Resumen consumos por
   cliente`; totals printed in the detail; the remaining deferred balance; continuity with the
   previous statement.
+- **Account:** the main cardholder (`* PRINCIPAL`) decides between Hernan's and Lauren's cards,
+  ahead of last four digits, which also list additional cards.
 - **Checked on the real Jul, Aug and Oct 2026 statements:** 9, 9 and 6 lines, every check passes.
+  Lauren's Jul and Oct 2026 statements (one card, grace-month purchases in July): 2 and 6 lines,
+  every check passes.
   September is missing, so October's opening isn't compared (a gap is no longer treated as a
   mismatch). August shows a late-payment interest and a collection fee (10.81 together).
 

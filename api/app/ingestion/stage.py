@@ -187,6 +187,18 @@ def _clear_preview(db: Session, sf: StatementFile) -> None:
     db.flush()
 
 
+def _account_again(db: Session, sf: StatementFile, text: str) -> None:
+    """Reading again re-checks an account the app chose (not one Hernan picked): a fix to how
+    accounts are found reaches statements already uploaded, which can't be uploaded again."""
+    from app.ingestion.detect import detect
+    from app.ingestion.upload import resolve_accounts
+
+    res = resolve_accounts(db, detect(text))
+    if res.accounts and {a.account_id for a in res.accounts} != {a.account_id for a in sf.accounts}:
+        sf.accounts = res.accounts
+        sf.account_match = res.match
+
+
 def parse_statement(
     db: Session, store: StatementStore, sf: StatementFile, user: str
 ) -> ImportBatch:
@@ -205,6 +217,8 @@ def parse_statement(
         parsed = parser(pages)
     except (ParseError, ocr.OcrError) as exc:
         raise StageError(f"The statement could not be read: {exc}", 422) from exc
+    if sf.account_match != "manual" and not parsed.balances and crop is None:
+        _account_again(db, sf, "\n".join(pages))
 
     # One statement may cover several accounts (BofA checking and savings), keyed by last four.
     accounts: dict[str | None, Account] = {}

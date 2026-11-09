@@ -59,6 +59,14 @@ def test_a_purchase_with_iva_counts_value_plus_iva() -> None:
     assert deferred.ok
 
 
+def test_purchases_with_grace_months_wait_for_their_statement() -> None:
+    """Purchases with grace months are listed with their first installment and billing date;
+    they are billed later, so they aren't this statement's lines (they were, 2026-11-09)."""
+    p = diners.parse(read_pages(diners_full(with_grace=True)))
+    assert p.tieout_ok, [(c.name, c.expected, c.actual) for c in p.checks if not c.ok]
+    assert not any("PENSION" in ln.description or "LIBRERIA" in ln.description for ln in p.lines)
+
+
 def test_wrong_card_subtotal_fails() -> None:
     p = diners.parse(read_pages(diners_full(subtotal_delta="1")))
     assert [c.name for c in p.checks if not c.ok] == ["Card •••• 1234 subtotal"]

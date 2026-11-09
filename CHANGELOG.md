@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.70.1] — Lauren's Diners statements
+
+### Fixed
+- A Diners statement goes to the main cardholder's card: it never falls back to someone else's
+  account (Lauren's went to Hernan's card while hers was inactive). Reading a statement again
+  re-checks an account the app chose; one picked by hand stays.
+- "Compras con meses de gracia por facturar" (purchases billed in later months) is no longer read
+  as this month's purchases, so those statements tie out.
+
 ## [0.70.0] — The new house on Net worth
 
 ### Added

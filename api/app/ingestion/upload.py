@@ -45,9 +45,10 @@ class Resolution:
 
 
 def resolve_accounts(db: Session, found: Detection) -> Resolution:
-    """Last four digits first. Otherwise the bank's one account without last four digits on file,
-    the one whose owner is the statement's main cardholder (Diners), or the bank's only account
-    (a replacement card has new digits). Anything else is left for Hernan to pick."""
+    """Last four digits first, unless they belong to someone other than the statement's main
+    cardholder (Diners) who has an account there. Then the main cardholder's account, the bank's
+    one account without last four digits on file, or the bank's only account (a replacement card
+    has new digits). Anything else is left for Hernan to pick."""
     institution = INSTITUTIONS.get(found.source)
     if institution is None:
         return Resolution([], None)
@@ -62,15 +63,20 @@ def resolve_accounts(db: Session, found: Detection) -> Resolution:
         at_bank = [a for a in at_bank if a.kind == "credit_card"]
     elif found.kind == "bank":
         at_bank = [a for a in at_bank if a.kind != "credit_card"]
+    # The main cardholder's own account comes first: a Diners statement also lists additional
+    # cards, so another account's digits can appear in it (Lauren's statement went to Hernan's
+    # card, 2026-11-09).
+    owned = [a for a in at_bank if found.owner and a.owner == found.owner]
     by_last4 = [a for a in at_bank if a.last4 and a.last4 in found.last4]
-    if by_last4:
-        return Resolution(by_last4, "last4")
+    if by_last4 and (not owned or any(a in owned for a in by_last4)):
+        return Resolution([a for a in by_last4 if a in owned] or by_last4, "last4")
+    if len(owned) == 1:
+        return Resolution(owned, "owner")
+    if found.owner and owned == [] and any(a.owner for a in at_bank):
+        at_bank = [a for a in at_bank if a.owner in (None, "Joint")]  # never someone else's
     without_digits = [a for a in at_bank if not a.last4]
     if len(without_digits) == 1:
         return Resolution(without_digits, "by_bank")
-    by_owner = [a for a in without_digits if found.owner and a.owner == found.owner]
-    if len(by_owner) == 1:
-        return Resolution(by_owner, "owner")
     if len(at_bank) == 1:
         return Resolution(at_bank, "by_bank")
     return Resolution([], None)
