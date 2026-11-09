@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.70.0] — The new house on Net worth
+
+### Added
+- **New house** on Net worth (ADR-056): a purchase in progress with its 30% down payment
+  (reserva, entrada and 18 installments of 3,075.36) and what's been paid so far. New
+  installments add to it as they're loaded.
+- **Housing / New house** (debt): the developer's trust payments are debt payments, by a rule.
+  Migration 0040.
+
+### Changed
+- Giving a loan or a purchase a savings or spending category makes it a debt category.
+
 ## [0.69.0] — Money between the US and Ecuador through people
 
 ### Added
