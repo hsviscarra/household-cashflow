@@ -201,6 +201,14 @@ how many lines wait for a category. URLs stay as they were.
   attention-bg note when products have no aisle. Top products is a table with the price change in
   danger ink when up more than 2%, good ink when down.
 
+## Grocery products (ADR-061)
+
+- An Overview | Products segmented control next to the month. Products: a period segmented control
+  (This month · 3 months · 12 months) with the total; "Where it goes" in two columns of bar rows
+  (each a button, the chosen one in nav-active) with a By aisle / type / brand switch; then the
+  table: aisle muted · type medium · brand muted, a "Claude" pill until confirmed, Edit opening an
+  inline row (aisle select, type and brand inputs, primary "Save for every purchase").
+
 ## Lines panel (ADR-048)
 
 - A right-hand sheet (max-w-2xl, full width on phones) over a 30% ink scrim; sticky header with

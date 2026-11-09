@@ -293,7 +293,11 @@ def group_lines(db: Session, lines: list[InvoiceLine]) -> None:
     found = list(db.scalars(select(ProductRule).where(ProductRule.product_key.in_(keys))))
     rules = {r.product_key: r.product_group for r in found if r.product_group}
     cats = {r.product_key: r.category_id for r in found if r.category_id}
+    labels = {r.product_key: r for r in found if r.product_type or r.brand}
     for ln in lines:
+        if ln.product_key in labels:  # type and brand chosen once (ADR-061)
+            lab = labels[ln.product_key]
+            ln.product_type, ln.brand, ln.label_source = lab.product_type, lab.brand, "confirmed"
         if ln.category_id is None and ln.product_key in cats:
             ln.category_id = cats[ln.product_key]  # the product's category, chosen once (ADR-050)
         if ln.group_source == "confirmed":

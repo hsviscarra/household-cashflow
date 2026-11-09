@@ -564,6 +564,7 @@ PRODUCT_GROUPS = (
     "Other",
 )
 GROUP_SOURCES = ("rule", "keyword", "claude", "confirmed")
+LABEL_SOURCES = ("claude", "confirmed")  # who set a purchase item's type and brand (ADR-061)
 # SRI's six categories of deductible personal expenses (ADR-036)
 GP_CATEGORIES = ("vivienda", "educacion", "salud", "alimentacion", "vestimenta", "turismo")
 
@@ -618,6 +619,9 @@ class InvoiceLine(Base):
         CheckConstraint(
             f"group_source IS NULL OR {_in('group_source', GROUP_SOURCES)}", name="source"
         ),
+        CheckConstraint(
+            f"label_source IS NULL OR {_in('label_source', LABEL_SOURCES)}", name="label_source"
+        ),
         {"schema": "core"},
     )
 
@@ -639,6 +643,10 @@ class InvoiceLine(Base):
     group_source: Mapped[str | None] = mapped_column(Unicode(10))
     # The app category of this item (ADR-050): the same list as everywhere else.
     category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    # What it is and who makes it (ADR-061): "Cheese", "Kiosko"; set by Claude or confirmed.
+    product_type: Mapped[str | None] = mapped_column(Unicode(60))
+    brand: Mapped[str | None] = mapped_column(Unicode(60))
+    label_source: Mapped[str | None] = mapped_column(Unicode(10))
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")
 
@@ -657,6 +665,8 @@ class ProductRule(Base):
     product_key: Mapped[str] = mapped_column(Unicode(300), unique=True)
     product_group: Mapped[str | None] = mapped_column(Unicode(40))
     category_id: Mapped[int | None] = mapped_column(ForeignKey("core.category.category_id"))
+    product_type: Mapped[str | None] = mapped_column(Unicode(60))
+    brand: Mapped[str | None] = mapped_column(Unicode(60))
     created_by: Mapped[str] = mapped_column(Unicode(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
