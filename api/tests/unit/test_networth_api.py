@@ -139,13 +139,15 @@ def test_accounts_holdings_purchase_and_series(client: TestClient, db: Session) 
     assert [i["side"] for i in out["items"]] == sorted(
         [i["side"] for i in out["items"]], key=lambda x: x != "asset"
     )
-    # The series values each month on its last day: the car arrives in September.
+    # The series values each month on its last day. The car's first value (September) also
+    # counts before it, as property and vehicles were owned before their value was entered
+    # (ADR-063); the purchase and the loan start when their values do.
     series = {p["month"]: p for p in out["series"]}
-    assert Decimal(series["2026-08-01"]["assets"]) == Decimal(100000 + 5000) + Decimal(
+    assert Decimal(series["2026-08-01"]["assets"]) == Decimal(100000 + 20000 + 5000) + Decimal(
         cash["value"]
     )
     assert Decimal(series["2026-09-01"]["assets"]) == assets
-    assert Decimal(series["2024-11-01"]["net"]) == 0
+    assert Decimal(series["2024-11-01"]["net"]) == Decimal(100000 + 20000)
 
     # A new value the same day replaces the earlier one; values keep their history.
     client.post(f"/api/holdings/{house}/values", json={"as_of": "2026-10-01", "amount": "110000"})

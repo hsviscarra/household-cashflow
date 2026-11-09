@@ -131,6 +131,7 @@ def test_the_protocol_over_http(
             "compare_months",
             "spending_by_category",
             "spending_lines",
+            "month_lines",
             "top_merchants",
             "interest_and_fees",
             "balance_sheet",
@@ -202,6 +203,11 @@ def test_categories_lines_and_merchants(household: Engine) -> None:
     assert lines[0]["account"] == "Capital One Venture"
     assert len(mcp_server.spending_lines("2026-10", merchant="maxi", limit=1)) == 1
     assert mcp_server.spending_lines("2026-10", category="Nope") == []
+    every = mcp_server.month_lines("2026-10")
+    assert {ln["type"] for ln in every} >= {"income", "expense"}
+    assert all(ln["type"] == "income" for ln in mcp_server.month_lines("2026-10", type="income"))
+    found = mcp_server.month_lines("2026-10", text="SUPERMAXI", type="expense", limit=1)
+    assert len(found) == 1 and "SUPERMAXI" in found[0]["description"]
     top = mcp_server.top_merchants("2026-10")
     # Store numbers removed: both SUPERMAXI lines are one merchant.
     assert top[0]["merchant"].startswith("SUPERMAXI") and top[0]["amount"] == "425.00"

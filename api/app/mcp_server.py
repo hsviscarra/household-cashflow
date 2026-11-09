@@ -238,6 +238,39 @@ def spending_lines(
 
 
 @mcp.tool()
+def month_lines(
+    month: str, type: str | None = None, text: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Every line of a month (YYYY-MM) as the cash flow counts it, any type: income, expense,
+    savings, debt_payment, transfer, refund, fee_interest. Optionally only one type, or only lines
+    whose description holds a text (then also uncounted lines a month around). At most 500."""
+    from app.services import cashflow
+
+    with _session() as db:
+        found = (
+            cashflow.search(db, text, _m(month))
+            if text
+            else cashflow.lines(db, _m(month), type_=type or None)
+        )
+    if type and text:
+        found = [ln for ln in found if ln.type == type]
+    return [
+        {
+            "date": ln.txn_date.isoformat(),
+            "amount": _s(ln.amount),
+            "type": ln.type,
+            "category": ln.category_name,
+            "description": ln.description,
+            "account": ln.account_name,
+            "person": ln.person,
+            "counterparty": ln.counterparty,
+            "source": ln.source,
+        }
+        for ln in found[: max(1, min(limit, MAX_LINES))]
+    ]
+
+
+@mcp.tool()
 def top_merchants(month: str, limit: int = 10) -> list[dict[str, Any]]:
     """The merchants with the most spending in a month (YYYY-MM), reference numbers removed so
     one merchant's lines add up. Months from the workbook have no merchants."""
