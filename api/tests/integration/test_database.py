@@ -59,6 +59,7 @@ def test_reference_tables_seeded() -> None:
         + sum(len(g[3]) for g in v2.CATEGORIES)
         + sum(len(g[3]) for g in v7.NEW_GROUPS)
         + sum(len(subs) for _g, subs in v7.NEW_SUBS)
+        + 1  # v9: Transfers / Exchange through people
     )
     assert counts == {
         "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS) + len(v6.ACCOUNTS),
