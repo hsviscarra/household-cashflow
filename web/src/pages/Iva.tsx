@@ -127,8 +127,10 @@ function Body({ r, month }: { r: IvaMonth; month: string }) {
         <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
           {[
             ["401", "Sales taxed at 15%", f("f401")],
+            ["411", "Net of credit notes", f("f411")],
             ["421", "IVA on sales", f("f421")],
             ["500", "Purchases with IVA credit", f("f500")],
+            ["510", "Net of credit notes", f("f510")],
             ["520", "IVA on those purchases (credit)", f("f520")],
             ["601", "IVA caused (421 − 520)", f("f601")],
             ["606", "Retenciones credit from last month", f("f606")],
@@ -156,6 +158,7 @@ function Body({ r, month }: { r: IvaMonth; month: string }) {
       </section>
 
       <Sales r={r} />
+      {r.tax_notes.length > 0 && <Notes r={r} />}
       <Purchases r={r} />
     </>
   );
@@ -348,6 +351,39 @@ function Purchases({ r }: { r: IvaMonth }) {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function Notes({ r }: { r: IvaMonth }) {
+  return (
+    <section aria-labelledby="notes" className="card p-5">
+      <h2 id="notes" className="font-display text-xl font-bold">
+        Credit and debit notes · {r.tax_notes.length}
+      </h2>
+      <p className="text-sm text-muted">
+        A credit note lowers the month's sales (one you issued) or purchases (one you received); a debit note
+        raises them. Received notes count only when their issuer is a business purchase.
+      </p>
+      <ul className="mt-3 divide-y divide-line text-sm">
+        {r.tax_notes.map((n) => (
+          <li
+            key={n.number + n.issue_date}
+            className={`flex justify-between gap-4 py-2 ${n.counts ? "" : "text-muted"}`}
+          >
+            <span className="min-w-0 truncate">
+              {day(n.issue_date)} · {n.kind === "credit" ? "Credit" : "Debit"} note{" "}
+              {n.direction === "issued" ? "to" : "from"} {n.name}
+              {n.modified_number && <span className="text-muted"> · on invoice {n.modified_number}</span>}
+              {!n.counts && " · doesn't count"}
+            </span>
+            <span className="num shrink-0">
+              {n.kind === "credit" ? "−" : "+"}
+              {money(num(n.base_taxed) + num(n.base_zero))}
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

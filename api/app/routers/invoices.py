@@ -64,6 +64,19 @@ def receive_xml(db: Session, data: bytes, file_name: str, user: str) -> InvoiceU
         parsed = invoices.parse(data)
     except invoices.NotAnInvoice as exc:
         try:
+            n = iva.note(data)
+        except invoices.InvoiceError:
+            n = None
+        if n is not None:
+            saved, dup = iva.store_note(db, n, user)
+            word = "Nota de crédito" if saved.kind == "credit" else "Nota de débito"
+            return InvoiceUploadOut(
+                file_name=name,
+                outcome="duplicate" if dup else "stored",
+                message=f"{word} {saved.number} ({saved.issuer_name}): {saved.total:,.2f}"
+                + (" is already in the app." if dup else ", for the IVA return."),
+            )
+        try:
             held = iva.withholding(data)
         except invoices.InvoiceError:
             held = None

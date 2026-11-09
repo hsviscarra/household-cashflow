@@ -26,6 +26,7 @@ from app.models import (
     Invoice,
     SaleInvoice,
     TaxIssuerRule,
+    TaxNote,
     Withholding,
 )
 from app.services import invoices
@@ -54,9 +55,12 @@ def _root(xml: bytes) -> Element:
         raise invoices.InvoiceError("This isn't an SRI electronic document (XML).") from exc
     invoices._local(root)
     inner = root.find(".//comprobante")
-    if root.tag not in ("factura", "comprobanteRetencion") and inner is not None and inner.text:
+    if root.tag not in DOC_TAGS and inner is not None and inner.text:
         return _root(inner.text.strip().encode("utf-8"))
     return root
+
+
+DOC_TAGS = ("factura", "comprobanteRetencion", "notaCredito", "notaDebito")
 
 
 def _dec(v: str | None) -> Decimal:
@@ -202,11 +206,90 @@ def store_withholding(db: Session, p: ParsedWithholding, user: str) -> tuple[Wit
     return w, False
 
 
+@dataclass
+class ParsedNote:
+    access_key: str
+    kind: str  # credit or debit
+    direction: str  # issued or received
+    person: str
+    issuer_ruc: str
+    issuer_name: str
+    counterpart_name: str
+    number: str
+    issue_date: date
+    modified_number: str | None
+    reason: str | None
+    base_taxed: Decimal
+    base_zero: Decimal
+    tax: Decimal
+    total: Decimal
+
+
+def note(xml: bytes) -> ParsedNote | None:
+    """A nota de crédito or débito the household issued or received (ADR-064), or None."""
+    r = _root(xml)
+    if r.tag not in ("notaCredito", "notaDebito"):
+        return None
+    credit = r.tag == "notaCredito"
+    info_t = r.find("infoTributaria")
+    info = r.find("infoNotaCredito" if credit else "infoNotaDebito")
+    if info is None:
+        return None
+    issuer_ruc = invoices._text(info_t, "ruc")[:13]
+    seller = invoices.buyer_person(issuer_ruc)
+    buyer = invoices.buyer_person(invoices._text(info, "identificacionComprador"))
+    if seller is None and buyer is None:
+        return None
+    taxes = info.findall("totalConImpuestos/totalImpuesto" if credit else "impuestos/impuesto")
+    taxed = zero = tax = ZERO
+    for t in taxes:
+        base, value = _dec(t.findtext("baseImponible")), _dec(t.findtext("valor"))
+        if (t.findtext("codigo") or "").strip() == "2" and value > 0:
+            taxed, tax = taxed + base, tax + value
+        else:
+            zero += base
+    try:
+        issued = datetime.strptime(invoices._text(info, "fechaEmision"), "%d/%m/%Y").date()
+    except ValueError as exc:
+        raise invoices.InvoiceError("The note's date (fechaEmision) can't be read.") from exc
+    reason = invoices._text(info, "motivo") or invoices._text(r, "motivos/motivo/razon")
+    total = _dec(invoices._text(info, "valorModificacion" if credit else "valorTotal"))
+    return ParsedNote(
+        access_key=invoices._text(info_t, "claveAcceso"),
+        kind="credit" if credit else "debit",
+        direction="issued" if seller is not None else "received",
+        person=seller or buyer or "?",
+        issuer_ruc=issuer_ruc,
+        issuer_name=(
+            invoices._text(info_t, "nombreComercial") or invoices._text(info_t, "razonSocial")
+        )[:300],
+        counterpart_name=invoices._text(info, "razonSocialComprador")[:300],
+        number=_number(info_t),
+        issue_date=issued,
+        modified_number=_digits(invoices._text(info, "numDocModificado"))[:20] or None,
+        reason=reason[:300] or None,
+        base_taxed=taxed,
+        base_zero=zero,
+        tax=tax,
+        total=total or (taxed + zero + tax),
+    )
+
+
+def store_note(db: Session, p: ParsedNote, user: str) -> tuple[TaxNote, bool]:
+    found = db.scalar(select(TaxNote).where(TaxNote.access_key == p.access_key))
+    if found is not None:
+        return found, True
+    n = TaxNote(**p.__dict__, received_by=user[:320])
+    db.add(n)
+    db.commit()
+    return n, False
+
+
 def known_keys(db: Session, keys: list[str]) -> set[str]:
     have: set[str] = set()
     for i in range(0, len(keys), 1000):
         chunk = keys[i : i + 1000]
-        for model in (SaleInvoice, Withholding):
+        for model in (SaleInvoice, Withholding, TaxNote):
             have |= set(db.scalars(select(model.access_key).where(model.access_key.in_(chunk))))
     return have
 
@@ -254,10 +337,12 @@ class WithholdingRow:
 class Form:
     """The Form 104 fields that aren't zero for this kind of return."""
 
-    f401: Decimal = ZERO  # sales taxed above 0%, gross = net (411)
+    f401: Decimal = ZERO  # sales taxed above 0%, gross
+    f411: Decimal = ZERO  # net of credit notes issued (debit notes add)
     f421: Decimal = ZERO  # IVA on them (= 429, 482, 484, 499)
     f403: Decimal = ZERO  # sales at 0%
-    f500: Decimal = ZERO  # purchases with credit, taxed above 0% (= 510)
+    f500: Decimal = ZERO  # purchases with credit, taxed above 0%, gross
+    f510: Decimal = ZERO  # net of credit notes received from those issuers
     f520: Decimal = ZERO  # IVA on them (= 529, 564)
     f507: Decimal = ZERO  # purchases at 0%
     f111: int = 0  # sales documents issued
@@ -273,6 +358,22 @@ class Form:
 
 
 @dataclass
+class NoteRow:
+    kind: str
+    direction: str
+    issuer_ruc: str
+    name: str  # the client of an issued note, the issuer of a received one
+    number: str
+    issue_date: date
+    modified_number: str | None
+    base_taxed: Decimal
+    base_zero: Decimal
+    tax: Decimal
+    total: Decimal
+    counts: bool  # a received note counts when its issuer is a business purchase
+
+
+@dataclass
 class IvaMonth:
     person: str
     month: date
@@ -280,7 +381,8 @@ class IvaMonth:
     purchases: list[PurchaseRow]  # every invoice received by the person this month
     withholdings: list[WithholdingRow]
     form: Form
-    opening_month: date | None
+    tax_notes: list[NoteRow] = field(default_factory=list)
+    opening_month: date | None = None
     unclassified: int = 0
     income_tax_withheld: Decimal = ZERO
     notes: list[str] = field(default_factory=list)
@@ -384,15 +486,52 @@ def _one(db: Session, person: str, month: date, carried: tuple[Decimal, Decimal]
             )
         )
 
+    notes = []
+    for n in db.scalars(
+        select(TaxNote)
+        .where(TaxNote.person == person, TaxNote.issue_date >= m, TaxNote.issue_date < nxt)
+        .order_by(TaxNote.issue_date, TaxNote.tax_note_id)
+    ):
+        counts = n.direction == "issued" or rules.get(n.issuer_ruc) == "business"
+        notes.append(
+            NoteRow(
+                n.kind,
+                n.direction,
+                n.issuer_ruc,
+                n.counterpart_name if n.direction == "issued" else n.issuer_name,
+                n.number,
+                n.issue_date,
+                n.modified_number,
+                n.base_taxed,
+                n.base_zero,
+                n.tax,
+                n.total,
+                counts,
+            )
+        )
+
+    def adjust(direction: str, attr: str) -> Decimal:
+        """Debit notes add to the month, credit notes take away."""
+        return sum(
+            (
+                getattr(x, attr) * (1 if x.kind == "debit" else -1)
+                for x in notes
+                if x.direction == direction and x.counts
+            ),
+            ZERO,
+        )
+
     f = Form()
     f.f401 = sum((s.base_taxed for s in sales), ZERO)
-    f.f421 = (f.f401 * RATE).quantize(CENT, ROUND_HALF_UP)
-    f.f403 = sum((s.base_zero for s in sales), ZERO)
+    f.f411 = f.f401 + adjust("issued", "base_taxed")
+    f.f421 = (f.f411 * RATE).quantize(CENT, ROUND_HALF_UP)
+    f.f403 = sum((s.base_zero for s in sales), ZERO) + adjust("issued", "base_zero")
     f.f111 = len(sales)
     business = [p for p in purchases if p.iva_use == "business"]
     f.f500 = sum((p.base_taxed for p in business), ZERO)
-    f.f520 = (f.f500 * RATE).quantize(CENT, ROUND_HALF_UP)
-    f.f507 = sum((p.base_zero for p in business), ZERO)
+    f.f510 = f.f500 + adjust("received", "base_taxed")
+    f.f520 = (f.f510 * RATE).quantize(CENT, ROUND_HALF_UP)
+    f.f507 = sum((p.base_zero for p in business), ZERO) + adjust("received", "base_zero")
     f.f115 = len(business)
     f.f601 = max(f.f421 - f.f520, ZERO)
     f.f602 = max(f.f520 - f.f421, ZERO)
@@ -418,6 +557,7 @@ def _one(db: Session, person: str, month: date, carried: tuple[Decimal, Decimal]
             for w in held
         ],
         form=f,
+        tax_notes=notes,
         opening_month=None,
         unclassified=sum(1 for p in purchases if p.iva_use is None),
         income_tax_withheld=sum((w.income_tax for w in held), ZERO),
@@ -512,6 +652,18 @@ def workbook(r: IvaMonth) -> bytes:
         for x in rows:
             ws.append(x)
         total(rows, (6, 7, 8))
+    if r.tax_notes:
+        title("NOTAS DE CRÉDITO Y DÉBITO")
+        rows = [
+            [n.issuer_ruc, n.name,
+             ("Nota de crédito" if n.kind == "credit" else "Nota de débito")
+             + (" emitida" if n.direction == "issued" else " recibida"),
+             n.number, n.modified_number or "", n.issue_date, n.base_taxed + n.base_zero,
+             n.tax, n.total, None, None]
+            for n in r.tax_notes if n.counts
+        ]  # fmt: skip
+        for x in rows:
+            ws.append(x)
     for row in ws.iter_rows(min_row=2):
         for c in row:
             if isinstance(c.value, date):
@@ -524,11 +676,13 @@ def workbook(r: IvaMonth) -> bytes:
     for c in form[1]:
         c.font = bold
     for code, text, value in (
-        ("401 / 411", "Ventas locales gravadas tarifa diferente de cero", f.f401),
+        ("401", "Ventas locales gravadas tarifa diferente de cero (valor bruto)", f.f401),
+        ("411", "Ventas locales gravadas tarifa diferente de cero (valor neto)", f.f411),
         ("421", "IVA generado", f.f421),
         ("403 / 413", "Ventas tarifa 0%", f.f403),
         ("111", "Comprobantes de venta emitidos", f.f111),
-        ("500 / 510", "Adquisiciones con derecho a crédito tributario", f.f500),
+        ("500", "Adquisiciones con derecho a crédito tributario (valor bruto)", f.f500),
+        ("510", "Adquisiciones con derecho a crédito tributario (valor neto)", f.f510),
         ("520", "IVA en adquisiciones (crédito tributario)", f.f520),
         ("507 / 517", "Adquisiciones tarifa 0%", f.f507),
         ("115", "Comprobantes de venta recibidos", f.f115),

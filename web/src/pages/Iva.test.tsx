@@ -39,6 +39,21 @@ const R: IvaMonth = {
   ],
   withholdings: [],
   form: { f401: "3308.70", f421: "496.31", f620: "0", f617: "1417.26" },
+  tax_notes: [
+    {
+      kind: "credit",
+      direction: "issued",
+      name: "CLIENTE DE PRUEBA S.A.",
+      number: "001-002-60",
+      issue_date: "2026-09-20",
+      modified_number: "001002000000053",
+      base_taxed: "200",
+      base_zero: "0",
+      tax: "30",
+      total: "230",
+      counts: true,
+    },
+  ],
   opening_month: null,
   unclassified: 1,
   income_tax_withheld: "280.87",
@@ -71,11 +86,14 @@ describe("Monthly IVA", () => {
     );
     expect(await screen.findByText("Form 104 · September 2026")).toBeInTheDocument();
     expect(screen.getByText("1,417.26")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Credit and debit notes/ })).toHaveTextContent("−200.00");
     expect(screen.getByRole("link", { name: "Download the workbook" })).toHaveAttribute(
       "href",
       expect.stringContaining("/api/taxes/iva/excel?month=2026-09"),
     );
-    fireEvent.change(screen.getByLabelText("How INTERNET DE PRUEBA counts"), { target: { value: "business" } });
+    fireEvent.change(screen.getByLabelText("How INTERNET DE PRUEBA counts"), {
+      target: { value: "business" },
+    });
     await waitFor(() => expect(calls.some((c) => c.url === "/api/taxes/iva/issuers")).toBe(true));
     expect(calls.find((c) => c.url === "/api/taxes/iva/issuers")!.body).toEqual({
       issuer_ruc: "1791111111001",

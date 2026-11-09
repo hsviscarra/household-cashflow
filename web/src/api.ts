@@ -1619,6 +1619,19 @@ export type IvaMonth = {
     iva: Money;
   }[];
   form: Record<string, Money | number>;
+  tax_notes: {
+    kind: "credit" | "debit";
+    direction: "issued" | "received";
+    name: string;
+    number: string;
+    issue_date: string;
+    modified_number: string | null;
+    base_taxed: Money;
+    base_zero: Money;
+    tax: Money;
+    total: Money;
+    counts: boolean;
+  }[];
   opening_month: string | null;
   unclassified: number;
   income_tax_withheld: Money;
