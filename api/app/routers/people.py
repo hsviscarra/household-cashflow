@@ -14,7 +14,7 @@ from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.models import Account, Counterparty, Holding, Transaction, TransferNote
-from app.services import people
+from app.services import people, transfers
 
 router = APIRouter(prefix="/api", tags=["people"])
 DB = Annotated[Session, Depends(get_session)]
@@ -111,6 +111,7 @@ def create_person(body: PersonIn, db: DB, request: Request) -> PersonOut:
         if body.new_balance:
             people.new_balance_item(db, p, body.opening_balance, body.opening_as_of or date.today())
         db.commit()
+        transfers.match(db, _user(request))
     except people.PeopleError as exc:
         raise _fail(db, exc) from exc
     return _person_out(db, p, people.totals(db))
@@ -122,6 +123,7 @@ def update_person(counterparty_id: int, body: PersonPatch, db: DB, request: Requ
     try:
         people.update_person(db, p, body.model_dump(exclude_unset=True), _user(request))
         db.commit()
+        transfers.match(db, _user(request))  # an exchanger's lines pair with their other side
     except people.PeopleError as exc:
         raise _fail(db, exc) from exc
     return _person_out(db, p, people.totals(db))

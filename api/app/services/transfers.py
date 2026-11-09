@@ -23,8 +23,11 @@ from sqlalchemy.orm import Session, aliased
 from app.models import FROM_BANKS, Account, Category, ChangeLog, Transaction
 
 WINDOW = timedelta(days=5)
+# Between countries (an exchange through people, ADR-055) the other side can take longer.
+ABROAD = timedelta(days=10)
 CARD_PAYMENT = ("Transfers", "Card Payment")
 OWN_ACCOUNTS = ("Transfers", "Between Own Accounts")
+EXCHANGE = ("Transfers", "Exchange through people")
 
 
 class TransferError(Exception):
@@ -60,13 +63,14 @@ def _candidates(db: Session) -> list[Transaction]:
     )
 
 
-def _may_pair(t: Transaction, paired: list[int]) -> bool:
+def _may_pair(t: Transaction, paired: list[int], exchange: int | None = None) -> bool:
     """A leg that matching may (re)classify: a transfer between own accounts (or one without a
     category), or a line nobody categorized yet. Money held for someone or lent, and lines that
     belong to a person (ADR-023), stay what they are: received for Rubén and paid out for him the
     same week look like two legs, but they aren't."""
     if t.counterparty_id is not None:
-        return False
+        # A person who exchanges money (ADR-055) is a leg like any own-account move.
+        return exchange is not None and t.category_id == exchange
     if t.type == "transfer":
         return t.category_id is None or t.category_id in paired
     return t.category_id is None
@@ -94,11 +98,15 @@ class MatchResult:
 
 def match(db: Session, user: str = "system") -> MatchResult:
     """Pair every unmatched transfer leg with its other side, where one is loaded."""
-    kinds = {a.account_id: a.kind for a in db.scalars(select(Account))}
+    accounts = list(db.scalars(select(Account)))
+    kinds = {a.account_id: a.kind for a in accounts}
+    countries = {a.account_id: a.country for a in accounts}
     card = _category(db, *CARD_PAYMENT)
     own = _category(db, *OWN_ACCOUNTS)
+    swap = _category(db, *EXCHANGE)
+    swap_id = swap.category_id if swap else None
     paired = _paired_categories(db)
-    rows = [t for t in _candidates(db) if _may_pair(t, paired)]
+    rows = [t for t in _candidates(db) if _may_pair(t, paired, swap_id)]
     taken: set[int] = set()
     pairs = 0
     for t in rows:
@@ -111,7 +119,12 @@ def match(db: Session, user: str = "system") -> MatchResult:
                 or o.transaction_id == t.transaction_id
                 or o.account_id == t.account_id
                 or o.amount != -t.amount
-                or abs(o.txn_date - t.txn_date) > WINDOW
+                or abs(o.txn_date - t.txn_date)
+                > (
+                    ABROAD
+                    if countries.get(o.account_id or 0) != countries.get(t.account_id or 0)
+                    else WINDOW
+                )
             ):
                 continue
             if best is None or (abs(o.txn_date - t.txn_date), o.transaction_id) < (
@@ -123,7 +136,8 @@ def match(db: Session, user: str = "system") -> MatchResult:
             continue
         group = min(t.transaction_id, best.transaction_id)
         is_card = "credit_card" in (kinds.get(t.account_id or 0), kinds.get(best.account_id or 0))
-        target = card if is_card else own
+        is_swap = swap_id is not None and swap_id in (t.category_id, best.category_id)
+        target = swap if is_swap else card if is_card else own
         for leg in (t, best):
             _log(db, leg, "transfer_group_id", None, group, user)
             _log(db, leg, "type", leg.type, "transfer", user)
@@ -195,7 +209,8 @@ def _paired_categories(db: Session) -> list[int]:
     """Transfer categories whose other leg is in another of the household's accounts: card
     payments, moves between own accounts and the Transfers group itself. Money held for others
     or lent out has no such leg."""
-    ids = [c.category_id for c in (_category(db, *CARD_PAYMENT), _category(db, *OWN_ACCOUNTS)) if c]
+    found = (_category(db, *CARD_PAYMENT), _category(db, *OWN_ACCOUNTS), _category(db, *EXCHANGE))
+    ids = [c.category_id for c in found if c]
     group = db.scalar(
         select(Category.category_id).where(
             Category.parent_id.is_(None), Category.name == CARD_PAYMENT[0]

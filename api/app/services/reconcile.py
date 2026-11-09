@@ -138,7 +138,10 @@ def build(db: Session, start: date, end: date) -> Reconcile:
     period = (t.cash_month >= start, t.cash_month <= end, t.source.in_(FROM_BANKS))
     people = db.scalar(
         select(func.coalesce(func.sum(t.amount), 0)).where(
-            *period, t.type == "transfer", t.counterparty_id.is_not(None)
+            *period,
+            t.type == "transfer",
+            t.counterparty_id.is_not(None),
+            t.transfer_group_id.is_(None),  # an exchange paired with its other side is settled
         )
     )
     if people:
