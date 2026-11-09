@@ -144,7 +144,8 @@ def test_report_written_by_rules_is_saved(loaded: TestClient, db: Session) -> No
 
 
 def test_net_worth_compares_like_with_like(loaded: TestClient) -> None:
-    """A car revalued in October changes net worth; an office first valued in October doesn't."""
+    """A car revalued in October changes net worth; an office first valued in October doesn't:
+    its first value also counts for September (ADR-063), so it's in both months."""
     car = loaded.post(
         "/api/holdings",
         json={"name": "Car", "holding_class": "vehicle", "value": "10000", "as_of": "2026-09-01"},
@@ -161,9 +162,7 @@ def test_net_worth_compares_like_with_like(loaded: TestClient) -> None:
     )
     nw = _generate(loaded).json()["facts"]["net_worth"]
     assert nw["change"] == "-500.00" and nw["net_worth"] == "59500.00"
-    assert nw["first_valued_this_month"] == [
-        {"name": "Office", "side": "asset", "value": "50000.00"}
-    ]
+    assert nw["first_valued_this_month"] == []
     f = report.rule_findings(
         {
             "month": "2026-10",

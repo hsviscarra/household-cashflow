@@ -34,6 +34,7 @@ from app.services import loans, people, recurring, status
 
 ZERO = Decimal(0)
 ASSET_CLASSES = ("property", "vehicle", "investment", "cash", "purchase")
+CARRIED_BACK = ("property", "vehicle")  # their first value also counts before it (ADR-063)
 LIABILITY_CLASSES = ("loan", "personal_loan", "card")
 MANUAL = "manual"
 
@@ -211,6 +212,10 @@ def holdings(db: Session, as_of: date) -> list[Item]:
     for h in db.scalars(select(Holding).order_by(Holding.sort_order, Holding.name)):
         upto = [s for s in snaps[h.holding_id] if s.as_of <= as_of]
         last = upto[-1] if upto else None
+        if last is None and h.holding_class in CARRIED_BACK and snaps[h.holding_id]:
+            # Property and vehicles were owned before their first value was entered: the first
+            # value counts back in time, so net worth history doesn't jump the day it's entered.
+            last = snaps[h.holding_id][0]
         item = Item(
             key=f"holding-{h.holding_id}",
             name=h.name,

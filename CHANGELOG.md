@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.75.0] — Net worth history without the jump
+
+### Changed
+- Net worth history counts property and vehicles from their first value back (ADR-063), so it
+  no longer jumps the month their values were entered.
+
+### Added
+- Claude's tools can list any month's lines by type (savings, debt payments, transfers…).
+
 ## [0.74.0] — Monthly IVA
 
 ### Added
