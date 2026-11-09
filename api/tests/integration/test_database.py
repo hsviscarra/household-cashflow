@@ -59,7 +59,7 @@ def test_reference_tables_seeded() -> None:
         + sum(len(g[3]) for g in v2.CATEGORIES)
         + sum(len(g[3]) for g in v7.NEW_GROUPS)
         + sum(len(subs) for _g, subs in v7.NEW_SUBS)
-        + 1  # v9: Transfers / Exchange through people
+        + 2  # v9: Transfers / Exchange through people; v10: Housing / New house
     )
     assert counts == {
         "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS) + len(v6.ACCOUNTS),
@@ -73,7 +73,8 @@ def test_reference_tables_seeded() -> None:
                 v6.MERCHANT_RULES,
                 v7.MERCHANT_RULES,
             )
-        ),
+        )
+        + 1,  # v10: the new house's trust
     }
 
 

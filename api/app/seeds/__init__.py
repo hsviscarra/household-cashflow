@@ -397,3 +397,40 @@ def load_v9(conn: Connection, category: Table) -> None:
                 "(US and Ecuador). Not income or spending."
             )
         )
+
+
+NEW_HOUSE = ("Housing", "New house")
+# The developer's trust collects the new house's reserva, entrada and installments (ADR-056).
+NEW_HOUSE_RULE = "KALANI"
+
+
+def load_v10(conn: Connection, category: Table, merchant_rule: Table) -> None:
+    """Housing / New house (ADR-056): the down payment being paid off before delivery, a debt
+    payment. Its rule sends the developer's trust payments there. Migration 0040 adds both."""
+    gid = _group_id(conn, category, NEW_HOUSE[0])
+    if gid is None:
+        return
+    _add_subs(conn, category, gid, "debt", [(NEW_HOUSE[1], True)])
+    if "description" in category.c:
+        conn.execute(
+            update(category)
+            .where(category.c.parent_id == gid, category.c.name == NEW_HOUSE[1])
+            .values(
+                description="The new house's reserva, down payment and monthly installments "
+                "before delivery. A debt payment, not spending."
+            )
+        )
+    cid = _category_ids(conn, category).get("/".join(NEW_HOUSE))
+    taken = set(conn.scalars(select(merchant_rule.c.pattern)))
+    if cid is not None and NEW_HOUSE_RULE not in taken:
+        conn.execute(
+            insert(merchant_rule),
+            [
+                {
+                    "pattern": NEW_HOUSE_RULE,
+                    "match_type": "contains",
+                    "category_id": cid,
+                    "priority": 10,
+                }
+            ],
+        )

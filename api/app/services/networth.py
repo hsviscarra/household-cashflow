@@ -23,6 +23,8 @@ from sqlalchemy.orm import Session, aliased
 from app.models import (
     Account,
     BalanceSnapshot,
+    Category,
+    ChangeLog,
     Holding,
     RecurringEntry,
     RecurringTemplate,
@@ -348,6 +350,7 @@ def create_holding(db: Session, fields: dict[str, object]) -> Holding:
     )
     db.add(h)
     db.flush()
+    _paid_as_debt(db, h)
     if fields.get("value") is not None:
         set_value(db, h.holding_id, fields.get("as_of") or date.today(), fields["value"])  # type: ignore[arg-type]
     db.commit()
@@ -382,8 +385,39 @@ def update_holding(db: Session, holding_id: int, changes: dict[str, object]) -> 
         if key in changes:
             setattr(h, key, changes[key])
     h.side = side_of(h.holding_class, h.side)
+    _paid_as_debt(db, h)
     db.commit()
     return h
+
+
+def _paid_as_debt(db: Session, h: Holding) -> None:
+    """A loan or a purchase in progress is paid off through its category: those payments are
+    debt payments (ADR-054, ADR-056), so a savings or spending category chosen for one becomes a
+    debt category and its lines debt payments."""
+    if h.holding_class not in ("loan", "purchase") or h.category_id is None:
+        return
+    c = db.get(Category, h.category_id)
+    if c is None or c.kind not in ("savings", "expense"):
+        return
+    c.kind = "debt"
+    for t in db.scalars(
+        select(Transaction).where(
+            Transaction.category_id == c.category_id,
+            Transaction.type.in_(("savings", "expense")),
+        )
+    ).all():
+        db.add(
+            ChangeLog(
+                table_name="core.transaction",
+                row_id=t.transaction_id,
+                column_name="type",
+                old_value=t.type,
+                new_value="debt_payment",
+                reason=f"Pays {h.name}"[:200],
+                changed_by="system",
+            )
+        )
+        t.type = "debt_payment"
 
 
 def delete_holding(db: Session, holding_id: int) -> None:

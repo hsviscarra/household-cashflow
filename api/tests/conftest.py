@@ -31,6 +31,7 @@ from app.seeds import (
     load_v7,
     load_v8,
     load_v9,
+    load_v10,
 )
 
 SCHEMAS = {s: None for s in ("raw", "stg", "rej", "core", "mart", "audit")}
@@ -63,6 +64,7 @@ def engine() -> Iterator[Engine]:
         load_v7(conn, Category.__table__, MerchantRule.__table__)
         load_v8(conn, Category.__table__)
         load_v9(conn, Category.__table__)
+        load_v10(conn, Category.__table__, MerchantRule.__table__)
         for path in sorted(VIEW_DIR.glob("*.sql")):
             conn.execute(text(_sqlite_view(path.read_text(encoding="utf-8"))))
     yield eng  # type: ignore[misc]
