@@ -182,10 +182,7 @@ def test_net_worth_compares_like_with_like(loaded: TestClient) -> None:
         }
     )
     assert f[0].title == "Net worth down 500.00"
-    assert f[0].text == (
-        "Net worth 59,500.00 on Oct 28, 2026: owned 59,500.00, owed 0.00; first valued this "
-        "month: Office (not counted as a change)."
-    )
+    assert f[0].text == "Net worth 59,500.00 on Oct 28, 2026: owned 59,500.00, owed 0.00."
 
 
 def test_an_older_month_has_no_outlook(loaded: TestClient) -> None:
