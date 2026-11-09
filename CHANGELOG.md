@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.69.0] — Money between the US and Ecuador through people
+
+### Added
+- **Transfers / Exchange through people** (ADR-055): paying someone in the US who deposits the same
+  in Ecuador is no longer spending and income. Give the person that category (People & transfers)
+  or pick it on the Zelle line with Always; the Zelle payment and the deposit pair up even when
+  the deposit comes up to 10 days later. Migration 0039.
+
 ## [0.68.1] — Cash flow explains itself
 
 ### Changed

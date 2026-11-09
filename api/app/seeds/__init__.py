@@ -376,3 +376,24 @@ def load_v8(conn: Connection, category: Table) -> None:
             conn.execute(
                 update(category).where(category.c.category_id == ids[path]).values(kind="debt")
             )
+
+
+EXCHANGE = ("Transfers", "Exchange through people")
+
+
+def load_v9(conn: Connection, category: Table) -> None:
+    """Transfers / Exchange through people (ADR-055): paying someone in the US who pays the same
+    in Ecuador (or the other way round). Migration 0039 adds it on the database."""
+    gid = _group_id(conn, category, EXCHANGE[0])
+    if gid is None:
+        return
+    _add_subs(conn, category, gid, "transfer", [(EXCHANGE[1], False)])
+    if "description" in category.c:
+        conn.execute(
+            update(category)
+            .where(category.c.parent_id == gid, category.c.name == EXCHANGE[1])
+            .values(
+                description="Paying someone in one country who pays you the same in the other "
+                "(US and Ecuador). Not income or spending."
+            )
+        )

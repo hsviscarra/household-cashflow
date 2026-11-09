@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Category
-from app.seeds import _category_ids, load_v5, v5, v7
+from app.seeds import EXCHANGE, _category_ids, load_v5, v5, v7
 
 
 def test_every_seeded_category_is_described(db: Session) -> None:
@@ -14,6 +14,7 @@ def test_every_seeded_category_is_described(db: Session) -> None:
     # everything it adds.
     renamed = {p: f"{g}/{n}" for p, g, n in v7.MOVES} | dict(v7.RENAMES)
     described = {renamed.get(p, p) for p in v5.DESCRIPTIONS} | set(v7.DESCRIPTIONS)
+    described |= {"/".join(EXCHANGE)}  # seed v9 (ADR-055) describes its one category
     assert described == set(ids), described ^ set(ids)
     texts = [*v5.DESCRIPTIONS.values(), *v7.DESCRIPTIONS.values()]
     assert all(0 < len(text) <= 400 for text in texts)

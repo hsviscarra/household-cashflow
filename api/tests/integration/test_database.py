@@ -59,6 +59,7 @@ def test_reference_tables_seeded() -> None:
         + sum(len(g[3]) for g in v2.CATEGORIES)
         + sum(len(g[3]) for g in v7.NEW_GROUPS)
         + sum(len(subs) for _g, subs in v7.NEW_SUBS)
+        + 1  # v9: Transfers / Exchange through people
     )
     assert counts == {
         "account": len(v1.ACCOUNTS) + len(v3.ACCOUNTS) + len(v6.ACCOUNTS),
@@ -1113,6 +1114,12 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     assert kinds.get("Loan Payments") == "debt" and kinds.get("Mortgage BIESS") == "debt"
     debt = client.post("/api/categories", json={"name": "CI car loan", "kind": "debt"})
     assert debt.status_code == 201, debt.text
+    # ADR-055: Exchange through people (migration 0039).
+    assert any(
+        c["name"] == "Exchange through people" and c["kind"] == "transfer"
+        for g in client.get("/api/categories").json()
+        for c in g["children"]
+    )
 
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()
