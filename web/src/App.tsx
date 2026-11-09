@@ -95,21 +95,68 @@ const NAV_ORDER = [
   "/todo",
   "/cashflow",
   "/spending",
-  "/groceries",
   "/recurring",
-  "/purchases",
   "/transactions",
   "/people",
   "/debt",
   "/budget",
-  "/goals",
   "/projections",
   "/taxes",
   "/report",
-  "/import",
 ];
 
+/** Pages shown as tabs of one sidebar item (ADR-060): the item is current on any of them. */
+export const FAMILIES: { home: string; label: string; tabs: [string, string][] }[] = [
+  {
+    home: "/spending",
+    label: "Spending",
+    tabs: [
+      ["/spending", "Categories"],
+      ["/groceries", "Groceries"],
+      ["/purchases", "Purchases (invoices)"],
+    ],
+  },
+  {
+    home: "/budget",
+    label: "Budget & goals",
+    tabs: [
+      ["/budget", "Budget"],
+      ["/goals", "Goals"],
+    ],
+  },
+  { home: "/taxes", label: "Taxes", tabs: [["/taxes", "Deductions"]] },
+];
+
+function familyOf(path: string) {
+  return FAMILIES.find((f) => f.tabs.some(([p]) => p === path));
+}
+
+/** The tabs above a page that belongs to a family (Spending: Categories, Groceries, Purchases). */
+function FamilyTabs({ path }: { path: string }) {
+  const f = familyOf(path);
+  if (!f || f.tabs.length < 2) return null;
+  return (
+    <nav aria-label={`${f.label} pages`} className="mb-6 flex gap-1 overflow-x-auto border-b border-line">
+      {f.tabs.map(([to, label]) => (
+        <NavLink
+          key={to}
+          to={to}
+          end
+          className={({ isActive }) =>
+            `-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold ${
+              isActive ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink"
+            }`
+          }
+        >
+          {label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const { pathname } = useLocation();
   const pages = NAV_ORDER.map((path) => PAGES.find((p) => p.path === path)!).filter(Boolean);
   return (
     <div className="flex h-full flex-col gap-1 px-3 py-5">
@@ -131,24 +178,28 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           )}
           {pages
             .filter((p) => p.group === g)
-            .map((p) => (
-              <NavLink
-                key={p.path}
-                to={p.path}
-                end={p.path === "/"}
-                onClick={onNavigate}
-                className={({ isActive }) =>
-                  `flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium ${
-                    isActive
-                      ? "bg-nav-active font-semibold text-nav-active-ink"
-                      : "text-nav-ink hover:text-nav-strong"
-                  }`
-                }
-              >
-                {p.label}
-                {p.path === "/todo" && <TodoCount />}
-              </NavLink>
-            ))}
+            .map((p) => {
+              const fam = FAMILIES.find((f) => f.home === p.path);
+              const inFamily = fam?.tabs.some(([t]) => t === pathname) ?? false;
+              return (
+                <NavLink
+                  key={p.path}
+                  to={p.path}
+                  end={p.path === "/"}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium ${
+                      isActive || inFamily
+                        ? "bg-nav-active font-semibold text-nav-active-ink"
+                        : "text-nav-ink hover:text-nav-strong"
+                    }`
+                  }
+                >
+                  {fam?.label ?? p.label}
+                  {p.path === "/todo" && <TodoCount />}
+                </NavLink>
+              );
+            })}
         </div>
       ))}
       <SavedViewLinks onNavigate={onNavigate} />
@@ -299,7 +350,16 @@ export default function App() {
         <div className="mx-auto max-w-7xl">
           <Routes>
             {PAGES.map((p) => (
-              <Route key={p.path} path={p.path} element={PAGE_ELEMENTS[p.path] ?? <Placeholder page={p} />} />
+              <Route
+                key={p.path}
+                path={p.path}
+                element={
+                  <>
+                    <FamilyTabs path={p.path} />
+                    {PAGE_ELEMENTS[p.path] ?? <Placeholder page={p} />}
+                  </>
+                }
+              />
             ))}
             <Route path="/import/batches/:batchId" element={<BatchPage />} />
           </Routes>

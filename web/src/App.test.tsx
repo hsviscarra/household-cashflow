@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import App, { WAKE_MS, databasePill } from "./App";
+import App, { FAMILIES, WAKE_MS, databasePill } from "./App";
 import { PAGES } from "./pages";
 
 const EMPTY_FLOWS = {
@@ -57,12 +57,26 @@ describe("App shell", () => {
     expect(screen.getByRole("link", { name: "Load the Excel history" })).toHaveAttribute("href", "/import");
   });
 
-  it("lists every page in the navigation", () => {
+  it("lists every page in the sidebar or as a tab of one (ADR-060)", () => {
     mockApi(okHealth, { name: null, authenticated: false });
     renderAt("/");
-    for (const page of PAGES.filter((p) => !p.hidden)) {
-      expect(screen.getByRole("link", { name: page.label })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    const tabs = new Set(FAMILIES.flatMap((f) => f.tabs.map(([p]) => p)));
+    for (const page of PAGES.filter((p) => !p.hidden && !tabs.has(p.path) && p.path !== "/import")) {
+      expect(within(nav).getByRole("link", { name: page.label })).toBeInTheDocument();
     }
+    for (const f of FAMILIES) expect(within(nav).getByRole("link", { name: f.label })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Groceries" })).not.toBeInTheDocument();
+  });
+
+  it("shows a family's tabs and keeps its sidebar item current", () => {
+    mockApi(okHealth, { name: null, authenticated: false });
+    renderAt("/groceries");
+    const tabs = screen.getByRole("navigation", { name: "Spending pages" });
+    expect(within(tabs).getByRole("link", { name: "Groceries" })).toHaveAttribute("aria-current", "page");
+    expect(within(tabs).getByRole("link", { name: "Purchases (invoices)" })).toHaveAttribute("href", "/purchases");
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(within(nav).getByRole("link", { name: "Spending" }).className).toContain("bg-nav-active");
   });
 
   it("groups the sidebar and counts what's to do", async () => {
