@@ -209,6 +209,13 @@ how many lines wait for a category. URLs stay as they were.
   table: aisle muted · type medium · brand muted, a "Claude" pill until confirmed, Edit opening an
   inline row (aisle select, type and brand inputs, primary "Save for every purchase").
 
+## Monthly IVA (ADR-062)
+
+- A Taxes tab. Cards in order: bring in the documents (the shared SRI import), the carried credit
+  once (attention colors), Form 104 (the amount to pay in display type, danger ink when above 0,
+  good ink at 0; fields as a two-column list with the field number muted), your invoices, and
+  invoices received with a "Counts as" select per row (unclassified rows on attention-bg first).
+
 ## Lines panel (ADR-048)
 
 - A right-hand sheet (max-w-2xl, full width on phones) over a 30% ink scrim; sticky header with

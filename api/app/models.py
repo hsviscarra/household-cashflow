@@ -1016,6 +1016,69 @@ class GpIssuerRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+IVA_USES = ("business", "personal", "none")  # a received invoice in the IVA return (ADR-062)
+
+
+class SaleInvoice(Base):
+    """An invoice the household issued (Hernan's work invoices), for the monthly IVA return
+    (ADR-062). Kept apart from core.invoice, which holds what was bought."""
+
+    __tablename__ = "sale_invoice"
+    __table_args__ = ({"schema": "core"},)
+
+    sale_invoice_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    access_key: Mapped[str] = mapped_column(Unicode(49), unique=True)
+    person: Mapped[str] = mapped_column(Unicode(20))  # who issued it
+    number: Mapped[str] = mapped_column(Unicode(20))
+    issue_date: Mapped[date] = mapped_column(Date, index=True)
+    buyer_name: Mapped[str] = mapped_column(Unicode(300))
+    base_taxed: Mapped[Decimal] = mapped_column(Money)  # subject to IVA above 0%
+    base_zero: Mapped[Decimal] = mapped_column(Money)  # 0% or exempt
+    tax: Mapped[Decimal] = mapped_column(Money)
+    total: Mapped[Decimal] = mapped_column(Money)
+    received_by: Mapped[str] = mapped_column(Unicode(320))
+    received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Withholding(Base):
+    """A comprobante de retención a client issued to the household: income tax and IVA it kept
+    back from an invoice (ADR-062)."""
+
+    __tablename__ = "withholding"
+    __table_args__ = ({"schema": "core"},)
+
+    withholding_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    access_key: Mapped[str] = mapped_column(Unicode(49), unique=True)
+    person: Mapped[str] = mapped_column(Unicode(20))  # whose income it was kept from
+    issuer_ruc: Mapped[str] = mapped_column(Unicode(13))
+    issuer_name: Mapped[str] = mapped_column(Unicode(300))
+    number: Mapped[str] = mapped_column(Unicode(20))
+    issue_date: Mapped[date] = mapped_column(Date)
+    period: Mapped[date] = mapped_column(Date, index=True)  # periodo fiscal, first of the month
+    invoice_number: Mapped[str | None] = mapped_column(Unicode(20))  # the sale it withholds on
+    income_tax: Mapped[Decimal] = mapped_column(Money)
+    iva: Mapped[Decimal] = mapped_column(Money)
+    received_by: Mapped[str] = mapped_column(Unicode(320))
+    received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class TaxIssuerRule(Base):
+    """How an issuer's invoices count in the IVA return: a business purchase (IVA credit), a
+    personal expense, or neither (ADR-062)."""
+
+    __tablename__ = "tax_issuer_rule"
+    __table_args__ = (
+        CheckConstraint(_in("iva_use", IVA_USES), name="iva_use"),
+        {"schema": "core"},
+    )
+
+    tax_issuer_rule_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issuer_ruc: Mapped[str] = mapped_column(Unicode(13), unique=True)
+    iva_use: Mapped[str] = mapped_column(Unicode(10))
+    created_by: Mapped[str] = mapped_column(Unicode(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class GpProfile(Base):
     """A person's cargas familiares for a tax year, which set the cap (ADR-036)."""
 

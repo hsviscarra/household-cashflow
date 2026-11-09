@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.74.0] — Monthly IVA
+
+### Added
+- **Taxes → Monthly IVA** (ADR-062): the monthly IVA return from the SRI documents: your invoices
+  with the retenciones clients made, invoices received as business (IVA credit) or personal, and
+  the Form 104 figures, with credit carried month to month; download the accountant's workbook.
+  The SRI list import now reads your issued invoices and retenciones too. Migration 0043.
+
 ## [0.73.0] — Grocery products by type and brand
 
 ### Added

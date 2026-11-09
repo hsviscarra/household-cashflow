@@ -192,7 +192,7 @@ export function sriFoundLine(k: { new: string[]; stored: number; other: number }
 
 /** Invoices that never reached Gmail (ADR-037): the SRI's list of received documents, uploaded or
  * pasted; each new access key is fetched from the SRI in batches of ten. */
-function SriImport({
+export function SriImport({
   onStatus,
   onResults,
 }: {

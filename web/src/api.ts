@@ -213,8 +213,7 @@ export const runBankSync = (auto = false) =>
   send<BankSync>("POST", `/api/bank-sync/run${auto ? "?auto=true" : ""}`);
 export const linkBankSync = (b: { sync_id: string; account_id: number | null }) =>
   send<BankSync>("PUT", "/api/bank-sync/link", b);
-export const fetchRuleSuggestions = () =>
-  send<RuleSuggestion[]>("GET", "/api/merchant-rules/suggestions");
+export const fetchRuleSuggestions = () => send<RuleSuggestion[]>("GET", "/api/merchant-rules/suggestions");
 export const createRule = (r: RuleInput) => send<Rule>("POST", "/api/merchant-rules", r);
 export const updateRule = (id: number, r: Partial<RuleInput & { is_active: boolean }>) =>
   send<Rule>("PATCH", `/api/merchant-rules/${id}`, r);
@@ -1534,7 +1533,13 @@ export type Groceries = {
   aisles: { name: string; amount: Money; lines: number; usual: Money }[];
   products: ProductRow[];
   stores: { name: string; invoices: number; amount: Money }[];
-  missing: { transaction_id: number; txn_date: string; merchant: string; amount: Money; account_name: string | null }[];
+  missing: {
+    transaction_id: number;
+    txn_date: string;
+    merchant: string;
+    amount: Money;
+    account_name: string | null;
+  }[];
   ungrouped_products: number;
 };
 export const fetchGroceries = (month: string) =>
@@ -1566,13 +1571,69 @@ export type GroceryProducts = {
 export const fetchGroceryProducts = (start: string, months: number) =>
   send<GroceryProducts>("GET", `/api/spending/groceries/products${query({ start, months: String(months) })}`);
 export const labelGroceries = (start: string, months: number) =>
-  send<{ labeled: number }>("POST", `/api/spending/groceries/label${query({ start, months: String(months) })}`);
+  send<{ labeled: number }>(
+    "POST",
+    `/api/spending/groceries/label${query({ start, months: String(months) })}`,
+  );
 export const setGroceryLabels = (body: {
   product_key: string;
   product_group?: string | null;
   product_type?: string | null;
   brand?: string | null;
 }) => send<{ lines: number }>("PUT", "/api/spending/groceries/products", body);
+// ---------- Monthly IVA (ADR-062) ----------
+export type IvaUse = "business" | "personal" | "none";
+export type IvaMonth = {
+  person: string;
+  month: string;
+  sales: {
+    number: string;
+    issue_date: string;
+    buyer_name: string;
+    base_taxed: Money;
+    base_zero: Money;
+    tax: Money;
+    total: Money;
+    income_tax_withheld: Money;
+    iva_withheld: Money;
+  }[];
+  purchases: {
+    invoice_id: number;
+    issuer_ruc: string;
+    issuer_name: string;
+    number: string;
+    issue_date: string;
+    base_taxed: Money;
+    base_zero: Money;
+    tax: Money;
+    total: Money;
+    iva_use: IvaUse | null;
+    access_key: string;
+  }[];
+  withholdings: {
+    issuer_name: string;
+    number: string;
+    issue_date: string;
+    invoice_number: string | null;
+    income_tax: Money;
+    iva: Money;
+  }[];
+  form: Record<string, Money | number>;
+  opening_month: string | null;
+  unclassified: number;
+  income_tax_withheld: Money;
+  notes: string[];
+};
+export const fetchIva = (month: string) => send<IvaMonth>("GET", `/api/taxes/iva${query({ month })}`);
+export const ivaExcelUrl = (month: string) => `/api/taxes/iva/excel${query({ month })}`;
+export const setIvaIssuer = (issuer_ruc: string, iva_use: IvaUse) =>
+  send<void>("PUT", "/api/taxes/iva/issuers", { issuer_ruc, iva_use });
+export const setIvaOpening = (b: {
+  person: string;
+  month: string;
+  purchase_credit: string;
+  retention_credit: string;
+}) => send<void>("PUT", "/api/taxes/iva/opening", b);
 export const fetchIdeas = (month: string, person?: string) =>
   send<Idea[]>("GET", `/api/spending/ideas${query({ month, person })}`);
 

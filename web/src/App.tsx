@@ -17,6 +17,7 @@ import BudgetPage from "./pages/Budget";
 import GoalsPage from "./pages/Goals";
 import PurchasesPage from "./pages/Purchases";
 import GroceriesPage from "./pages/Groceries";
+import IvaPage from "./pages/Iva";
 import BillsPage from "./pages/Bills";
 import ReportPage from "./pages/Report";
 import ReviewPage from "./pages/Review";
@@ -124,7 +125,14 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
       ["/goals", "Goals"],
     ],
   },
-  { home: "/taxes", label: "Taxes", tabs: [["/taxes", "Deductions"]] },
+  {
+    home: "/taxes",
+    label: "Taxes",
+    tabs: [
+      ["/taxes", "Deductions"],
+      ["/taxes/iva", "Monthly IVA"],
+    ],
+  },
 ];
 
 function familyOf(path: string) {
@@ -293,6 +301,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/budget": <BudgetPage />,
   "/goals": <GoalsPage />,
   "/taxes": <TaxesPage />,
+  "/taxes/iva": <IvaPage />,
   "/report": <ReportPage />,
 };
 
