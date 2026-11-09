@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.70.2] — Nelnet, and no money counted twice
+
+### Changed
+- Net worth has Lauren's **Nelnet** loan (68,190.32, from the workbook; on hold) and no longer
+  counts the workbook's old Stock Market, Produbanco, Mastercard HV and Diners values next to the
+  real accounts (ADR-057). Migration 0041.
+
 ## [0.70.1] — Lauren's Diners statements
 
 ### Fixed
