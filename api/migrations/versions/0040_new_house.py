@@ -86,7 +86,7 @@ def upgrade() -> None:
         conn.execute(
             sa.text(
                 f"""
-                INSERT INTO [core].[change_log]
+                INSERT INTO [audit].[change_log]
                     ([table_name], [row_id], [column_name], [old_value], [new_value], [reason],
                      [changed_by])
                 SELECT N'core.transaction', [t].[transaction_id], N'{column}',
