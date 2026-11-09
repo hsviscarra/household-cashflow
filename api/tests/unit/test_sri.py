@@ -79,7 +79,8 @@ def test_keys_in_a_report(client: TestClient, db: Session) -> None:
     )
     out = client.post("/api/invoices/sri/keys", json={"text": report})
     assert out.status_code == 200, out.text
-    assert out.json() == {"new": [OTHER], "stored": 1, "other": 1}
+    # Credit notes are read too now (for the IVA return, ADR-064).
+    assert out.json() == {"new": [OTHER, CREDIT_NOTE], "stored": 1, "other": 0}
 
 
 def test_fetching_stores_reports_and_survives_the_sri(

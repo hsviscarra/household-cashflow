@@ -11,7 +11,7 @@ import {
   type SpendSlice,
 } from "../api";
 import { MonthBars } from "../components/charts";
-import { money, monthLong, monthShort, num, parts } from "../money";
+import { localToday, money, monthLong, monthShort, num, parts } from "../money";
 import { ExportLinks } from "../components/ExportLinks";
 import LinesPanel from "../components/LinesPanel";
 import KpiCard from "../components/KpiCard";
@@ -51,8 +51,13 @@ const prevMonth = (iso: string) => {
 };
 const yearAgo = (iso: string) => `${parts(iso).year - 1}${iso.slice(4)}`;
 
-export function headline(s: Spending): string {
+export function headline(s: Spending, today: string = localToday()): string {
   if (s.source === "none") return "Spending";
+  if (s.month.slice(0, 7) === today.slice(0, 7)) {
+    // The month isn't over: comparing part of it with whole months would mislead.
+    const day = Number(today.slice(8, 10));
+    return `So far in ${monthLong(s.month)} (day ${day}) you spent ${money(s.total.amount)}.`;
+  }
   const words = [
     compareWords(s.total.amount, s.total.prev, monthLong(prevMonth(s.month)).split(" ")[0]),
     compareWords(s.total.amount, s.total.last_year, monthLong(yearAgo(s.month))),
@@ -170,7 +175,11 @@ export default function SpendingPage() {
             <KpiCard
               label="Spent"
               value={money(s.total.amount)}
-              note={`${change(s.total.amount, s.total.prev)} vs ${monthShort(prevMonth(s.month))} · ${s.total.transactions} lines`}
+              note={
+                s.month.slice(0, 7) === localToday().slice(0, 7)
+                  ? `${s.total.transactions} lines so far; the month isn't over`
+                  : `${change(s.total.amount, s.total.prev)} vs ${monthShort(prevMonth(s.month))} · ${s.total.transactions} lines`
+              }
             />
             <KpiCard
               label="Fixed"
@@ -404,6 +413,7 @@ function CategoryTable({
             </th>
             <th scope="col" className="hidden px-3 py-2 text-right font-semibold md:table-cell">
               vs {monthShort(prevMonth(s.month))}
+              {s.month.slice(0, 7) === localToday().slice(0, 7) && " (whole month)"}
             </th>
             <th scope="col" className="hidden px-3 py-2 text-right font-semibold md:table-cell">
               vs {monthShort(s.month)} {parts(s.month).year - 1}

@@ -144,6 +144,70 @@ def test_retencion_version_2_and_someone_elses(client: TestClient, buyers: None)
 
 
 def test_sri_list_fetches_retenciones(client: TestClient) -> None:
-    text = f"{key(40)} {key(41, '07')} {key(42, '04')}"
+    text = f"{key(40)} {key(41, '07')} {key(42, '04')} {key(43, '05')} {key(44, '06')}"
     k = client.post("/api/invoices/sri/keys", json={"text": text}).json()
-    assert k["new"] == [key(40), key(41, "07")] and k["other"] == 1
+    assert k["new"] == [key(40), key(41, "07"), key(42, "04"), key(43, "05")]
+    assert k["other"] == 1  # a guía de remisión
+
+
+def nota(n: int, *, credit: bool, issuer_ruc: str, buyer: str, base: str, iva: str) -> bytes:
+    tag, info = ("notaCredito", "infoNotaCredito") if credit else ("notaDebito", "infoNotaDebito")
+    taxes = (
+        f"<totalConImpuestos><totalImpuesto><codigo>2</codigo><codigoPorcentaje>4"
+        f"</codigoPorcentaje><baseImponible>{base}</baseImponible><valor>{iva}</valor>"
+        f"</totalImpuesto></totalConImpuestos><valorModificacion>{Decimal(base) + Decimal(iva)}"
+        f"</valorModificacion><motivo>DESCUENTO</motivo>"
+        if credit
+        else f"<impuestos><impuesto><codigo>2</codigo><codigoPorcentaje>4</codigoPorcentaje>"
+        f"<tarifa>15</tarifa><baseImponible>{base}</baseImponible><valor>{iva}</valor>"
+        f"</impuesto></impuestos><valorTotal>{Decimal(base) + Decimal(iva)}</valorTotal>"
+    )
+    doc = (
+        f'<{tag} id="comprobante" version="1.0.0"><infoTributaria><razonSocial>EMISOR DE PRUEBA'
+        f"</razonSocial><ruc>{issuer_ruc}</ruc><claveAcceso>{key(n, '04' if credit else '05')}"
+        f"</claveAcceso><codDoc>{'04' if credit else '05'}</codDoc><estab>001</estab>"
+        f"<ptoEmi>002</ptoEmi><secuencial>{n:09d}</secuencial></infoTributaria><{info}>"
+        f"<fechaEmision>20/09/2026</fechaEmision><razonSocialComprador>CLIENTE DE PRUEBA"
+        f"</razonSocialComprador><identificacionComprador>{buyer}</identificacionComprador>"
+        f"<codDocModificado>01</codDocModificado><numDocModificado>001-002-000000053"
+        f"</numDocModificado><totalSinImpuestos>{base}</totalSinImpuestos>{taxes}</{info}>"
+        f"</{tag}>"
+    )
+    return f"<autorizacion><comprobante><![CDATA[{doc}]]></comprobante></autorizacion>".encode()
+
+
+def test_credit_and_debit_notes_change_the_month(client: TestClient, buyers: None) -> None:  # noqa: F811
+    upload(
+        client,
+        ("s.xml", factura(key=key(50), ruc=OWN_RUC, day="10/09/2026",
+                          lines=[("S", "1", "1000", "15")])),
+        ("b.xml", factura(key=key(51), ruc="1791111111001", buyer=HERNAN_ID, day="10/09/2026",
+                          lines=[("INTERNET", "1", "100", "15")])),
+    )  # fmt: skip
+    client.put(
+        "/api/taxes/iva/issuers", json={"issuer_ruc": "1791111111001", "iva_use": "business"}
+    )
+    out = upload(
+        client,
+        ("c1.xml", nota(60, credit=True, issuer_ruc=OWN_RUC, buyer="1799999999001",
+                        base="200", iva="30")),
+        ("c2.xml", nota(61, credit=True, issuer_ruc="1791111111001", buyer=HERNAN_ID,
+                        base="20", iva="3")),
+        ("d1.xml", nota(62, credit=False, issuer_ruc="1791111111001", buyer=HERNAN_ID,
+                        base="10", iva="1.50")),
+        ("x.xml", nota(63, credit=True, issuer_ruc="1799999999001", buyer="1799999999001",
+                       base="5", iva="0.75")),
+    )  # fmt: skip
+    assert [o["outcome"] for o in out] == ["stored", "stored", "stored", "skipped"]
+    assert out[0]["message"].startswith("Nota de crédito 001-002-000000060")
+    body = client.get("/api/taxes/iva", params={"month": "2026-09"}).json()
+    f = {k: Decimal(str(v)) for k, v in body["form"].items()}
+    assert (f["f401"], f["f411"], f["f421"]) == (Decimal("1000"), Decimal("800"), Decimal("120"))
+    assert (f["f500"], f["f510"], f["f520"]) == (Decimal("100"), Decimal("90"), Decimal("13.50"))
+    assert len(body["tax_notes"]) == 3
+    issued = next(n for n in body["tax_notes"] if n["direction"] == "issued")
+    assert issued["modified_number"] == "001002000000053" and issued["counts"] is True
+    x = client.get("/api/taxes/iva/excel", params={"month": "2026-09"})
+    wb = load_workbook(BytesIO(x.content))
+    cells = [c for row in wb["2026-09"].iter_rows(values_only=True) for c in row if c]
+    assert "NOTAS DE CRÉDITO Y DÉBITO" in cells and "Nota de débito recibida" in cells

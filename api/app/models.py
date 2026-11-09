@@ -1062,6 +1062,37 @@ class Withholding(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class TaxNote(Base):
+    """A nota de crédito or nota de débito, issued by the household or received, for the IVA
+    return (ADR-064): it lowers (crédito) or raises (débito) the sales or purchases of its month."""
+
+    __tablename__ = "tax_note"
+    __table_args__ = (
+        CheckConstraint("kind IN ('credit', 'debit')", name="kind"),
+        CheckConstraint("direction IN ('issued', 'received')", name="direction"),
+        {"schema": "core"},
+    )
+
+    tax_note_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    access_key: Mapped[str] = mapped_column(Unicode(49), unique=True)
+    kind: Mapped[str] = mapped_column(Unicode(10))
+    direction: Mapped[str] = mapped_column(Unicode(10))
+    person: Mapped[str] = mapped_column(Unicode(20))
+    issuer_ruc: Mapped[str] = mapped_column(Unicode(13))
+    issuer_name: Mapped[str] = mapped_column(Unicode(300))
+    counterpart_name: Mapped[str] = mapped_column(Unicode(300))  # the buyer of an issued note
+    number: Mapped[str] = mapped_column(Unicode(20))
+    issue_date: Mapped[date] = mapped_column(Date, index=True)
+    modified_number: Mapped[str | None] = mapped_column(Unicode(20))  # the invoice it changes
+    reason: Mapped[str | None] = mapped_column(Unicode(300))
+    base_taxed: Mapped[Decimal] = mapped_column(Money)
+    base_zero: Mapped[Decimal] = mapped_column(Money)
+    tax: Mapped[Decimal] = mapped_column(Money)
+    total: Mapped[Decimal] = mapped_column(Money)
+    received_by: Mapped[str] = mapped_column(Unicode(320))
+    received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class TaxIssuerRule(Base):
     """How an issuer's invoices count in the IVA return: a business purchase (IVA credit), a
     personal expense, or neither (ADR-062)."""

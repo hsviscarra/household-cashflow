@@ -213,6 +213,10 @@ describe("spending helpers", () => {
     expect(
       headline({ ...SPENDING, month: "2026-01-01", total: { ...SPENDING.total, prev: "0", last_year: "0" } }),
     ).toBe("In January 2026 you spent 1,100.00.");
+    // A month that isn't over isn't compared with whole months.
+    expect(headline({ ...SPENDING, month: "2026-11-01" }, "2026-11-09")).toBe(
+      "So far in November 2026 (day 9) you spent 1,100.00.",
+    );
   });
 });
 

@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.76.0] — Credit and debit notes; an unfinished month isn't compared
+
+### Added
+- Monthly IVA reads **notas de crédito and débito** (ADR-064): issued ones change your sales,
+  received ones your business purchases (fields 411 and 510), listed on the page and in the
+  workbook. Migration 0044.
+
+### Fixed
+- Spending no longer compares the current, unfinished month with whole months ("90% less than
+  October" on November 9); it says what was spent so far.
+
 ## [0.75.0] — Net worth history without the jump
 
 ### Changed
