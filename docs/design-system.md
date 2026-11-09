@@ -186,6 +186,15 @@ how many lines wait for a category. URLs stay as they were.
 - Confirmations are a toast centered at the bottom (good-bg, or danger-bg for errors) that goes
   after 6 seconds; a finished row leaves the list.
 
+## Groceries (ADR-059)
+
+- Four KPI cards (label, display-type number, a muted line), then the six-month chart: paired
+  CSS bars per month, spent in flow-out and invoiced in flow-in, the month's label bold when
+  shown. Missing invoices are a card with a plain list (date · merchant · account, amount right).
+  Aisles are rows with a surface track and a flow-in bar, "usual" muted next to the amount; an
+  attention-bg note when products have no aisle. Top products is a table with the price change in
+  danger ink when up more than 2%, good ink when down.
+
 ## Lines panel (ADR-048)
 
 - A right-hand sheet (max-w-2xl, full width on phones) over a 30% ink scrim; sticky header with

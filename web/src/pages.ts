@@ -42,6 +42,13 @@ export const PAGES: PageDef[] = [
     summary: "Categories, people, countries, fixed vs variable.",
   },
   {
+    path: "/groceries",
+    label: "Groceries",
+    group: "Money",
+    feature: "F21",
+    summary: "What the supermarket money buys, from the Supermaxi invoices.",
+  },
+  {
     path: "/purchases",
     label: "Purchases",
     group: "Money",

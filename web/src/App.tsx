@@ -16,6 +16,7 @@ import TaxesPage from "./pages/Taxes";
 import BudgetPage from "./pages/Budget";
 import GoalsPage from "./pages/Goals";
 import PurchasesPage from "./pages/Purchases";
+import GroceriesPage from "./pages/Groceries";
 import BillsPage from "./pages/Bills";
 import ReportPage from "./pages/Report";
 import ReviewPage from "./pages/Review";
@@ -94,6 +95,7 @@ const NAV_ORDER = [
   "/todo",
   "/cashflow",
   "/spending",
+  "/groceries",
   "/recurring",
   "/purchases",
   "/transactions",
@@ -233,6 +235,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/todo": <TodoPage />,
   "/spending": <SpendingPage />,
   "/purchases": <PurchasesPage />,
+  "/groceries": <GroceriesPage />,
   "/subscriptions": <BillsPage start="found" />,
   "/debt": <DebtPage />,
   "/projections": <ProjectionsPage />,
