@@ -155,6 +155,24 @@ def match(db: Session, user: str = "system") -> MatchResult:
     return MatchResult(pairs)
 
 
+def one_sided(db: Session, transaction_id: int, user: str) -> Transaction:
+    """The other side is an account the app doesn't follow (ADR-058): the line is settled on its
+    own, as a group of one, so it stops asking for a pair. Unlinking the group asks again."""
+    t = db.get(Transaction, transaction_id)
+    if t is None:
+        raise TransferError(f"Line {transaction_id} not found.", 404)
+    if t.transfer_group_id is not None:
+        raise TransferError("This line is already paired.", 409)
+    if t.type != "transfer":
+        _log(db, t, "type", t.type, "transfer", user)
+        t.type = "transfer"
+    _log(db, t, "transfer_group_id", None, t.transaction_id, user)
+    t.transfer_group_id = t.transaction_id
+    t.status = "confirmed"
+    db.commit()
+    return t
+
+
 def unlink(db: Session, group: int, user: str) -> int:
     """Separate a wrongly matched pair. Both lines keep their category (edit it if needed)."""
     legs = list(db.scalars(select(Transaction).where(Transaction.transfer_group_id == group)))

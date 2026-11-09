@@ -29,6 +29,16 @@ def match(db: DB, request: Request) -> MatchOut:
     return MatchOut(pairs=transfers.match(db, _user(request)).pairs)
 
 
+@router.post("/{transaction_id}/one-sided", status_code=status.HTTP_204_NO_CONTENT)
+def one_sided(transaction_id: int, db: DB, request: Request) -> Response:
+    """The other side is in an account the app doesn't follow: stop asking for it."""
+    try:
+        transfers.one_sided(db, transaction_id, _user(request))
+    except transfers.TransferError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete("/{group}", status_code=status.HTTP_204_NO_CONTENT)
 def unlink(group: int, db: DB, request: Request) -> Response:
     try:

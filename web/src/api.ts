@@ -206,6 +206,8 @@ export const markInstallmentPaid = (holding_id: number, number: number) =>
     `/api/holdings/${holding_id}/installments/${number}/paid`,
   );
 export const fetchTodo = () => send<Todo>("GET", "/api/todo");
+/** Let a suggestion or an out-of-date value go: it isn't asked again (ADR-058). */
+export const dismissTodo = (key: string) => send<void>("POST", "/api/todo/dismiss", { key });
 export const fetchBankSync = () => send<BankSync>("GET", "/api/bank-sync");
 export const runBankSync = (auto = false) =>
   send<BankSync>("POST", `/api/bank-sync/run${auto ? "?auto=true" : ""}`);
@@ -627,6 +629,9 @@ export const fetchUnmatchedTransfers = (month?: string | null) =>
   send<Txn[]>("GET", `/api/transfers/unmatched${month ? `?month=${month}` : ""}`);
 export const matchTransfers = () => send<{ pairs: number }>("POST", "/api/transfers/match");
 export const unlinkTransfer = (group: number) => send<void>("DELETE", `/api/transfers/${group}`);
+/** The other side is in an account the app doesn't follow: stop asking for it (ADR-058). */
+export const oneSidedTransfer = (transaction_id: number) =>
+  send<void>("POST", `/api/transfers/${transaction_id}/one-sided`);
 
 // ---------------- F11: recurring entries ----------------
 export type TemplateType = "income" | "expense" | "savings" | "transfer" | "debt_payment" | "fee_interest";
