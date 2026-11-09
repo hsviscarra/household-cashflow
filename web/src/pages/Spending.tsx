@@ -216,6 +216,14 @@ export default function SpendingPage() {
                       ›
                     </span>
                     <strong aria-current="location">{group.name}</strong>
+                    {group.name === "Groceries" && (
+                      <Link
+                        to={`/groceries?month=${s.month.slice(0, 7)}`}
+                        className="btn btn-primary ml-auto h-9 px-4 text-sm"
+                      >
+                        What it bought, product by product →
+                      </Link>
+                    )}
                   </nav>
                   <MerchantTable
                     month={s.month}

@@ -1523,6 +1523,22 @@ export const fetchMerchants = (
 ) => send<MerchantRow[]>("GET", `/api/spending/merchants${query({ month, ...f })}`);
 export const fetchProducts = (month: string, product_group?: string) =>
   send<ProductRow[]>("GET", `/api/spending/products${query({ month, product_group })}`);
+// ---------- Groceries (ADR-059) ----------
+export type Groceries = {
+  month: string;
+  spent: Money;
+  usual: Money;
+  invoiced: Money;
+  weeks: Money;
+  trend: { month: string; spent: Money; invoiced: Money }[];
+  aisles: { name: string; amount: Money; lines: number; usual: Money }[];
+  products: ProductRow[];
+  stores: { name: string; invoices: number; amount: Money }[];
+  missing: { transaction_id: number; txn_date: string; merchant: string; amount: Money; account_name: string | null }[];
+  ungrouped_products: number;
+};
+export const fetchGroceries = (month: string) =>
+  send<Groceries>("GET", `/api/spending/groceries${query({ month })}`);
 export const fetchIdeas = (month: string, person?: string) =>
   send<Idea[]>("GET", `/api/spending/ideas${query({ month, person })}`);
 

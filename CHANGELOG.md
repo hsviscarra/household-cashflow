@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.72.0] — Groceries
+
+### Added
+- **Groceries** (Money → Groceries, ADR-059): a month's grocery spending next to what the
+  supermarket invoices say it bought: against the usual month, per week, by aisle, top products
+  with their price change, stores, the last six months, and the grocery charges whose invoice
+  hasn't arrived. Spending's Groceries group links to it.
+
 ## [0.71.0] — To do, one list at a time
 
 ### Changed

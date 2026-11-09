@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -20,7 +20,7 @@ from app.schemas import (
     SpendSliceOut,
     SpendTotalOut,
 )
-from app.services import shopping, spending
+from app.services import groceries, shopping, spending
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])
 DB = Annotated[Session, Depends(get_session)]
@@ -142,6 +142,13 @@ def get_products(
 ) -> list[ProductRowOut]:
     """A month's products from the SRI invoices, with the price before and a cheaper store."""
     return [ProductRowOut(**asdict(p)) for p in shopping.products(db, month, product_group, store)]
+
+
+@router.get("/groceries")
+def get_groceries(db: DB, month: date) -> dict[str, Any]:
+    """Groceries (ADR-059): the month's supermarket spending next to what its invoices say it
+    bought: by aisle, top products, stores, and the charges whose invoice hasn't arrived."""
+    return asdict(groceries.build(db, month))
 
 
 @router.get("/ideas", response_model=list[IdeaOut])
