@@ -136,6 +136,15 @@ export const PAGES: PageDef[] = [
     summary: "Each person's deductible personal expenses from the SRI invoices, the cap and the 18% rebate.",
   },
   {
+    path: "/taxes/iva",
+    label: "Monthly IVA",
+    group: "Taxes & reports",
+    feature: "P1",
+    summary:
+      "The monthly IVA return from the SRI documents: sales, purchases with credit, retenciones, Form 104.",
+    hidden: true, // a tab of Taxes (ADR-060)
+  },
+  {
     path: "/report",
     label: "Monthly report",
     group: "Taxes & reports",

@@ -22,6 +22,7 @@ from app.models import Invoice
 
 KEY = re.compile(r"(?<!\d)\d{49}(?!\d)")
 FACTURA = "01"
+RETENCION = "07"
 TIMEOUT = 20  # seconds per access key
 MAX_BYTES = 2_000_000
 ENVELOPE = (
@@ -40,7 +41,7 @@ class SriError(Exception):
 class Keys:
     new: list[str] = field(default_factory=list)  # invoices not in the app yet
     stored: int = 0  # invoices already in the app
-    other: int = 0  # credit notes, retentions and other documents: not read
+    other: int = 0  # credit notes and other documents: not read
 
 
 def doc_type(key: str) -> str:
@@ -57,12 +58,16 @@ def find_keys(db: Session, text: str) -> Keys:
         if k not in seen:
             seen.append(k)
     out = Keys()
-    invoices = [k for k in seen if doc_type(k) == FACTURA]
+    # Invoices, and retenciones made to the household (for the IVA return, ADR-062).
+    invoices = [k for k in seen if doc_type(k) in (FACTURA, RETENCION)]
     out.other = len(seen) - len(invoices)
     have: set[str] = set()
     for i in range(0, len(invoices), 1000):
         chunk = invoices[i : i + 1000]
         have |= set(db.scalars(select(Invoice.access_key).where(Invoice.access_key.in_(chunk))))
+    from app.services import iva
+
+    have |= iva.known_keys(db, invoices)
     out.stored = len(have)
     out.new = [k for k in invoices if k not in have]
     return out

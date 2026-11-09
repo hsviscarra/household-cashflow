@@ -25,7 +25,7 @@ from app.schemas import (
     SuggestedOut,
     UngroupedOut,
 )
-from app.services import invoices, product_suggest, sri
+from app.services import invoices, iva, product_suggest, sri
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 DB = Annotated[Session, Depends(get_session)]
@@ -48,9 +48,34 @@ def _month(text: str) -> date:
 def receive_xml(db: Session, data: bytes, file_name: str, user: str) -> InvoiceUploadOut:
     """One XML file, from the inbox or an upload: stored, duplicate, skipped or refused."""
     name = (file_name or "invoice.xml")[:260]
+    try:  # an invoice the household issued goes to the IVA return, not to purchases (ADR-062)
+        sale = iva.own_sale(data) if len(data) <= invoices.MAX_BYTES else None
+    except invoices.InvoiceError:
+        sale = None
+    if sale is not None:
+        s, dup = iva.store_sale(db, sale, user)
+        return InvoiceUploadOut(
+            file_name=name,
+            outcome="duplicate" if dup else "stored",
+            message=f"Your invoice {s.number} to {s.buyer_name}: {s.total:,.2f}"
+            + (" is already in the app." if dup else ", for the IVA return."),
+        )
     try:
         parsed = invoices.parse(data)
     except invoices.NotAnInvoice as exc:
+        try:
+            held = iva.withholding(data)
+        except invoices.InvoiceError:
+            held = None
+        if held is not None:
+            w, dup = iva.store_withholding(db, held, user)
+            return InvoiceUploadOut(
+                file_name=name,
+                outcome="duplicate" if dup else "stored",
+                message=f"Retención {w.number} from {w.issuer_name}: income tax "
+                f"{w.income_tax:,.2f}, IVA {w.iva:,.2f}"
+                + (" is already in the app." if dup else "."),
+            )
         return InvoiceUploadOut(file_name=name, outcome="skipped", message=str(exc))
     except invoices.InvoiceError as exc:
         return InvoiceUploadOut(file_name=name, outcome="rejected", message=str(exc))

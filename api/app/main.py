@@ -25,6 +25,7 @@ from app.routers import (
     inbox,
     investments,
     invoices,
+    iva,
     me,
     networth,
     people,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(investments.router)
     app.include_router(invoices.router)
     app.include_router(gastos.router)
+    app.include_router(iva.router)
     app.include_router(budget.router)
     app.include_router(goals.router)
     app.include_router(report.router)
