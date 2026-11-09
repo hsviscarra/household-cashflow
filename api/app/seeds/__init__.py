@@ -362,3 +362,17 @@ def unload_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:
         cid = _category_ids(conn, category).get(new)
         if cid is not None:
             conn.execute(update(category).where(category.c.category_id == cid).values(name=path))
+
+
+DEBT_CATEGORIES = ("Savings & Debt/Loan Payments", "Housing/Mortgage BIESS")
+
+
+def load_v8(conn: Connection, category: Table) -> None:
+    """Debt payment categories (ADR-054, migration 0038 does the same on the database, plus the
+    categories loans and purchases are paid through)."""
+    ids = _category_ids(conn, category)
+    for path in DEBT_CATEGORIES:
+        if path in ids:
+            conn.execute(
+                update(category).where(category.c.category_id == ids[path]).values(kind="debt")
+            )

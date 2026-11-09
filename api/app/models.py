@@ -28,7 +28,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 ACCOUNT_KINDS = ("checking", "savings", "credit_card")
 OWNERS = ("Hernan", "Lauren", "Joint")
 COUNTRIES = ("US", "EC")
-CATEGORY_KINDS = ("income", "expense", "savings", "transfer")
+CATEGORY_KINDS = ("income", "expense", "savings", "transfer", "debt")  # debt: ADR-054
 MATCH_TYPES = ("contains", "starts_with", "regex")
 TXN_TYPES = ("income", "expense", "savings", "transfer", "refund", "fee_interest", "debt_payment")
 TXN_SOURCES = ("statement", "manual", "excel_history", "bank_sync")

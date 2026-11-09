@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.68.0] — Loan and house payments are debt payments
+
+### Fixed
+- Payments on the new house, the BIESS mortgage and Lauren's US education loans count as **debt
+  payments** instead of savings or spending (ADR-054): a new category kind "Debt payments", set on
+  Loan Payments, Mortgage BIESS and the categories loans and purchases are paid through; their
+  lines and recurring items follow. Migration 0038.
+
 ## [0.67.0] — Confirm loan payments
 
 ### Added

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 AccountKind = Literal["checking", "savings", "credit_card"]
 Owner = Literal["Hernan", "Lauren", "Joint"]
 Country = Literal["US", "EC"]
-CategoryKind = Literal["income", "expense", "savings", "transfer"]
+CategoryKind = Literal["income", "expense", "savings", "transfer", "debt"]
 MatchType = Literal["contains", "starts_with", "regex"]
 
 HEX_COLOR = r"^#[0-9A-Fa-f]{6}$"

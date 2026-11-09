@@ -49,7 +49,8 @@ type TabId = (typeof TABS)[number]["id"];
 const KIND_LABEL: Record<CategoryKind, string> = {
   income: "Income",
   expense: "Expenses",
-  savings: "Savings & debt",
+  savings: "Savings and investing",
+  debt: "Debt payments (loans, a house being paid off)",
   transfer: "Transfers (not counted as spending)",
 };
 const MATCH_LABEL: Record<MatchType, string> = {

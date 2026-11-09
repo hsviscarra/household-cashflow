@@ -18,7 +18,8 @@ export type PickEntry = {
 const KIND_LABEL: Record<CategoryKind, string> = {
   expense: "Spending",
   income: "Income",
-  savings: "Savings & debt",
+  savings: "Savings",
+  debt: "Debt payments",
   transfer: "Transfers",
 };
 const MOST_USED = 5;

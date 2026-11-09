@@ -1106,6 +1106,13 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     # ADR-051: where's the money on SQL Server.
     rec = client.get("/api/reconcile", params={"from": "2026-01-01", "to": "2026-10-01"})
     assert rec.status_code == 200, rec.text
+    # ADR-054: debt categories after migration 0038.
+    kinds = {
+        c["name"]: c["kind"] for g in client.get("/api/categories").json() for c in g["children"]
+    }
+    assert kinds.get("Loan Payments") == "debt" and kinds.get("Mortgage BIESS") == "debt"
+    debt = client.post("/api/categories", json={"name": "CI car loan", "kind": "debt"})
+    assert debt.status_code == 201, debt.text
 
     monkeypatch.setenv("READER_PASSWORD", "Ci-Only-Passw0rd!")
     get_settings.cache_clear()

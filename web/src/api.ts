@@ -61,7 +61,7 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 export type AccountKind = "checking" | "savings" | "credit_card";
 export type Owner = "Hernan" | "Lauren" | "Joint";
 export type Country = "US" | "EC";
-export type CategoryKind = "income" | "expense" | "savings" | "transfer";
+export type CategoryKind = "income" | "expense" | "savings" | "transfer" | "debt";
 export type MatchType = "contains" | "starts_with" | "regex";
 
 export type Account = {
