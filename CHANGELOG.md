@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.77.1] — A house installment stays done
+
+### Fixed
+- A transfer given a savings or debt category (a house installment, a loan) no longer comes back
+  under "Who or what is it".
+- "Use for future lines too" is off for bank transfer wording such as "TRANSFERENCIA CTAS TERCEROS
+  BCA ENL", which says nothing about who was paid.
+
 ## [0.77.0] — Check every category
 
 ### Added
