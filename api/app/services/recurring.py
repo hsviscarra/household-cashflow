@@ -696,6 +696,23 @@ def _partner_accounts(db: Session, rows: list[Transaction]) -> dict[int, int]:
     return out
 
 
+def recategorized(db: Session, t: Transaction, user: str = "system") -> int:
+    """After a person changes a line's category: free it from an entry of another category, then
+    match its month again, so a rent line given its category counts as the rent paid."""
+    if t.recurring_entry_id is not None:
+        tpl = db.scalar(
+            select(RecurringTemplate)
+            .join(RecurringEntry, RecurringEntry.template_id == RecurringTemplate.template_id)
+            .where(RecurringEntry.entry_id == t.recurring_entry_id)
+        )
+        if tpl is not None and tpl.category_id != t.category_id and t.source != "excel_history":
+            _set_link(db, t, None, user, "Category changed")
+            db.commit()
+    if t.recurring_entry_id is None and t.cash_month is not None:
+        return match(db, t.cash_month, user)
+    return 0
+
+
 def match_all(db: Session, user: str = "system") -> int:
     found = db.scalars(
         select(RecurringEntry.month).where(RecurringEntry.status == "planned").distinct()
