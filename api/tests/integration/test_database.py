@@ -1014,6 +1014,14 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
     month = client.get("/api/invoices", params={"month": "2026-10"}).json()
     assert {g["group"] for g in month["groups"]} >= {"Dairy & Eggs", "Household & Cleaning"}
 
+    # ADR-059, 061, 062 on SQL Server: groceries, its products and the IVA month answer.
+    g = client.get("/api/spending/groceries", params={"month": "2026-10-01"})
+    assert g.status_code == 200, g.text
+    gp = client.get("/api/spending/groceries/products", params={"start": "2026-10-01"})
+    assert gp.status_code == 200, gp.text
+    iva_month = client.get("/api/taxes/iva", params={"month": "2026-10"})
+    assert iva_month.status_code == 200, iva_month.text
+
     # ADR-036: gastos personales on SQL Server (migration 0031).
     [row] = client.get("/api/gastos/2026/invoices").json()
     chosen = client.put(
