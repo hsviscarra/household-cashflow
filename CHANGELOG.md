@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.77.0] — Check every category
+
+### Added
+- **Transactions → By category** (ADR-065): every category of the month (or 3 or 12 months), with
+  its lines; move one, or tick several and move them together. Income, savings, debt payments and
+  transfers included.
+
+### Changed
+- To do explains what a bill and a rule are, what saving or refusing a suggestion does, and what
+  "Statements, imports and bills" means.
+
+### Fixed
+- Data status no longer reports a balance break when the same statement was uploaded twice.
+- Groceries loads every invoice's lines in one query.
+
 ## [0.76.0] — Credit and debit notes; an unfinished month isn't compared
 
 ### Added

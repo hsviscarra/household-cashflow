@@ -370,8 +370,9 @@ def _suggestions(db: Session, today: date) -> Section:
             Task(
                 key=f"rule:{s.pattern}",
                 kind="rule",
-                title=f"Rule: {s.pattern}",
-                detail=f"→ {c.name if c else '?'} · you chose it {s.times} times",
+                title=f"Lines with “{s.pattern}” → {c.name if c else '?'}",
+                detail=f"You chose {c.name if c else 'it'} for these {s.times} times; "
+                "a rule does it on its own from now on",
                 link="/settings?tab=rules",
                 data={
                     "pattern": s.pattern,
@@ -386,8 +387,8 @@ def _suggestions(db: Session, today: date) -> Section:
                 key=f"bill:{b.merchant}",
                 kind="bill",
                 title=f"Bill: {b.merchant}",
-                detail=f"every {b.every_months} month{'s' if b.every_months > 1 else ''} · "
-                f"around day {b.due_day} · {b.times} charges",
+                detail=("every month" if b.every_months == 1 else f"every {b.every_months} months")
+                + f", around day {b.due_day} · seen {b.times} times",
                 amount=-b.amount,
                 on=b.last_date,
                 link="/recurring",

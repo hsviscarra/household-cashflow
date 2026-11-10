@@ -328,3 +328,30 @@ def test_file_names_by_bank() -> None:
     assert status._file_names(pc, [date(2026, 10, 23)]) == ["ESTADOCUENTA202610.pdf"]  # type: ignore[arg-type]
     other = SimpleNamespace(institution="Diners Club", last4=None)
     assert status._file_names(other, nov3) == []  # type: ignore[arg-type]
+
+
+def test_the_same_period_twice_is_not_a_break() -> None:
+    """Two files of one statement (or overlapping ranges) compare with the statement that ends
+    before them, not with each other (three false breaks on 2026-11-10)."""
+    from decimal import Decimal
+
+    from app.models import Account
+    from app.services import status
+
+    def stmt(fid: int, start: date, end: date, opening: str, closing: str) -> status._Stmt:
+        return status._Stmt(fid, f"{fid}.pdf", 1, start, end, Decimal(opening), Decimal(closing))
+
+    stmts = [
+        stmt(1, date(2026, 7, 23), date(2026, 8, 22), "5000.00", "5968.07"),
+        stmt(2, date(2026, 8, 23), date(2026, 9, 22), "5968.07", "6856.04"),
+        stmt(3, date(2026, 9, 23), date(2026, 10, 22), "6856.04", "7453.01"),
+        stmt(4, date(2026, 9, 23), date(2026, 10, 22), "6856.04", "7453.01"),  # same, again
+        stmt(5, date(2026, 10, 23), date(2026, 11, 22), "7000.00", "7100.00"),  # a real break
+    ]
+    months = [status.MonthStatus(date(2026, m, 1), "statements") for m in (8, 9, 10)]
+    acct = Account(account_id=1, name="BofA")
+    status._balance_breaks(None, {1: stmts}, {1: acct}, months)  # type: ignore[arg-type]
+    texts = [i.text for ms in months for i in ms.items]
+    assert texts == [
+        "BofA: opens at 7,000.00 on Oct 23 but the previous statement closed at 7,453.01"
+    ]

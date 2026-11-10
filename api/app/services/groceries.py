@@ -14,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import PRODUCT_GROUPS, Category, Invoice
 from app.models import v_spending_line as v
@@ -119,7 +119,9 @@ def _invoices(db: Session, start: date, end_exclusive: date, txns: set[int]) -> 
     food by its products."""
     rows = list(
         db.scalars(
-            select(Invoice).where(Invoice.issue_date >= start, Invoice.issue_date < end_exclusive)
+            select(Invoice)
+            .options(selectinload(Invoice.lines))  # one query for every invoice's lines
+            .where(Invoice.issue_date >= start, Invoice.issue_date < end_exclusive)
         )
     )
     out = []

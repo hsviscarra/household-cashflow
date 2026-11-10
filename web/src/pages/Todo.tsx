@@ -40,14 +40,15 @@ const HOW: Record<string, string> = {
   who: "Transfers that don't say who they're from or to. Choose the person (or add one), or a category such as Salary.",
   transfers:
     "Money moved between accounts and the app can't find the other side. Say what it was (the house, a loan, a person), or press “Other side isn't in the app” when it came from or went to an account you don't track. If that statement is just not uploaded yet, leave it: it pairs up on its own.",
-  books: "Statements to upload, imports to approve and bills not paid yet. Each button takes you where it's done.",
+  books:
+    "Three kinds of loose ends. A statement to upload: the month isn't complete without it. An import to approve: a statement you uploaded that's waiting for you to check it. A bill not paid: something you told the app comes every month (rent, school, insurance) and no line paid it yet; open Bills and link the line that paid it, or change the bill if it changed. Each button takes you there.",
   loans: "Say Yes when the month's installment is paid; the balance updates from the loan's table.",
   values:
     "Values on Net worth that are old. Enter today's value, or stop counting it if you don't have it any more or it's the same money as another item.",
   suggestions:
-    "The app noticed these patterns. Save it, choose a different category, or say No and it won't ask again.",
+    "Two kinds. A rule: you've given lines with the same text the same category several times; Save rule and future lines with that text get it on their own (see or delete rules in Settings → Rules). A bill: the same charge shows up every month; Add to bills and the app expects it monthly, warns when it's late or costs more, and counts it in the forecast. Not a bill or No: it won't ask again.",
   invoices:
-    "Electronic invoices (SRI) that reach your email count for the yearly personal expenses deduction once each says whose it is and what it was for. That's done on the Tax deductions page.",
+    "Electronic invoices (SRI) count for the yearly personal expenses deduction once each says whose it is and what it was for. That's done on Taxes → Deductions.",
 };
 
 export default function TodoPage() {
@@ -69,9 +70,17 @@ export default function TodoPage() {
   const finish = (key: string, text: string) => {
     setGone((g) => new Set(g).add(key));
     notify(text);
-    ["todo", "review", "transactions", "cashflow", "spending", "networth", "rules", "recurring", "people"].forEach((k) =>
-      qc.invalidateQueries({ queryKey: [k] }),
-    );
+    [
+      "todo",
+      "review",
+      "transactions",
+      "cashflow",
+      "spending",
+      "networth",
+      "rules",
+      "recurring",
+      "people",
+    ].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
   const ctx: Ctx = { groups: cats.data ?? [], notify, finish };
 
@@ -119,11 +128,15 @@ export default function TodoPage() {
                       aria-current={on ? "true" : undefined}
                       onClick={() => navigate({ hash: s.key }, { replace: true })}
                       className={`flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left text-sm font-medium ${
-                        on ? "bg-nav-active text-nav-active-ink" : "bg-ground text-ink hover:bg-surface lg:bg-transparent"
+                        on
+                          ? "bg-nav-active text-nav-active-ink"
+                          : "bg-ground text-ink hover:bg-surface lg:bg-transparent"
                       }`}
                     >
                       <span className="whitespace-nowrap">{s.title}</span>
-                      <span className={`num rounded-full px-2 text-xs font-bold ${on ? "bg-ground" : "bg-surface"}`}>
+                      <span
+                        className={`num rounded-full px-2 text-xs font-bold ${on ? "bg-ground" : "bg-surface"}`}
+                      >
                         {s.count}
                       </span>
                     </button>
@@ -251,9 +264,7 @@ function Go({ to, children }: { to: string; children: ReactNode }) {
 function Always({ on, set, ok = true }: { on: boolean; set: (v: boolean) => void; ok?: boolean }) {
   if (!ok)
     return (
-      <span className="text-xs text-muted">
-        Only this line: the description is too general to remember.
-      </span>
+      <span className="text-xs text-muted">Only this line: the description is too general to remember.</span>
     );
   return (
     <label className="flex items-center gap-1.5 text-sm">
@@ -341,7 +352,8 @@ function Who({ t, ctx, transfer = false }: { t: TodoTask; ctx: Ctx; transfer?: b
         return false; // a rule for it exists already: the line is still categorized
       }
     },
-    onSuccess: (rule) => ctx.finish(t.key, rule ? "Categorized, and saved a rule for next time." : "Categorized."),
+    onSuccess: (rule) =>
+      ctx.finish(t.key, rule ? "Categorized, and saved a rule for next time." : "Categorized."),
     onError: (e: Error) => ctx.notify(e.message, "bad"),
   });
   const settle = useMutation({
@@ -441,7 +453,11 @@ function Value({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
     return (
       <>
         <Go to="/import">Upload its statement</Go>
-        <button className="btn btn-quiet h-9 px-3 text-sm" disabled={later.isPending} onClick={() => later.mutate()}>
+        <button
+          className="btn btn-quiet h-9 px-3 text-sm"
+          disabled={later.isPending}
+          onClick={() => later.mutate()}
+        >
           Don't ask again
         </button>
       </>
@@ -449,7 +465,11 @@ function Value({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
   return (
     <>
       {t.kind === "duplicate" && (
-        <button className="btn btn-primary h-9 px-4 text-sm" disabled={pause.isPending} onClick={() => pause.mutate()}>
+        <button
+          className="btn btn-primary h-9 px-4 text-sm"
+          disabled={pause.isPending}
+          onClick={() => pause.mutate()}
+        >
           Stop counting it
         </button>
       )}
@@ -476,7 +496,11 @@ function Value({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
         </button>
       </form>
       {t.kind !== "duplicate" && (
-        <button className="btn btn-secondary h-9 px-3 text-sm" disabled={pause.isPending} onClick={() => pause.mutate()}>
+        <button
+          className="btn btn-secondary h-9 px-3 text-sm"
+          disabled={pause.isPending}
+          onClick={() => pause.mutate()}
+        >
           Stop counting it
         </button>
       )}
@@ -541,7 +565,11 @@ function LoanPaid({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
   });
   return (
     <>
-      <button className="btn btn-primary h-9 px-4 text-sm" disabled={paid.isPending} onClick={() => paid.mutate()}>
+      <button
+        className="btn btn-primary h-9 px-4 text-sm"
+        disabled={paid.isPending}
+        onClick={() => paid.mutate()}
+      >
         Yes, paid
       </button>
       <Link className="btn btn-quiet h-9 px-4 text-sm" to={t.link}>
@@ -573,7 +601,11 @@ function AddBill({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
   const no = useDismiss(t, ctx, "Fine, it won't suggest that bill again.");
   return (
     <>
-      <button className="btn btn-primary h-9 px-4 text-sm" disabled={add.isPending} onClick={() => add.mutate()}>
+      <button
+        className="btn btn-primary h-9 px-4 text-sm"
+        disabled={add.isPending}
+        onClick={() => add.mutate()}
+      >
         Add to bills
       </button>
       <button className="btn btn-quiet h-9 px-3 text-sm" disabled={no.isPending} onClick={() => no.mutate()}>

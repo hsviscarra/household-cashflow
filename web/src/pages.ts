@@ -63,6 +63,15 @@ export const PAGES: PageDef[] = [
     summary: "Every loaded line, searchable and editable.",
   },
   {
+    path: "/transactions/categories",
+    label: "By category",
+    group: "Money",
+    feature: "F9",
+    summary: "Every category with its lines, to check them and move the wrong ones.",
+    hidden: true, // a tab of Transactions (ADR-060)
+  },
+
+  {
     path: "/review",
     label: "Inbox",
     group: "Money",
