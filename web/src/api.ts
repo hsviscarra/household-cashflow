@@ -449,7 +449,18 @@ export type Txn = {
   source: string;
   statement_file_id: number | null;
   notes: string | null;
-  category_source: "rule" | "section" | "manual" | "suggestion" | "excel" | "split" | "match" | null;
+  category_source:
+    | "rule"
+    | "section"
+    | "manual"
+    | "suggestion"
+    | "excel"
+    | "split"
+    | "match"
+    | "note"
+    | "person"
+    | "invoice"
+    | null;
   parent_transaction_id: number | null;
   parts: number; // > 0: split into this many parts, which count instead of this line
   transfer_group_id?: number | null;

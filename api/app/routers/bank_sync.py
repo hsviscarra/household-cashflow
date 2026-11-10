@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.models import Account, Transaction
-from app.services import bank_sync, people, recurring, transfers
+from app.services import bank_sync, invoices, people, recurring, transfers
 
 router = APIRouter(prefix="/api/bank-sync", tags=["bank sync"])
 DB = Annotated[Session, Depends(get_session)]
@@ -96,6 +96,7 @@ def run(
         # The same follow-ups as an approved statement: people, transfers, recurring bills.
         people.tag_lines(db, user)
         transfers.match(db, user)
+        invoices.link_pending(db, since=(today or date.today()) - timedelta(days=60))  # ADR-066
         months = db.scalars(
             select(Transaction.cash_month).where(Transaction.source == bank_sync.SOURCE).distinct()
         )

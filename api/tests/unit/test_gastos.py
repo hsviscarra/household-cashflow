@@ -179,6 +179,7 @@ def test_person_and_category_from_the_paying_line(client: TestClient, db: Sessio
     t = card_line(db, date(2026, 10, 28), Decimal("13.40"))
     t.person = "Lauren"
     t.category_id = _cat(db, "Pharmacy").category_id
+    t.category_source = "manual"  # a person's choice: the invoice doesn't change it (ADR-066)
     db.commit()
     upload(client, ("a.xml", factura(key=key(9), lines=FOOD)))
     inv = db.scalar(select(Invoice).where(Invoice.access_key == key(9)))
