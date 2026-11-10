@@ -355,3 +355,22 @@ def test_the_same_period_twice_is_not_a_break() -> None:
     assert texts == [
         "BofA: opens at 7,000.00 on Oct 23 but the previous statement closed at 7,453.01"
     ]
+
+
+def test_a_period_only_the_parser_read_still_counts(client: TestClient, db: Session) -> None:
+    """A statement whose period upload couldn't read (a garbled first page) uses the period the
+    parser read, so Data Status doesn't ask for it again."""
+    from app.models import StatementFile
+
+    _only_produbanco(db)
+    _upload(client, "jun.pdf", s.produbanco_full(period=JUNE, lines=PHONE))
+    sf = db.scalar(select(StatementFile).where(StatementFile.file_name == "jun.pdf"))
+    assert sf is not None and sf.period_start == date(2026, 6, 1)
+    sf.period_start = sf.period_end = None  # as an old upload left it
+    db.commit()
+    [acc] = _status(client, "2026-07-10")["statements"]
+    assert [(x["start"], x["end"]) for x in acc["statements"]] == [("2026-06-01", "2026-06-30")]
+    assert [g["start"] for g in acc["gaps"]] == ["2026-07-01"]
+    assert "the bank issues it around Jul 31" in " ".join(
+        _texts(_month(_status(client, "2026-07-10"), "2026-07-01"))
+    )

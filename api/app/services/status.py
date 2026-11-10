@@ -231,14 +231,23 @@ def statement_files(db: Session) -> dict[int, list[TimelineStatement]]:
     for b in db.scalars(select(ImportBatch).order_by(ImportBatch.batch_id)):
         latest[b.statement_file_id] = b
     out: dict[int, list[TimelineStatement]] = defaultdict(list)
+    # The period the parser read, for files whose period upload couldn't read from the first
+    # page (a Pacificard statement printing "hasta 2VOCT/2026").
+    read = {
+        h.statement_file_id: (h.period_start, h.period_end)
+        for h in db.scalars(select(StatementHeader))
+    }
     rows = db.execute(
         select(StatementFile, StatementFileAccount.account_id).join(
             StatementFileAccount,
             StatementFileAccount.statement_file_id == StatementFile.statement_file_id,
         )
     )
-    for sf, account_id in rows:
-        if sf.period_start is None or sf.period_end is None:
+    for sf, account_id in list(rows):
+        start, end = sf.period_start, sf.period_end
+        if start is None or end is None:
+            start, end = read.get(sf.statement_file_id, (None, None))
+        if start is None or end is None:
             continue
         batch = latest.get(sf.statement_file_id)
         state = _standing(batch)
@@ -246,8 +255,8 @@ def statement_files(db: Session) -> dict[int, list[TimelineStatement]]:
             TimelineStatement(
                 sf.statement_file_id,
                 sf.file_name,
-                sf.period_start,
-                sf.period_end,
+                start,
+                end,
                 state,
                 batch.batch_id if batch is not None and batch.status != "rejected" else None,
             )

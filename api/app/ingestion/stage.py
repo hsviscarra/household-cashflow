@@ -246,6 +246,8 @@ def parse_statement(
         raise StageError("This statement is linked to several accounts; keep only one.", 422)
 
     _clear_preview(db, sf)
+    if sf.period_start is None or sf.period_end is None:  # upload couldn't read it; the parser did
+        sf.period_start, sf.period_end = parsed.period_start, parsed.period_end
     db.add(
         StatementHeader(
             statement_file_id=sf.statement_file_id,
