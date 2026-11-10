@@ -59,8 +59,13 @@ def test_categorize_and_who(loaded: TestClient, db: Session) -> None:  # noqa: F
     who = _section(_todo(loaded), "who")
     assert who is not None
     task = next(t for t in who["tasks"] if t["title"].startswith(TRANSFER))
-    salary = _cat(db, "Salary")
     tid = task["data"]["transaction_id"]
+    # A debt category (a house installment) explains it too (it came back, 2026-11-10).
+    house = _cat(db, "Housing/New house")
+    assert loaded.patch(f"/api/transactions/{tid}", json={"category_id": house}).status_code == 200
+    who = _section(_todo(loaded), "who") or {"tasks": []}
+    assert tid not in {t["data"]["transaction_id"] for t in who["tasks"]}
+    salary = _cat(db, "Salary")
     assert loaded.patch(f"/api/transactions/{tid}", json={"category_id": salary}).status_code == 200
     who = _section(_todo(loaded), "who") or {"tasks": []}
     assert tid not in {t["data"]["transaction_id"] for t in who["tasks"]}

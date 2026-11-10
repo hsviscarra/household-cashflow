@@ -214,9 +214,12 @@ def who_lines(
     """Transfers without a person whose description doesn't say who: the last 90 days, or a
     month. Card payments and transfers between your own accounts are left out."""
     paired = transfers._paired_categories(db)
-    # Explained already: a line given an income or expense category (Salary from an employer,
-    # rent paid by Zelle) needs no person (ADR-047).
-    explained = select(Category.category_id).where(Category.kind.in_(("income", "expense")))
+    # Explained already: a line given an income, expense, savings or debt category (Salary from
+    # an employer, rent paid by Zelle, a house installment) needs no person (ADR-047). Debt and
+    # savings were missing: a house installment kept coming back (2026-11-10).
+    explained = select(Category.category_id).where(
+        Category.kind.in_(("income", "expense", "savings", "debt"))
+    )
     q = select(Transaction).where(
         Transaction.source.in_(FROM_BANKS),
         Transaction.counterparty_id.is_(None),
