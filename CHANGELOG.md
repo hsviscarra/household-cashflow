@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.78.1] — Pacificard statements count
+
+### Fixed
+- Data status asked for Pacificard statements back to July although they were loaded: their
+  period couldn't be read from the first page at upload, so the statement list now uses the period
+  the parser read, and reading a statement fills it in.
+
 ## [0.78.0] — Grocery trends, and the invoice picks the category
 
 ### Added
