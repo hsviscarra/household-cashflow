@@ -449,7 +449,18 @@ export type Txn = {
   source: string;
   statement_file_id: number | null;
   notes: string | null;
-  category_source: "rule" | "section" | "manual" | "suggestion" | "excel" | "split" | "match" | null;
+  category_source:
+    | "rule"
+    | "section"
+    | "manual"
+    | "suggestion"
+    | "excel"
+    | "split"
+    | "match"
+    | "note"
+    | "person"
+    | "invoice"
+    | null;
   parent_transaction_id: number | null;
   parts: number; // > 0: split into this many parts, which count instead of this line
   transfer_group_id?: number | null;
@@ -1544,6 +1555,53 @@ export type Groceries = {
 };
 export const fetchGroceries = (month: string) =>
   send<Groceries>("GET", `/api/spending/groceries${query({ month })}`);
+export type GroceryTrendMonth = {
+  month: string;
+  spent: string;
+  invoiced: string;
+  trips: number;
+  basket: string;
+  aisles: Record<string, string>;
+};
+export type GroceryCell = {
+  month: string;
+  aisle: string;
+  type: string | null;
+  brand: string | null;
+  amount: string;
+  lines: number;
+};
+export type GroceryMover = {
+  product_key: string;
+  description: string;
+  aisle: string;
+  first_month: string;
+  first_price: string;
+  last_month: string;
+  last_price: string;
+  change: string;
+  amount: string;
+};
+export type GroceryRegular = {
+  product_key: string;
+  description: string;
+  aisle: string;
+  months: number;
+  usual: string;
+};
+export type GroceryTrends = {
+  month: string;
+  months: GroceryTrendMonth[];
+  aisles: string[];
+  cells: GroceryCell[];
+  weekdays: { day: number; trips: number; amount: string }[];
+  risers: GroceryMover[];
+  fallers: GroceryMover[];
+  new: GroceryRegular[];
+  skipped: GroceryRegular[];
+};
+export const fetchGroceryTrends = (month: string, months = 12) =>
+  send<GroceryTrends>("GET", `/api/spending/groceries/trends${query({ month, months: String(months) })}`);
 export type GroceryProduct = {
   product_key: string;
   description: string;

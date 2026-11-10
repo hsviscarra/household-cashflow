@@ -152,6 +152,14 @@ def get_groceries(db: DB, month: date) -> dict[str, Any]:
     return asdict(groceries.build(db, month))
 
 
+@router.get("/groceries/trends")
+def get_grocery_trends(db: DB, month: date, months: int = 12) -> dict[str, Any]:
+    """A year of groceries (ADR-067): each month by aisle, trips and basket, what each aisle,
+    type and brand cost (to compare any two months), shopping days, price movers, new products
+    and regulars not bought this month."""
+    return asdict(groceries.trends(db, month, months))
+
+
 @router.get("/groceries/products")
 def get_grocery_products(db: DB, start: date, months: int = 1) -> dict[str, Any]:
     """Every supermarket product of the period with its aisle, type and brand (ADR-061)."""

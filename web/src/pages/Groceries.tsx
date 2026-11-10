@@ -4,7 +4,9 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { fetchGroceries, type Groceries } from "../api";
 import { addMonths, localToday, money, monthLong, monthShort, num, pct } from "../money";
+import { Legend, StackedColumns } from "../components/charts";
 import GroceryProducts from "./GroceryProducts";
+import GroceryTrends from "./GroceryTrends";
 
 // Groceries (ADR-059): the month's supermarket spending (statements) next to what the invoices
 // say it bought. Defaults to last month, the latest one whose statements are usually in.
@@ -17,14 +19,15 @@ export default function GroceriesPage() {
   const raw = params.get("month");
   const month =
     raw && /^\d{4}-\d{2}$/.test(raw) ? raw : addMonths(`${localToday().slice(0, 7)}-01`, -1).slice(0, 7);
-  const view = params.get("view") === "products" ? "products" : "overview";
+  const v = params.get("view");
+  const view = v === "products" || v === "trends" ? v : "overview";
   const q = useQuery({
     queryKey: ["groceries", month],
     queryFn: () => fetchGroceries(`${month}-01`),
     enabled: view === "overview",
   });
   const g = q.data;
-  const show = (v: string) => setParams({ month, ...(v === "products" ? { view: v } : {}) });
+  const show = (to: string) => setParams({ month, ...(to !== "overview" ? { view: to } : {}) });
 
   return (
     <section className="space-y-6">
@@ -40,14 +43,15 @@ export default function GroceriesPage() {
           <div role="radiogroup" aria-label="View" className="flex rounded-[10px] bg-surface p-1 text-sm">
             {[
               ["overview", "Overview"],
+              ["trends", "Trends"],
               ["products", "Products"],
-            ].map(([v, name]) => (
+            ].map(([to, name]) => (
               <button
-                key={v}
+                key={to}
                 role="radio"
-                aria-checked={view === v}
-                onClick={() => show(v)}
-                className={`rounded-lg px-3 py-1.5 font-semibold ${view === v ? "bg-ground shadow-sm" : "text-muted"}`}
+                aria-checked={view === to}
+                onClick={() => show(to)}
+                className={`rounded-lg px-3 py-1.5 font-semibold ${view === to ? "bg-ground shadow-sm" : "text-muted"}`}
               >
                 {name}
               </button>
@@ -61,13 +65,14 @@ export default function GroceriesPage() {
               value={month}
               onChange={(e) =>
                 e.target.value &&
-                setParams({ month: e.target.value, ...(view === "products" ? { view } : {}) })
+                setParams({ month: e.target.value, ...(view !== "overview" ? { view } : {}) })
               }
             />
           </label>
         </div>
       </header>
       {view === "products" && <GroceryProducts month={month} />}
+      {view === "trends" && <GroceryTrends month={month} />}
       {q.error && (
         <p role="alert" className="card border-danger-ink p-4 text-danger-ink">
           {(q.error as Error).message}
@@ -154,43 +159,42 @@ function Tile({ label, value, children }: { label: string; value: string; childr
 }
 
 function Trend({ g, month }: { g: Groceries; month: string }) {
-  const top = Math.max(1, ...g.trend.map((p) => Math.max(num(p.spent), num(p.invoiced))));
+  const [, setParams] = useSearchParams();
+  const data = g.trend.map((p) => ({
+    key: p.month.slice(0, 7),
+    label: monthShort(p.month),
+    selected: p.month.slice(0, 7) === month,
+    line: num(p.spent) > 0 ? num(p.spent) : undefined,
+    segments: [{ key: "invoiced", value: num(p.invoiced), color: "var(--color-cat-groceries)" }],
+    tooltip: (
+      <>
+        <p className="font-semibold">{monthLong(p.month)}</p>
+        <p className="num">Spent {money(p.spent)}</p>
+        <p className="num text-muted">With invoices {money(p.invoiced)}</p>
+      </>
+    ),
+  }));
   return (
-    <section aria-labelledby="trend" className="card p-5">
-      <h2 id="trend" className="font-display text-xl font-bold">
-        The last six months
-      </h2>
-      <p className="text-sm text-muted">
-        <span className="mr-1 inline-block size-2.5 rounded-sm bg-flow-out align-middle" /> spent (statements){" "}
-        <span className="ml-3 mr-1 inline-block size-2.5 rounded-sm bg-flow-in align-middle" /> with invoices
-      </p>
-      <ol className="mt-4 grid h-48 grid-cols-6 items-end gap-3">
-        {g.trend.map((p) => {
-          const on = p.month.slice(0, 7) === month;
-          return (
-            <li key={p.month} className="flex h-full flex-col justify-end gap-1">
-              <Link
-                to={`?month=${p.month.slice(0, 7)}`}
-                aria-label={`${monthLong(p.month)}: spent ${money(p.spent)}, with invoices ${money(p.invoiced)}`}
-                className="flex flex-1 items-end justify-center gap-1"
-              >
-                <span
-                  className="w-1/2 max-w-8 rounded-t bg-flow-out"
-                  style={{ height: `${(num(p.spent) / top) * 100}%` }}
-                />
-                <span
-                  className="w-1/2 max-w-8 rounded-t bg-flow-in"
-                  style={{ height: `${(num(p.invoiced) / top) * 100}%` }}
-                />
-              </Link>
-              <span className={`text-center text-xs ${on ? "font-bold text-ink" : "text-muted"}`}>
-                {monthShort(p.month)}
-                <span className="num block">{money(p.spent).replace(/\.\d\d$/, "")}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
+    <section aria-labelledby="trend" className="card space-y-4 p-5">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <h2 id="trend" className="font-display text-xl font-bold">
+          The last six months
+        </h2>
+        <Link to={`?month=${month}&view=trends`} className="text-sm text-primary underline">
+          A year by aisle, comparisons and patterns
+        </Link>
+      </div>
+      <StackedColumns
+        data={data}
+        title="Grocery spending, last six months"
+        onSelect={(m) => setParams({ month: m })}
+      />
+      <div className="flex flex-wrap items-center gap-4">
+        <Legend items={[{ label: "With invoices", color: "var(--color-cat-groceries)" }]} />
+        <span className="flex items-center gap-2 text-sm text-muted">
+          <span aria-hidden className="inline-block h-0.5 w-5 bg-ink" /> Spent (statements)
+        </span>
+      </div>
     </section>
   );
 }

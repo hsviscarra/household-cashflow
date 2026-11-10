@@ -384,7 +384,11 @@ def store(db: Session, p: Parsed, user: str) -> Stored:
     db.add(inv)
     db.flush()
     group_lines(db, inv.lines)
-    _link(db, inv)
+    if _link(db, inv):
+        from app.services import invoice_category
+
+        db.flush()
+        invoice_category.apply(db, since=inv.issue_date)
     db.add(
         LoadLog(
             source="invoice",
@@ -422,9 +426,12 @@ def link_pending(db: Session, since: date | None = None) -> int:
     q = select(Invoice).where(Invoice.transaction_id.is_(None))
     if since is not None:
         q = q.where(Invoice.issue_date >= since)
-    linked = sum(1 for inv in db.scalars(q) if _link(db, inv))
+    linked = sum(1 for inv in list(db.scalars(q)) if _link(db, inv))
     if linked:
         db.commit()
+    from app.services import invoice_category
+
+    invoice_category.apply(db, since=since)  # the products decide the category (ADR-066)
     return linked
 
 

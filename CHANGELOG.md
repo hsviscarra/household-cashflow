@@ -5,6 +5,21 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.78.0] — Grocery trends, and the invoice picks the category
+
+### Added
+- **Groceries → Trends** (ADR-067): 6, 12 or 24 months of supermarket spending by aisle with the
+  statements' spending as a line; compare any two months by aisle, type of product or brand;
+  this month against the usual; trips a month and average basket; the usual shopping day; prices
+  that went up or down; new products and regulars not bought this month.
+- **The invoice decides the category** (ADR-066): when an invoice is matched to the line that paid
+  it, the category holding at least 60% of its products becomes the line's (a Supermaxi receipt
+  that is mostly medicine goes to Pharmacy). A category you chose is never changed.
+
+### Changed
+- The Overview's six-month groceries chart is a proper chart, with a tooltip and the statements'
+  spending as a line.
+
 ## [0.77.1] — A house installment stays done
 
 ### Fixed
