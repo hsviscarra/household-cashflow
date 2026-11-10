@@ -286,6 +286,10 @@ New categories get a color from this list's unused hues or `muted` until one is 
   opacity with "Plan" in the legend.
 - Every chart has a hover or focus tooltip and a table with the same numbers on the page.
 - Text never takes the series color; identity comes from the swatch beside it.
+- Stacked columns (Groceries by aisle): at most seven series in the category palette, the rest
+  together in `cat-fixed` as "Everything else"; segments 1 px apart, only the top one rounded; a
+  second measure is a 2 px `ink` line with dots that breaks where a month has no value. On a
+  narrow chart every other month label is shown.
 
 ## Shape and spacing
 
