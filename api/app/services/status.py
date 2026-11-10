@@ -11,7 +11,6 @@ to the current month, a month is complete when nothing below is open:
   balance for the same account.
 """
 
-import itertools
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -594,7 +593,13 @@ def _balance_breaks(
         account = accounts.get(account_id)
         if account is None:
             continue
-        for prev, nxt in itertools.pairwise(stmts):
+        for i, nxt in enumerate(stmts):
+            # The statement before is the latest one that ends before this one starts: the same
+            # period uploaded twice (two files) or overlapping ranges aren't a break.
+            before = [s for s in stmts[:i] + stmts[i + 1 :] if s.end < nxt.start]
+            if not before:
+                continue
+            prev = max(before, key=lambda s: (s.end, s.file_id))
             if nxt.start > prev.end + timedelta(days=7):
                 continue
             if prev.closing is None or nxt.opening is None or prev.closing == nxt.opening:
