@@ -38,7 +38,7 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import bank_sync, classify, inbox, people, recurring, transfers
+from app.services import bank_sync, classify, inbox, invoices, people, recurring, transfers
 from app.services import rules as rule_engine
 
 log = logging.getLogger(__name__)
@@ -453,6 +453,10 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
     people.tag_lines(db, user)
     # The other side of a card payment or own-account transfer may already be loaded (F10).
     transfers.match(db, user)
+    # Invoices that arrived before their statement: match them, and let their products decide
+    # the category (ADR-066).
+    if new:
+        invoices.link_pending(db, since=min(s.txn_date for s in new) - timedelta(days=7))
     # New lines may pay a month's recurring entries (F11).
     for month in sorted({s.txn_date.replace(day=1) for s in new}):
         recurring.match(db, month, user)

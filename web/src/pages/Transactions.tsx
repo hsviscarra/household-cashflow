@@ -31,6 +31,7 @@ const HOW: Record<string, string> = {
   excel: "workbook",
   split: "split part",
   match: "matched transfer",
+  invoice: "from its invoice's products",
 };
 
 function thisMonth() {

@@ -48,6 +48,7 @@ CATEGORY_SOURCES = (
     "match",
     "note",
     "person",
+    "invoice",  # its invoice's products decided (ADR-066)
 )
 NOTE_SOURCES = ("manual", "email")
 SNAPSHOT_KINDS = ("asset", "liability")
