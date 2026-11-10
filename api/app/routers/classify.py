@@ -33,7 +33,7 @@ from app.schemas import (
     TransactionPatch,
     TransferLegOut,
 )
-from app.services import classify, inbox, line_source, transfers
+from app.services import classify, inbox, line_source, recurring, transfers
 from app.services import suggest as suggestions
 
 router = APIRouter(prefix="/api", tags=["classification"])
@@ -205,6 +205,8 @@ def edit_transaction(
     except classify.ClassifyError as exc:
         db.rollback()
         raise _fail(exc) from exc
+    if "category_id" in fields:
+        recurring.recategorized(db, row, _user(request))
     return _one_out(db, row)
 
 

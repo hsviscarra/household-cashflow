@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.78.2] — A line given its category counts as paid
+
+### Fixed
+- Changing a line's category now matches its month's recurring items again: rent categorized by
+  hand counts as the month's rent instead of staying "not paid". A line moved to another category
+  is freed from the item it was linked to.
+
 ## [0.78.1] — Pacificard statements count
 
 ### Fixed

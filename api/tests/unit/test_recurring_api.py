@@ -397,3 +397,31 @@ def test_a_transfer_matches_through_its_other_side(client: TestClient, db: Sessi
     client.post(f"/api/batches/{b['batch_id']}/approve", headers=USER)
     cell = _cell(_grid(client)["To savings"], 8)
     assert (cell["status"], Decimal(cell["actual"])) == ("matched", Decimal("-25"))
+
+
+def test_a_line_given_its_category_counts_as_paid(client: TestClient, db: Session) -> None:
+    """A rent line categorized by hand after the import is matched to the month's rent; moved to
+    another category, it is freed again."""
+    _template(
+        client, type="income", name="Office Rent", category_id=_cat(db, "Office Rent"), amount="575"
+    )
+    client.post("/api/recurring/generate", json={"month": JUNE})
+    _statement(client, [("Jun 05", "1", "TRANSFERENCIA INTERNET", "575.00")])
+    assert _cell(_grid(client)["Office Rent"], 6)["status"] == "planned"
+    line = db.scalar(
+        select(Transaction).where(Transaction.description_raw.contains("TRANSFERENCIA"))
+    )
+    assert line is not None
+    r = client.patch(
+        f"/api/transactions/{line.transaction_id}",
+        json={"category_id": _cat(db, "Office Rent")},
+        headers=USER,
+    )
+    assert r.status_code == 200, r.text
+    assert _cell(_grid(client)["Office Rent"], 6)["status"] == "matched"
+    client.patch(
+        f"/api/transactions/{line.transaction_id}",
+        json={"category_id": _cat(db, "Other Income")},
+        headers=USER,
+    )
+    assert _cell(_grid(client)["Office Rent"], 6)["status"] == "planned"
