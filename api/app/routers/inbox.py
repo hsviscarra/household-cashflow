@@ -27,7 +27,7 @@ from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
 from app.routers.invoices import receive_xml
-from app.services import digest, people, watchdog
+from app.services import digest, gastos_suggest, people, watchdog
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 DB = Annotated[Session, Depends(get_session)]
@@ -135,6 +135,7 @@ def weekly_digest(
 def _check_in(request: Request, db: Session, today: date | None) -> AlertsOut:
     """The Gmail script's heartbeat and what to email now, each alert once (ADR-078)."""
     watchdog.check_in(db)
+    gastos_suggest.autopilot(db, (today or date.today()).year)  # once a day (ADR-081)
     new = watchdog.fresh(db, today)
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     base = f"{proto}://{request.headers.get('host', request.url.netloc)}"

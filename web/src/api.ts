@@ -1893,7 +1893,7 @@ export type GastosInvoice = {
   person: "Hernan" | "Lauren" | null;
   person_source: "invoice" | "paid" | null;
   category: GpCategory | "none" | null;
-  category_source: "chosen" | "issuer" | "paid" | "products" | null;
+  category_source: "chosen" | "issuer" | "claude" | "paid" | "products" | null;
   transaction_id: number | null;
   paid_as: string | null;
   category_id: number | null; // the app category: chosen for the invoice, else the paying line's

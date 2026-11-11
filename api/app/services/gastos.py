@@ -31,6 +31,7 @@ from app.models import (
 
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
+CLAUDE = "claude (automatic)"  # who made an issuer rule Claude was sure about (ADR-081)
 PEOPLE = ("Hernan", "Lauren")
 RATE = Decimal("0.18")
 # The basic family basket (canasta básica familiar) the SRI uses for each tax year.
@@ -115,7 +116,7 @@ class Row:
     person: str | None
     person_source: str | None  # invoice, chosen, paid
     category: str | None
-    category_source: str | None  # chosen, issuer, paid, products
+    category_source: str | None  # chosen, issuer, claude, paid, products
     transaction_id: int | None
     paid_as: str | None = None
     category_id: int | None = (
@@ -180,7 +181,9 @@ def rows(db: Session, year: int) -> list[Row]:
             .order_by(Invoice.issue_date.desc(), Invoice.invoice_id.desc())
         )
     )
-    rules = {r.issuer_ruc: r.gp_category for r in db.scalars(select(GpIssuerRule))}
+    all_rules = list(db.scalars(select(GpIssuerRule)))
+    rules = {r.issuer_ruc: r.gp_category for r in all_rules}
+    by_claude = {r.issuer_ruc for r in all_rules if r.created_by == CLAUDE}  # ADR-081
     paid_ids = [i.transaction_id for i in invoices if i.transaction_id]
     paid: dict[int, Transaction] = {}
     for i in range(0, len(paid_ids), 1000):
@@ -208,7 +211,8 @@ def rows(db: Session, year: int) -> list[Row]:
         elif inv.gp_category:
             category, c_src = inv.gp_category, "chosen"
         elif inv.issuer_ruc in rules:
-            category, c_src = rules[inv.issuer_ruc], "issuer"
+            category = rules[inv.issuer_ruc]
+            c_src = "claude" if inv.issuer_ruc in by_claude else "issuer"
         elif name and (name in BY_CATEGORY or (group or "") in BY_CATEGORY):
             category, c_src = BY_CATEGORY.get(name) or BY_CATEGORY[group or ""], "paid"
         elif inv.invoice_id in products:
