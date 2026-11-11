@@ -250,3 +250,156 @@ def unmatched(db: Session, month: date | None = None) -> list[Transaction]:
     if month:
         q = q.where(Transaction.cash_month == month.replace(day=1))
     return list(db.scalars(q.order_by(Transaction.txn_date, Transaction.transaction_id)))
+
+
+# --- Settling transfers by hand (ADR-075) ---
+
+PLACES = ("Lauren's flexible savings", "Wise", "Money exchanger", "Cash", "Someone else")
+CANDIDATES = 4
+NEAR = timedelta(days=7)  # a person looks a little wider than automatic matching
+
+
+@dataclass
+class Candidate:
+    transaction_id: int
+    txn_date: date
+    amount: object
+    description: str
+    account_name: str | None
+    days: int
+
+
+@dataclass
+class Unsettled:
+    transaction_id: int
+    txn_date: date
+    amount: object
+    description: str
+    account_name: str | None
+    category_id: int | None
+    statement_file_id: int | None
+    candidates: list[Candidate]
+
+
+@dataclass
+class Bunch:
+    """Unsettled lines that look alike (the same text and amount): one answer can settle them."""
+
+    key: str
+    description: str
+    amount: object
+    lines: list[Unsettled]
+
+
+def workbench(db: Session, since: date | None = None) -> list[Bunch]:
+    """Every transfer still missing its other side, newest first, bunched by text and amount,
+    each with the lines that could be its other side (opposite amount, another account, near in
+    time, not paired yet)."""
+    from app.services.classify import merchant_key
+
+    names = {a.account_id: a.name for a in db.scalars(select(Account))}
+    countries = {a.account_id: a.country for a in db.scalars(select(Account))}
+    rows = [t for t in unmatched(db) if since is None or t.txn_date >= since]
+    if not rows:
+        return []
+    lo = min(t.txn_date for t in rows) - ABROAD
+    hi = max(t.txn_date for t in rows) + ABROAD
+    pool = list(
+        db.scalars(
+            select(Transaction).where(
+                Transaction.transfer_group_id.is_(None),
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.txn_date >= lo,
+                Transaction.txn_date <= hi,
+                Transaction.source.in_(FROM_BANKS),
+            )
+        )
+    )
+    by_amount: dict[object, list[Transaction]] = {}
+    for o in pool:
+        by_amount.setdefault(o.amount, []).append(o)
+    bunches: dict[str, Bunch] = {}
+    for t in sorted(rows, key=lambda r: (r.txn_date, r.transaction_id), reverse=True):
+
+        def near(o: Transaction, t: Transaction = t) -> bool:
+            abroad = countries.get(o.account_id or 0) != countries.get(t.account_id or 0)
+            return abs(o.txn_date - t.txn_date) <= (ABROAD if abroad else NEAR)
+
+        cands = sorted(
+            (o for o in by_amount.get(-t.amount, []) if o.account_id != t.account_id and near(o)),
+            key=lambda o: (abs(o.txn_date - t.txn_date), o.transaction_id),
+        )[:CANDIDATES]
+        u = Unsettled(
+            t.transaction_id,
+            t.txn_date,
+            t.amount,
+            t.description_raw,
+            names.get(t.account_id or 0),
+            t.category_id,
+            t.statement_file_id,
+            [
+                Candidate(
+                    o.transaction_id,
+                    o.txn_date,
+                    o.amount,
+                    o.description_raw,
+                    names.get(o.account_id or 0),
+                    abs((o.txn_date - t.txn_date).days),
+                )
+                for o in cands
+            ],
+        )
+        key = f"{merchant_key(t.description_raw)}|{abs(t.amount)}"
+        b = bunches.get(key)
+        if b is None:
+            b = bunches[key] = Bunch(key, t.description_raw, abs(t.amount), [])
+        b.lines.append(u)
+    return list(bunches.values())
+
+
+def pair(db: Session, a_id: int, b_id: int, user: str) -> int:
+    """Pair two lines a person says are the two sides of one transfer."""
+    a, b = db.get(Transaction, a_id), db.get(Transaction, b_id)
+    if a is None or b is None:
+        raise TransferError("Line not found.", 404)
+    if a.account_id == b.account_id:
+        raise TransferError("Both lines are in the same account.", 422)
+    if (a.amount > 0) == (b.amount > 0):
+        raise TransferError("One line must be money out and the other money in.", 422)
+    if a.transfer_group_id is not None or b.transfer_group_id is not None:
+        raise TransferError("One of the lines is already paired: unlink it first.", 409)
+    kinds = {x.account_id: x.kind for x in db.scalars(select(Account))}
+    is_card = "credit_card" in (kinds.get(a.account_id or 0), kinds.get(b.account_id or 0))
+    target = _category(db, *(CARD_PAYMENT if is_card else OWN_ACCOUNTS))
+    group = min(a.transaction_id, b.transaction_id)
+    for leg in (a, b):
+        _log(db, leg, "transfer_group_id", None, group, user)
+        if leg.type != "transfer":
+            _log(db, leg, "type", leg.type, "transfer", user)
+            leg.type = "transfer"
+        leg.transfer_group_id = group
+        leg.status = "matched"
+        if target is not None and leg.category_id != target.category_id:
+            _log(db, leg, "category_id", leg.category_id, target.category_id, user)
+            leg.category_id = target.category_id
+            leg.category_source = "manual"
+    db.commit()
+    return group
+
+
+def settle_outside(db: Session, ids: list[int], place: str, user: str) -> int:
+    """The other side is somewhere the app doesn't follow (a named place): each line is settled
+    on its own and says where."""
+    done = 0
+    for i in ids:
+        t = db.get(Transaction, i)
+        if t is None or t.transfer_group_id is not None:
+            continue
+        one_sided(db, i, user)
+        note = f"Other side: {place}"[:1000]
+        if not t.notes:
+            _log(db, t, "notes", None, note, user)
+            t.notes = note
+        done += 1
+    db.commit()
+    return done

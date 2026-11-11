@@ -1,10 +1,12 @@
 """Transfers between own accounts (F10): match on demand, unlink a wrong pair, and list the
 transfers whose other side isn't loaded."""
 
+from dataclasses import asdict
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -61,3 +63,37 @@ def unmatched(
         transaction_out(t, names.get(t.account_id or 0), paths)
         for t in transfers.unmatched(db, month)
     ]
+
+
+class PairIn(BaseModel):
+    a: int
+    b: int
+
+
+@router.post("/pair")
+def pair(body: PairIn, db: DB, request: Request) -> dict[str, int]:
+    """These two lines are the two sides of one transfer (ADR-075)."""
+    try:
+        return {"group": transfers.pair(db, body.a, body.b, _user(request))}
+    except transfers.TransferError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+class OutsideIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    place: str = Field(min_length=1, max_length=100)
+
+
+@router.post("/outside")
+def outside(body: OutsideIn, db: DB, request: Request) -> dict[str, int]:
+    """The other side is somewhere the app doesn't follow (ADR-075)."""
+    return {"settled": transfers.settle_outside(db, body.ids, body.place, _user(request))}
+
+
+@router.get("/workbench")
+def workbench(db: DB, since: Annotated[date | None, Query()] = None) -> dict[str, Any]:
+    """Transfers missing their other side, bunched by text and amount, with candidates (ADR-075)."""
+    return {
+        "places": list(transfers.PLACES),
+        "bunches": [asdict(b) for b in transfers.workbench(db, since)],
+    }

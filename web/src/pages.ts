@@ -80,6 +80,14 @@ export const PAGES: PageDef[] = [
     hidden: true, // inside To do now (ADR-047)
   },
   {
+    path: "/transfers",
+    label: "Transfers to settle",
+    group: "Money",
+    feature: "F10",
+    summary: "Transfers missing their other side: pair them, say where the money went, or recategorize.",
+    hidden: true, // a tab of People & transfers (ADR-075)
+  },
+  {
     path: "/people",
     label: "People & transfers",
     group: "Money",

@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.84.0] — Transfers to settle
+
+### Added
+- People & transfers → **Transfers to settle**: each transfer missing its other side, with lines
+  that could be it ("Pair with…"), a way to say where the money went when that place isn't in the
+  app (Lauren's flexible savings, Wise, an exchanger, cash, a person), or a category when it
+  isn't a transfer. Lines with the same text and amount are together, so one answer can settle
+  several (ADR-075).
+
 ## [0.83.0] — What we know about a line, and Juliana's card
 
 ### Added
