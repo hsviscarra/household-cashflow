@@ -632,6 +632,43 @@ export const fetchLineSource = (id: number) => send<LineSource>("GET", `/api/tra
 export const fetchStagedSource = (batchId: number, stgId: number) =>
   send<LineSource>("GET", `/api/batches/${batchId}/lines/${stgId}/source`);
 /** The statement PDF, opened at a page when the browser's viewer supports it. */
+// ---------- what's known about a line (ADR-074) ----------
+export type ContextLine = {
+  transaction_id: number;
+  txn_date: string;
+  amount: string;
+  description: string;
+  account_name: string | null;
+  category_path: string | null;
+  type: string;
+};
+export type LineContext = {
+  transaction_id: number;
+  category_source: string | null;
+  rule: {
+    rule_id: number;
+    pattern: string;
+    match_type: string;
+    category_path: string | null;
+    amount_min: string | null;
+    amount_max: string | null;
+  } | null;
+  same_amount: ContextLine[];
+  transfer_side: ContextLine[];
+  transfer_candidates: ContextLine[];
+  invoices: {
+    invoice_id: number;
+    issuer_name: string;
+    issue_date: string;
+    total: string;
+    products: string[];
+    linked: boolean;
+  }[];
+  purpose: { account_name: string; for_whom: string; usual: string[]; unusual: boolean } | null;
+};
+export const fetchLineContext = (id: number) => send<LineContext>("GET", `/api/transactions/${id}/context`);
+export const linkInvoice = (id: number, invoice_id: number) =>
+  send<{ invoice_id: number }>("PUT", `/api/transactions/${id}/invoice`, { invoice_id });
 export const statementPageUrl = (id: number, page?: number | null) =>
   `/api/statements/${id}/file${page ? `#page=${page}` : ""}`;
 

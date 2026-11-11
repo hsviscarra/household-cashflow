@@ -1,9 +1,10 @@
 """Classification (F9): the review queue, categorizing a merchant (and saving a rule), Claude's
 suggestions, editing a line, splits and each line's change history."""
 
+from dataclasses import asdict
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, StringConstraints
@@ -33,7 +34,7 @@ from app.schemas import (
     TransactionPatch,
     TransferLegOut,
 )
-from app.services import classify, inbox, line_source, recurring, transfers
+from app.services import classify, inbox, line_context, line_source, recurring, transfers
 from app.services import suggest as suggestions
 
 router = APIRouter(prefix="/api", tags=["classification"])
@@ -263,6 +264,33 @@ def staged_source(batch_id: int, stg_id: int, db: DB, store: Store) -> LineSourc
     if row is None or row.batch_id != batch_id:
         raise HTTPException(404, f"Line {stg_id} not found in this statement.")
     return _source_out(db, line_source.of_staged(db, store, row))
+
+
+@router.get("/transactions/{transaction_id}/context")
+def line_context_of(transaction_id: int, db: DB) -> dict[str, Any]:
+    """Everything known about a line to decide what it was (ADR-074): same-amount lines, the
+    transfer's other side or candidates, invoices, the rule that sets it, the card's purpose."""
+    t = db.get(Transaction, transaction_id)
+    if t is None:
+        raise HTTPException(404, "No such line.")
+    return asdict(line_context.build(db, t))
+
+
+class InvoiceLinkIn(BaseModel):
+    invoice_id: int
+
+
+@router.put("/transactions/{transaction_id}/invoice")
+def link_invoice(transaction_id: int, body: InvoiceLinkIn, db: DB) -> dict[str, Any]:
+    """This line paid that invoice."""
+    t = db.get(Transaction, transaction_id)
+    if t is None:
+        raise HTTPException(404, "No such line.")
+    try:
+        inv = line_context.link_invoice(db, t, body.invoice_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"invoice_id": inv.invoice_id, "transaction_id": transaction_id}
 
 
 @router.get("/transactions/{transaction_id}/history", response_model=list[ChangeOut])

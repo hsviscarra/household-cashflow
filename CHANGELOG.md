@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.83.0] — What we know about a line, and Juliana's card
+
+### Added
+- Transactions: the open line shows **What we know**: the statement (open the PDF, or the text
+  around the line), other lines of the same amount and their category with "Use this category",
+  the transfer's other side or candidates, the invoice it paid or invoices that could be it
+  ("This is the one"), and the rule for lines like it (ADR-074).
+- Lauren's Diners is kept for Juliana's school: anything on it that isn't Colegio Einstein,
+  Skole or a card fee shows on To do as "Check: unusual on Juliana's card" (migration 0049).
+
 ## [0.82.0] — The new Home and four measures
 
 ### Added
