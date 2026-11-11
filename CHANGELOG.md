@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.80.1] — An account's opening date
+
+### Added
+- Settings → Accounts: **Opened on**. Data Status expects no statements before it, so a new card
+  doesn't show its earlier months as missing (ADR-071, migration 0047).
+
 ## [0.80.0] — The house installment and Lauren's payday
 
 ### Fixed

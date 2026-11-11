@@ -131,6 +131,7 @@ class Account(Timestamps, Base):
     # Closed or suspended on this day (a card cancelled in September): month status stops
     # expecting statements after it, while its earlier statements still load.
     closed_on: Mapped[date | None] = mapped_column(Date)
+    opened_on: Mapped[date | None] = mapped_column(Date)  # no statements expected before
 
 
 class Category(Timestamps, Base):
