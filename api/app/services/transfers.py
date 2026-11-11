@@ -14,13 +14,15 @@ Two lines are paired only when all of these hold:
 When several lines qualify, the closest date wins, then the oldest line.
 """
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, aliased
 
-from app.models import FROM_BANKS, Account, Category, ChangeLog, Transaction
+from app.models import FROM_BANKS, Account, AppSetting, Category, ChangeLog, Transaction
 
 WINDOW = timedelta(days=5)
 # Between countries (an exchange through people, ADR-055) the other side can take longer.
@@ -94,6 +96,7 @@ def _log(db: Session, row: Transaction, column: str, old: object, new: object, u
 @dataclass
 class MatchResult:
     pairs: int
+    settled: int = 0  # settled on their own, where a person said the other side is (ADR-080)
 
 
 def match(db: Session, user: str = "system") -> MatchResult:
@@ -152,7 +155,7 @@ def match(db: Session, user: str = "system") -> MatchResult:
         taken |= {t.transaction_id, best.transaction_id}
         pairs += 1
     db.commit()
-    return MatchResult(pairs)
+    return MatchResult(pairs, _settle_learned(db, user))
 
 
 def one_sided(db: Session, transaction_id: int, user: str) -> Transaction:
@@ -258,6 +261,52 @@ PLACES = ("Lauren's flexible savings", "Wise", "Money exchanger", "Cash", "Someo
 CANDIDATES = 4
 NEAR = timedelta(days=7)  # a person looks a little wider than automatic matching
 
+# --- Smarter pairing (ADR-080) ---
+# A transfer can arrive smaller than it left: the bank on the way kept a fee. The other side is
+# offered when the two amounts differ by no more than this, and by no more than FEE_SHARE of it.
+FEE_HOME = Decimal("1.00")  # between two accounts in one country
+FEE_ABROAD = Decimal("50.00")  # a wire between countries
+FEE_SHARE = Decimal("0.05")
+FEES = ("Financial Costs", "Bank Fees")
+PLACE_KEY = "transfer-place:"  # + a hash of the text and amount: where a person said it goes
+
+
+def _fee_cap(amount: Decimal, abroad: bool) -> Decimal:
+    return min(FEE_ABROAD if abroad else FEE_HOME, abs(amount) * FEE_SHARE)
+
+
+def _place_key(t: Transaction) -> str:
+    from app.services.classify import merchant_key
+
+    amount = abs(Decimal(t.amount)).quantize(Decimal("0.01"))  # 300.00 and 300.0000 are one
+    text = f"{merchant_key(t.description_raw or '')}|{amount}"
+    return PLACE_KEY + hashlib.sha1(text.encode()).hexdigest()[:30]
+
+
+def _settle_learned(db: Session, user: str) -> int:
+    """Transfers a person already explained once: a line with the same text and amount as one
+    settled "the other side is ..." gets the same answer, once its real other side has had time
+    to arrive (ABROAD days) and didn't."""
+    places = {
+        r.setting_key: r.setting_value
+        for r in db.scalars(select(AppSetting).where(AppSetting.setting_key.like(f"{PLACE_KEY}%")))
+    }
+    if not places:
+        return 0
+    done = 0
+    for t in unmatched(db):
+        place = places.get(_place_key(t))
+        if place is None or t.txn_date > date.today() - ABROAD:
+            continue
+        one_sided(db, t.transaction_id, user)
+        if not t.notes:
+            note = f"Other side: {place} (as you said before)"
+            _log(db, t, "notes", None, note, user)
+            t.notes = note
+        done += 1
+    db.commit()
+    return done
+
 
 @dataclass
 class Candidate:
@@ -267,6 +316,7 @@ class Candidate:
     description: str
     account_name: str | None
     days: int
+    difference: object = 0  # how much less arrived than left: a fee on the way (ADR-080)
 
 
 @dataclass
@@ -329,6 +379,22 @@ def workbench(db: Session, since: date | None = None) -> list[Bunch]:
             (o for o in by_amount.get(-t.amount, []) if o.account_id != t.account_id and near(o)),
             key=lambda o: (abs(o.txn_date - t.txn_date), o.transaction_id),
         )[:CANDIDATES]
+        if not cands:  # nothing of the exact amount: one that differs by a fee (ADR-080)
+
+            def by_fee(o: Transaction, t: Transaction = t) -> bool:
+                abroad = countries.get(o.account_id or 0) != countries.get(t.account_id or 0)
+                gap = abs(abs(o.amount) - abs(t.amount))
+                return (
+                    o.account_id != t.account_id
+                    and (o.amount > 0) != (t.amount > 0)
+                    and 0 < gap <= _fee_cap(max(abs(o.amount), abs(t.amount)), abroad)
+                    and near(o)
+                )
+
+            cands = sorted(
+                (o for o in pool if by_fee(o)),
+                key=lambda o: (abs(abs(o.amount) - abs(t.amount)), abs(o.txn_date - t.txn_date)),
+            )[:CANDIDATES]
         u = Unsettled(
             t.transaction_id,
             t.txn_date,
@@ -345,6 +411,7 @@ def workbench(db: Session, since: date | None = None) -> list[Bunch]:
                     o.description_raw,
                     names.get(o.account_id or 0),
                     abs((o.txn_date - t.txn_date).days),
+                    abs(abs(o.amount) - abs(t.amount)),
                 )
                 for o in cands
             ],
@@ -368,11 +435,33 @@ def pair(db: Session, a_id: int, b_id: int, user: str) -> int:
         raise TransferError("One line must be money out and the other money in.", 422)
     if a.transfer_group_id is not None or b.transfer_group_id is not None:
         raise TransferError("One of the lines is already paired: unlink it first.", 409)
-    kinds = {x.account_id: x.kind for x in db.scalars(select(Account))}
+    accounts = list(db.scalars(select(Account)))
+    kinds = {x.account_id: x.kind for x in accounts}
+    countries = {x.account_id: x.country for x in accounts}
     is_card = "credit_card" in (kinds.get(a.account_id or 0), kinds.get(b.account_id or 0))
     target = _category(db, *(CARD_PAYMENT if is_card else OWN_ACCOUNTS))
     group = min(a.transaction_id, b.transaction_id)
-    for leg in (a, b):
+    legs = [a, b]
+    # Less arrived than left, by what a bank keeps on the way: the difference is a bank fee
+    # (ADR-080). The line that left is split into the transfer and the fee, so the fee counts.
+    sent, got = (a, b) if a.amount < 0 else (b, a)
+    fee = abs(sent.amount) - abs(got.amount)
+    abroad = countries.get(a.account_id or 0) != countries.get(b.account_id or 0)
+    fees = _category(db, *FEES)
+    if target and fees and 0 < fee <= _fee_cap(sent.amount, abroad):
+        from app.services import classify
+
+        parts = classify.split(
+            db,
+            sent,
+            [
+                classify.Part(-abs(got.amount), target.category_id, None),
+                classify.Part(-fee, fees.category_id, "Kept on the way by the bank"),
+            ],
+            user,
+        )
+        legs.append(parts[0])
+    for leg in legs:
         _log(db, leg, "transfer_group_id", None, group, user)
         if leg.type != "transfer":
             _log(db, leg, "type", leg.type, "transfer", user)
@@ -396,6 +485,13 @@ def settle_outside(db: Session, ids: list[int], place: str, user: str) -> int:
         if t is None or t.transfer_group_id is not None:
             continue
         one_sided(db, i, user)
+        key = _place_key(t)  # the next line like this one is settled the same way (ADR-080)
+        known = db.get(AppSetting, key)
+        if known is None:
+            db.add(AppSetting(setting_key=key, setting_value=place[:200], updated_by=user[:200]))
+            db.flush()  # lines of one bunch share the key
+        else:
+            known.setting_value, known.updated_by = place[:200], user[:200]
         note = f"Other side: {place}"[:1000]
         if not t.notes:
             _log(db, t, "notes", None, note, user)

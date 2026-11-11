@@ -50,7 +50,9 @@ export default function TransfersPage() {
           A transfer needs its other side so it doesn’t count as spending or income. For each one: pair it
           with the line in your other account, say where the money went if that place isn’t in the app
           (Lauren’s flexible savings, Wise, an exchanger, a person), or say it isn’t a transfer and give it a
-          category. Lines with the same text and amount are together, so one answer can settle them all.
+          category. Lines with the same text and amount are together, so one answer can settle them all. When
+          less arrived than left, pairing books the difference as a bank fee; and once you say where a
+          transfer goes, the next one with the same text and amount is settled the same way by itself.
         </p>
       </header>
       {note && (
@@ -173,6 +175,7 @@ function BunchCard({
                     >
                       Pair with {c.account_name} · {day(c.txn_date)}
                       {c.days ? ` (${c.days} ${c.days === 1 ? "day" : "days"} apart)` : ""}
+                      {Number(c.difference) > 0 ? ` · ${money(c.difference!)} bank fee` : ""}
                     </button>
                   ))}
                 </span>

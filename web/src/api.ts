@@ -682,6 +682,8 @@ export type TransferCandidate = {
   description: string;
   account_name: string | null;
   days: number;
+  /** How much less arrived than left: pairing books it as a bank fee (ADR-080). */
+  difference?: string;
 };
 export type UnsettledLine = {
   transaction_id: number;
