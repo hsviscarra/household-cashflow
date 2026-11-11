@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { BackupPanel } from "../components/BackupPanel";
 import { SourcesSection } from "../components/SourcesSection";
 import {
+  type AccountSource,
   fetchStatus,
   type AccountTimeline,
   type DataStatus,
@@ -62,6 +63,7 @@ export default function StatusPage() {
       {!data && !q.error && <p className="mt-6 text-muted">Checking every month…</p>}
       {data && (
         <>
+          {(data.sources?.length ?? 0) > 0 && <Arrivals sources={data.sources!} />}
           <ul className="mt-6 space-y-4" aria-label="Months">
             {statementMonths.map((m, i) => (
               <MonthCard key={m.month} m={m} open={i === 0} />
@@ -204,12 +206,89 @@ const range = (a: string, b: string) => `${day(a)} – ${day(b)}`;
 const ordinal = (n: number) =>
   `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
 
-const STMT: Record<"loaded" | "waiting" | "problems" | "not_read", { label: string; look: string }> = {
+const STMT: Record<
+  "loaded" | "waiting" | "problems" | "not_read" | "synced",
+  { label: string; look: string }
+> = {
   loaded: { label: "Loaded", look: "pill-good" },
+  synced: { label: "Bank sync", look: "pill-good" },
   waiting: { label: "Waiting for approval", look: "bg-attention-bg text-attention-ink" },
   problems: { label: "Doesn’t tie out", look: "pill-bad" },
   not_read: { label: "Not read yet", look: "pill-muted" },
 };
+
+const HOW: Record<AccountSource["how"], string> = {
+  bank_sync: "Bank sync, daily",
+  email: "Email, by the Gmail script",
+  upload: "You upload the PDF",
+};
+const ARRIVAL: Record<AccountSource["state"], { label: string; look: string }> = {
+  late: { label: "Late", look: "pill-bad" },
+  you_upload: { label: "Waiting on you", look: "bg-attention-bg text-attention-ink" },
+  on_import: { label: "On Import", look: "bg-attention-bg text-attention-ink" },
+  on_its_way: { label: "On its way", look: "pill-muted" },
+  up_to_date: { label: "Up to date", look: "pill-good" },
+};
+
+/** Every account: how its data arrives, the last day it covers, and what happens next (ADR-072).
+ * Late and waiting-on-you rows come first. */
+export function Arrivals({ sources }: { sources: AccountSource[] }) {
+  return (
+    <section aria-labelledby="arrivals" className="card mt-6 p-5">
+      <h2 id="arrivals" className="font-display text-2xl font-bold">
+        Where each account stands
+      </h2>
+      <p className="mt-1 text-sm text-muted">
+        Bank sync and the Gmail script bring most data by themselves; the rest you upload. “On its way” is
+        normal: the bank hasn’t issued it, or its email usually arrives within a week of closing.
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-muted">
+            <tr>
+              <th scope="col" className="px-2 py-1 text-left font-semibold">
+                Account
+              </th>
+              <th scope="col" className="px-2 py-1 text-left font-semibold">
+                How it arrives
+              </th>
+              <th scope="col" className="px-2 py-1 text-left font-semibold">
+                Data through
+              </th>
+              <th scope="col" className="px-2 py-1 text-left font-semibold">
+                Status
+              </th>
+              <th scope="col" className="px-2 py-1 text-left font-semibold">
+                Next
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {sources.map((x) => (
+              <tr key={x.account_id}>
+                <td className="px-2 py-2 font-semibold">{x.name}</td>
+                <td className="px-2 py-2 text-muted">{HOW[x.how]}</td>
+                <td className="whitespace-nowrap px-2 py-2">{x.last_day ? day(x.last_day) : "—"}</td>
+                <td className="px-2 py-2">
+                  <span className={`pill ${ARRIVAL[x.state].look}`}>{ARRIVAL[x.state].label}</span>
+                </td>
+                <td className="px-2 py-2">
+                  {x.state === "you_upload" || x.state === "on_import" || x.state === "late" ? (
+                    <Link to="/import" className="text-primary underline">
+                      {x.note}
+                    </Link>
+                  ) : (
+                    <span className="text-muted">{x.note}</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 /** "Download the statement closing Jul 3, 2026", or a plain upload prompt when the cycle isn't
  * known yet (no statement next to the gap). */

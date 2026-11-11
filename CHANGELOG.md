@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.81.0] — Where each account stands
+
+### Added
+- Data Status: **Where each account stands**, one row per account: how its data arrives (bank
+  sync, email, or you upload), the day its data covers through, and whether it is up to date, on
+  its way, late, on Import or waiting on you, with what to do. Claude's daily check reads it too
+  (ADR-072).
+
+### Changed
+- Capital One and Bank of America: bank sync covers their days, so their PDFs are no longer asked
+  for.
+- Lauren's Diners opened in September 2026, so August isn't expected (migration 0048).
+
 ## [0.80.1] — An account's opening date
 
 ### Added

@@ -817,6 +817,17 @@ export type DataStatus = {
   months: MonthStatus[];
   loads: { loaded_at: string; source: string; file_name: string | null; rows: number; loaded_by: string }[];
   statements?: AccountTimeline[];
+  sources?: AccountSource[];
+};
+/** How an account's data arrives and where it stands today (ADR-072). */
+export type AccountSource = {
+  account_id: number;
+  name: string;
+  how: "bank_sync" | "email" | "upload";
+  last_day: string | null;
+  state: "up_to_date" | "on_its_way" | "on_import" | "you_upload" | "late";
+  note: string;
+  expected?: string | null;
 };
 export type TimelineStatement = {
   statement_file_id: number;

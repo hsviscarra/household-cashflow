@@ -757,6 +757,16 @@ class AccountTimelineOut(BaseModel):
     gaps: list[GapOut]
 
 
+class SourceOut(BaseModel):
+    account_id: int
+    name: str
+    how: Literal["bank_sync", "email", "upload"]
+    last_day: date | None
+    state: Literal["up_to_date", "on_its_way", "on_import", "you_upload", "late"]
+    note: str
+    expected: date | None = None
+
+
 class StatusOut(BaseModel):
     today: date
     excel_through: date | None
@@ -765,6 +775,8 @@ class StatusOut(BaseModel):
     loads: list[LoadOut]
     # Each account's statements in order and the days none covers (from the first month checked).
     statements: list[AccountTimelineOut] = []
+    # How each account's data arrives and where it stands today (ADR-072).
+    sources: list[SourceOut] = []
 
 
 # ---------------- F13: spending analytics ----------------
