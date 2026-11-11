@@ -4,7 +4,7 @@ page and Tax deductions each knew on their own, so nothing is missed by not open
 
 import hashlib
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -17,6 +17,7 @@ from app.services import (
     classify,
     gastos,
     inbox,
+    line_context,
     loans,
     networth,
     rules_suggest,
@@ -461,6 +462,44 @@ def _invoices(db: Session, today: date) -> Section:
     return sec
 
 
+PURPOSE_DAYS = 120
+
+
+def _purpose(db: Session, today: date, accounts: dict[int, str]) -> Section:
+    """Lines on a card kept for one purpose that don't look like it (ADR-074): Juliana's school
+    card bought something other than school, bus, food or insurance."""
+    rows = line_context.unusual_lines(db, today - timedelta(days=PURPOSE_DAYS))
+    who = sorted({w for _, w in rows if w})
+    sec = Section(
+        "purpose",
+        f"Check: unusual on {' and '.join(who)}'s card" if who else "Check: unusual card lines",
+        "A card kept for one purpose was used for something else. Check it: if it belongs, say so "
+        "and it won't be asked again; if not, give it its category.",
+    )
+    gone = _dismissed(db)
+    rows = [(t, w) for t, w in rows if _dismiss_key(f"purpose:{t.transaction_id}") not in gone]
+    sec.count = len(rows)
+    for t, w in rows[:MAX_TASKS]:
+        sec.tasks.append(
+            Task(
+                key=f"purpose:{t.transaction_id}",
+                kind="purpose",
+                title=t.description_raw,
+                detail=f"{t.txn_date:%b %d} · {_name(t, accounts)} · {w}'s card".strip(" ·"),
+                amount=t.amount,
+                on=t.txn_date,
+                link=f"/transactions?q={t.transaction_id}",
+                data={
+                    "transaction_id": t.transaction_id,
+                    "category_id": t.category_id,
+                    "statement_file_id": t.statement_file_id,
+                    "for": w,
+                },
+            )
+        )
+    return sec
+
+
 def build(db: Session, today: date | None = None) -> Todo:
     today = today or date.today()
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
@@ -468,6 +507,7 @@ def build(db: Session, today: date | None = None) -> Todo:
     asked = {t.transaction_id for t in inbox.who_lines(db, today=today)}
     sections = [
         _categorize(db, accounts, asked),
+        _purpose(db, today, accounts),
         who,
         _books(db, today),
         _loans(db, today),

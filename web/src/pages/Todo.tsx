@@ -241,6 +241,8 @@ function Action({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
       return <LoanPaid t={t} ctx={ctx} />;
     case "invoices":
       return <Go to={t.link}>Sort them out</Go>;
+    case "purpose":
+      return <Purpose t={t} ctx={ctx} />;
     default:
       return <Go to={t.link || "/"}>{GO[t.kind] ?? "Open"}</Go>;
   }
@@ -307,6 +309,42 @@ function Categorize({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
         />
       </div>
       <Always on={always} set={setAlways} ok={ok} />
+    </>
+  );
+}
+
+/** A line on a card kept for one purpose that doesn't look like it (ADR-074): it belongs (asked no
+ * more), or give it its category. */
+function Purpose({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
+  const id = t.data.transaction_id as number;
+  const fine = useMutation({
+    mutationFn: () => dismissTodo(t.key),
+    onSuccess: () => ctx.finish(t.key, `Kept as ${String(t.data.for)}'s.`),
+    onError: (e: Error) => ctx.notify(e.message, "bad"),
+  });
+  const move = useMutation({
+    mutationFn: async (category_id: number) => {
+      await updateTransaction(id, { category_id });
+      await dismissTodo(t.key);
+    },
+    onSuccess: () => ctx.finish(t.key, "Categorized."),
+    onError: (e: Error) => ctx.notify(e.message, "bad"),
+  });
+  return (
+    <>
+      <button type="button" className="btn btn-secondary h-9 px-4 text-sm" onClick={() => fine.mutate()}>
+        It’s {String(t.data.for)}’s
+      </button>
+      <div className="w-64 max-w-full">
+        <CategoryPicker
+          label={`Category for ${t.title}`}
+          hideLabel
+          groups={ctx.groups}
+          value={(t.data.category_id as number | null) ?? ""}
+          placeholder="Not hers: choose a category"
+          onChange={(c) => c !== "" && move.mutate(c)}
+        />
+      </div>
     </>
   );
 }

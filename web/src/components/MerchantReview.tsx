@@ -590,7 +590,7 @@ const SECTION: Record<string, string> = {
   transfer: "Transfer",
 };
 
-function LineDetails({ id, source }: { id: number; source: LineSourceFn }) {
+export function LineDetails({ id, source }: { id: number; source: LineSourceFn }) {
   const q = useQuery({ queryKey: ["line-source", source.scope, id], queryFn: () => source.fetch(id) });
   if (q.error) return <p className="mt-2 pl-7 text-xs text-danger-ink">{(q.error as Error).message}</p>;
   const d = q.data;
