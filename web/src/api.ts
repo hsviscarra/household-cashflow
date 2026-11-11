@@ -880,6 +880,7 @@ export type DataStatus = {
   loads: { loaded_at: string; source: string; file_name: string | null; rows: number; loaded_by: string }[];
   statements?: AccountTimeline[];
   sources?: AccountSource[];
+  script?: { state: "ok" | "silent" | "never"; last_seen: string | null; note: string } | null;
 };
 /** How an account's data arrives and where it stands today (ADR-072). */
 export type AccountSource = {

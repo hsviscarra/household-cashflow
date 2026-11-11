@@ -34,7 +34,17 @@ from app.models import (
     v_spending_line,
 )
 from app.services import budget as budget_service
-from app.services import gastos, goals, groceries, ibkr, invoices, iva, networth, product_labels
+from app.services import (
+    gastos,
+    goals,
+    groceries,
+    ibkr,
+    invoices,
+    iva,
+    networth,
+    product_labels,
+    watchdog,
+)
 from app.services import loans as loan_service
 from app.services import recurring as recurring_service
 from app.services import report as report_service
@@ -465,10 +475,18 @@ def data_status(months: int = 3) -> dict[str, Any]:
     (closing day and usual file name; `due` is set when the bank hasn't issued it yet)."""
     with _session() as db:
         st = status_service.month_status(db, with_loads=False)
+        gmail = watchdog.script(db)
     names = {a.account_id: a.name for a in st.accounts}
     shown = [m for m in st.months if m.source == "statements"][: max(months, 1)]
     return {
         "today": st.today.isoformat(),
+        # The Gmail script that brings statements by email: "silent" means it stopped running
+        # and a person must open script.google.com (ADR-078).
+        "gmail_script": {
+            "state": gmail.state,
+            "last_seen": gmail.last_seen.isoformat() if gmail.last_seen else None,
+            "note": gmail.note,
+        },
         # How each account's data arrives (bank sync, email, upload) and where it stands today:
         # late and you_upload need a person; on_its_way is normal.
         "sources": [

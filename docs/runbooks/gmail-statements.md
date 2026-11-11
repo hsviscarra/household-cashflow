@@ -142,3 +142,16 @@ To turn it on after updating the script:
    it to, comma-separated (for example yours and Lauren's). Without it, it goes to this Gmail.
 
 Nothing else changes: the existing daily trigger sends it every Monday morning.
+
+## The daily check-in and late-statement emails (ADR-078)
+
+From 0.87.0 the script tells the app it ran, every day, and emails you when a statement is late.
+
+1. Open the project at script.google.com, select all of `Code.gs`, and paste the new
+   `infra/gmail/Code.gs` over it. Save.
+2. Run `run` once by hand. The log ends with nothing, or "Alert sent to ...".
+3. In the app, Data Status no longer shows "The Gmail script hasn't checked in yet".
+
+Optional: a script property `ALERTS_TO` (comma-separated) sends the alerts somewhere other than
+`DIGEST_TO`. If Data Status says the script has been silent for days, open **Executions** in the
+script editor: a failed run names the reason, usually an authorization to renew (run `setup`).

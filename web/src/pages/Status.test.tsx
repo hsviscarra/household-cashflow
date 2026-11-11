@@ -129,6 +129,22 @@ describe("Data Status", () => {
     expect(screen.getByText("Through June 2026: complete, from the Cash Flow sheet.")).toBeInTheDocument();
   });
 
+  it("warns when the Gmail script has gone silent, and stays quiet when it checks in", async () => {
+    const note = "The Gmail script last checked in 3 days ago (Nov 8): statements by email aren't arriving.";
+    const { unmount } = renderWith({
+      ...STATUS,
+      script: { state: "silent", last_seen: "2026-11-08T11:00:00", note },
+    });
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    unmount();
+    renderWith({
+      ...STATUS,
+      script: { state: "ok", last_seen: "2026-11-11T11:00:00", note: "Checked in Nov 11." },
+    });
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText("Checked in Nov 11.")).not.toBeInTheDocument();
+  });
+
   it("shows coverage by account and the load log", async () => {
     renderWith(STATUS);
     const table = await screen.findByRole("table", { name: "Statement coverage by account and month" });

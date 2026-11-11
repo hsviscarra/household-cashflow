@@ -63,6 +63,18 @@ export default function StatusPage() {
       {!data && !q.error && <p className="mt-6 text-muted">Checking every month…</p>}
       {data && (
         <>
+          {data.script && data.script.state !== "ok" && (
+            <p
+              role="status"
+              className={`mt-6 rounded-[10px] p-3 text-sm ${
+                data.script.state === "silent"
+                  ? "bg-danger-bg text-danger-ink"
+                  : "bg-attention-bg text-attention-ink"
+              }`}
+            >
+              {data.script.note}
+            </p>
+          )}
           {(data.sources?.length ?? 0) > 0 && <Arrivals sources={data.sources!} />}
           <ul className="mt-6 space-y-4" aria-label="Months">
             {statementMonths.map((m, i) => (

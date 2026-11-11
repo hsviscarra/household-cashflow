@@ -16,13 +16,14 @@ from app.schemas import (
     GapOut,
     LoadOut,
     MonthStatusOut,
+    ScriptOut,
     SourceOut,
     StatusAccountOut,
     StatusItemOut,
     StatusOut,
     TimelineStatementOut,
 )
-from app.services import backups
+from app.services import backups, watchdog
 from app.services import status as month_status
 from app.services.backups import get_backup_store
 
@@ -88,6 +89,7 @@ def get_status(
             for t in s.timeline
         ],
         sources=[SourceOut(**vars(x)) for x in s.sources],
+        script=ScriptOut(**vars(watchdog.script(db))),
     )
 
 

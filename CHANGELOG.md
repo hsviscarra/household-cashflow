@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.87.0] — The arrival watchdog
+
+### Added
+- The Gmail script **checks in** every day. If it goes two days without one, Data Status and
+  Home say so and what to do, and Claude's daily check reports it (ADR-078).
+- An **email when a statement is late**, once per statement, sent by the script from your Gmail.
+  Paste the new `infra/gmail/Code.gs` into the script once (docs/runbooks/gmail-statements.md).
+
 ## [0.86.0] — Claude categorizes on arrival, with more to go on
 
 ### Added
