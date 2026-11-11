@@ -6,7 +6,7 @@ Improvement plan, item A5. On Nov 11 2026 the Diners statement that closed Nov 3
 and nothing said why: the Gmail script (ADR-020) may have stopped, and the app can't tell a quiet
 inbox from a dead script. Hernan chose alerts by email only.
 
-- **Heartbeat.** The script calls `GET /api/inbox/alerts` (the inbox token) at the end of every
+- **Heartbeat.** The script calls `GET /api/inbox?alerts=true` (the inbox token) at the end of every
   run, even when the import failed. The app keeps the time in `core.app_setting`
   (`gmail-script:last-seen`). Two days without a call and the script is `silent`: Data Status
   shows a red note with what to do, Home's "sources need you" pill counts it, and Claude's

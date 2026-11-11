@@ -92,14 +92,30 @@ class DigestOut(BaseModel):
     html: str
 
 
-@router.get("", response_model=DigestOut)
+class AlertOut(BaseModel):
+    title: str
+    text: str
+
+
+class AlertsOut(BaseModel):
+    alerts: list[AlertOut]
+    subject: str
+    text: str
+
+
+@router.get("", response_model=DigestOut | AlertsOut)
 def weekly_digest(
     request: Request,
     db: DB,
     today: Annotated[date | None, Query(description="For tests; default today")] = None,
-) -> DigestOut:
+    alerts: Annotated[bool, Query(description="The daily check-in instead (ADR-078)")] = False,
+) -> DigestOut | AlertsOut:
     """The weekly digest (ADR-038), for the Gmail script to email on Monday mornings: the subject,
-    a plain-text and an HTML body, with links into the app."""
+    a plain-text and an HTML body, with links into the app. With `alerts=true` it is the script's
+    daily check-in instead: the same path, because the sign-in in front of the app lets through
+    only the exact paths it lists."""
+    if alerts:
+        return _check_in(request, db, today)
     d = digest.build(db, today)
     # Behind Container Apps' ingress the app sees http; links in the email use the outside scheme.
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
@@ -116,25 +132,8 @@ def weekly_digest(
     )
 
 
-class AlertOut(BaseModel):
-    title: str
-    text: str
-
-
-class AlertsOut(BaseModel):
-    alerts: list[AlertOut]
-    subject: str
-    text: str
-
-
-@router.get("/alerts", response_model=AlertsOut)
-def check_in(
-    request: Request,
-    db: DB,
-    today: Annotated[date | None, Query(description="For tests; default today")] = None,
-) -> AlertsOut:
-    """The Gmail script calls this on every run (ADR-078): the call is its heartbeat, and the
-    answer is what to email now. Each alert comes once."""
+def _check_in(request: Request, db: Session, today: date | None) -> AlertsOut:
+    """The Gmail script's heartbeat and what to email now, each alert once (ADR-078)."""
     watchdog.check_in(db)
     new = watchdog.fresh(db, today)
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)

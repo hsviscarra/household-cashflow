@@ -26,6 +26,9 @@
  * On Mondays it also emails the weekly digest the app writes (ADR-038): what needs someone this
  * week. It goes to DIGEST_TO (a script property; default: this Gmail account).
  *
+ * Statements forwarded from another Gmail count when its address is in the script property
+ * FORWARDED_FROM (comma-separated).
+ *
  * Setup (docs/runbooks/gmail-statements.md): Project Settings -> Script properties APP_URL and
  * INBOX_TOKEN (from infra/azure/setup-inbox.sh), then run setup() once. For the digest, run
  * testDigest() once to allow sending email.
@@ -49,7 +52,10 @@ const SOURCES = [
   },
   {
     bank: 'Diners Club',
-    query: 'from:info@efacturacioninterdin.com subject:"estado de cuenta"',
+    // Diners moved to e-facturacioninterdin.com in November 2026; the old sender still counts.
+    query:
+      'from:(info@efacturacioninterdin.com OR info@e-facturacioninterdin.com) ' +
+      'subject:"estado de cuenta"',
     files: PDF,
   },
   {
@@ -92,14 +98,14 @@ function run() {
 
 /**
  * Tells the app this script ran (its heartbeat) and emails what the app says needs someone now:
- * a statement that is late, each one once (GET /api/inbox/alerts, ADR-078). To ALERTS_TO, else
+ * a statement that is late, each one once (GET /api/inbox?alerts=true, ADR-078). To ALERTS_TO, else
  * DIGEST_TO, else this account.
  */
 function checkIn_() {
   const url = (props_().getProperty('APP_URL') || '').replace(/\/+$/, '');
   const token = props_().getProperty('INBOX_TOKEN') || '';
   for (let i = 0; i < 3; i++) {
-    const response = UrlFetchApp.fetch(`${url}/api/inbox/alerts`, {
+    const response = UrlFetchApp.fetch(`${url}/api/inbox?alerts=true`, {
       headers: { Authorization: `Bearer ${token}` },
       muteHttpExceptions: true,
     });
@@ -232,6 +238,21 @@ function postTransfer_(url, token, message) {
   }
 }
 
+/**
+ * SOURCES, plus statements someone forwards to this Gmail (Lauren's Diners card): any "estado de
+ * cuenta" with a PDF from the addresses in the script property FORWARDED_FROM (comma-separated).
+ */
+function sources_() {
+  const from = (props_().getProperty('FORWARDED_FROM') || '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => a);
+  if (!from.length) return SOURCES;
+  return SOURCES.concat([
+    { bank: 'Forwarded', query: `from:(${from.join(' OR ')}) subject:"estado de cuenta"`, files: PDF },
+  ]);
+}
+
 function importFiles_(window) {
   const props = props_();
   const url = (props.getProperty('APP_URL') || '').replace(/\/+$/, '');
@@ -245,7 +266,7 @@ function importFiles_(window) {
   let sent = 0;
   const counts = { read: 0, duplicate: 0, skipped: 0, needs_attention: 0, rejected: 0, later: 0 };
 
-  for (const source of SOURCES) {
+  for (const source of sources_()) {
     const query = `${source.query} has:attachment ${window} -label:${DONE} -label:${CHECK}`;
     for (const thread of GmailApp.search(query, 0, 50)) {
       let finished = true;

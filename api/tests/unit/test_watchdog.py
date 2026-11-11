@@ -1,5 +1,6 @@
 """ADR-078: the Gmail script's heartbeat and the alerts it emails, each once."""
 
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -14,8 +15,11 @@ TOKEN = {"Authorization": "Bearer inbox-secret"}
 
 
 @pytest.fixture
-def inbox(monkeypatch: pytest.MonkeyPatch) -> None:
+def inbox(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("INBOX_TOKEN", "inbox-secret")
+    get_settings.cache_clear()
+    yield
+    monkeypatch.delenv("INBOX_TOKEN")
     get_settings.cache_clear()
 
 
@@ -44,7 +48,7 @@ def test_heartbeat_states(db: Session) -> None:
 def test_alerts_come_once_and_the_call_is_the_heartbeat(
     client: TestClient, db: Session, inbox: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert client.get("/api/inbox/alerts").status_code == 401
+    assert client.get("/api/inbox", params={"alerts": True}).status_code == 401
     diners = status_service.Source(
         7,
         "Diners Club Hernan",
@@ -57,13 +61,13 @@ def test_alerts_come_once_and_the_call_is_the_heartbeat(
     fine = status_service.Source(8, "BofA", "bank_sync", date(2026, 11, 11), "up_to_date", "")
     _late(monkeypatch, diners, fine)
 
-    first = client.get("/api/inbox/alerts", headers=TOKEN).json()
+    first = client.get("/api/inbox", params={"alerts": True}, headers=TOKEN).json()
     assert [a["title"] for a in first["alerts"]] == ["Diners Club Hernan: statement is late"]
     assert first["subject"] == "Cash flow: Diners Club Hernan: statement is late"
     assert "Closed Nov 3." in first["text"] and "/status" in first["text"]
     assert watchdog.script(db).state == "ok"  # the call checked in
 
-    again = client.get("/api/inbox/alerts", headers=TOKEN).json()
+    again = client.get("/api/inbox", params={"alerts": True}, headers=TOKEN).json()
     assert again["alerts"] == [] and again["text"] == ""
 
     # The next statement of the same account is a new alert; two at once share a subject.
@@ -86,7 +90,7 @@ def test_alerts_come_once_and_the_call_is_the_heartbeat(
         date(2026, 12, 15),
     )
     _late(monkeypatch, later, other)
-    both = client.get("/api/inbox/alerts", headers=TOKEN).json()
+    both = client.get("/api/inbox", params={"alerts": True}, headers=TOKEN).json()
     assert len(both["alerts"]) == 2 and both["subject"] == "Cash flow: 2 things need you"
 
 

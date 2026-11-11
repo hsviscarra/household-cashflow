@@ -155,3 +155,12 @@ From 0.87.0 the script tells the app it ran, every day, and emails you when a st
 Optional: a script property `ALERTS_TO` (comma-separated) sends the alerts somewhere other than
 `DIGEST_TO`. If Data Status says the script has been silent for days, open **Executions** in the
 script editor: a failed run names the reason, usually an authorization to renew (run `setup`).
+
+The check-in uses `GET /api/inbox?alerts=true`: the sign-in in front of the app lets through only
+the exact paths it lists, and `/api/inbox` is one of them.
+
+## Statements someone forwards to you
+
+Lauren's Diners statements reach her Gmail, not yours. When she forwards them (or sets a Gmail
+filter that does), add her address to the script property `FORWARDED_FROM` (comma-separated for
+more than one). Every "estado de cuenta" with a PDF from those addresses is sent to the app.

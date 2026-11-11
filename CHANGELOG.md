@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.88.1] — The check-in gets through, and Diners' new sender
+
+### Fixed
+- The Gmail script's daily check-in was stopped by the sign-in (HTTP 401): it now uses
+  `/api/inbox?alerts=true`, a path the sign-in already lets through.
+- Diners Club statements stopped arriving in November: the bank changed its sender to
+  `e-facturacioninterdin.com`. The script looks for both.
+- Statements forwarded from another Gmail (Lauren's Diners) are sent when the address is in the
+  script property `FORWARDED_FROM`.
+
 ## [0.88.0] — Rules learned from your choices
 
 ### Added
