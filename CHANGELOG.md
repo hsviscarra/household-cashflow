@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.85.0] — A $20 cost guard
+
+### Added
+- A **$20 monthly budget** on the resource group with emails at 25, 50, 80 and 100 percent and when
+  the month is forecast to pass $20 (it was $10 with emails at 50 and 100).
+- A $20 budget and Azure's **cost anomaly alert** on the whole subscription.
+- A **kill switch**: at $20 a Logic App stops the app and makes the database pause instead of bill.
+  `infra/azure/setup-cost-guard.sh` sets it all up; `--restart` turns the app back on (ADR-076).
+
 ## [0.84.0] — Transfers to settle
 
 ### Added
