@@ -34,6 +34,8 @@ export function guessWords(r: GastosInvoice): string | null {
   switch (r.category_source) {
     case "issuer":
       return "same as every invoice from this supplier";
+    case "claude":
+      return "Claude's reading of this supplier: change it if it's wrong";
     case "paid":
       return `paid as ${r.paid_as ?? "its category"}`;
     case "products":

@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.90.0] — Claude classifies suppliers for taxes
+
+### Added
+- Invoices that waited on Taxes for a category get one from **Claude, by supplier**, once a day,
+  when it is at least 90% sure (a school is education, a clinic is health, electronics aren't
+  deductible). Marked as Claude's reading; your choice always wins (ADR-081).
+
 ## [0.89.0] — Smarter transfer pairing
 
 ### Added
