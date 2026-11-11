@@ -5,6 +5,22 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.82.0] — The new Home and four measures
+
+### Added
+- Home rebuilt (ADR-073): a month picker; this month so far as Money in, Spent, Set aside and
+  Left over, each against the same days of the month before; your money now in each bank account
+  with its date; net worth with its history and assets by class; cash flow over 12 months;
+  Interactive Brokers; budget planned vs actual; goals; what's coming up; and an ⓘ on every
+  number explaining what it means and how it's calculated.
+
+### Changed
+- "Kept" is now split into Spent, Set aside and Left over, so saving, investing and the house no
+  longer look like losses. The yearly Cash flow uses them too.
+- Months still running are compared with the same days of the month before ("vs Oct 1–11").
+- Net worth uses bank sync's balance for Capital One and Bank of America when it's newer than the
+  last statement.
+
 ## [0.81.0] — Where each account stands
 
 ### Added

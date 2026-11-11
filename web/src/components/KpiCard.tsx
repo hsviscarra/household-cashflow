@@ -1,3 +1,6 @@
+import type { ExplainKey } from "../explain";
+import Info from "./Info";
+
 /** A KPI tile (docs/design-system.md): label, big number, an optional note or change chip. */
 export default function KpiCard({
   label,
@@ -5,7 +8,9 @@ export default function KpiCard({
   note,
   tone,
   onOpen,
+  info,
 }: {
+  info?: ExplainKey; // an ⓘ beside the label (ADR-073)
   label: string;
   value: string;
   note?: string;
@@ -26,6 +31,7 @@ export default function KpiCard({
     <div className={`rounded-2xl border px-5 py-4 ${box}`}>
       <dt className="kpi-label" style={tone === "attention" ? { color: "inherit" } : undefined}>
         {label}
+        {info && <Info k={info} className="ml-1.5" />}
       </dt>
       <dd className={`num kpi-value ${tone === "bad" ? "text-danger-ink" : ""}`}>
         {onOpen ? (

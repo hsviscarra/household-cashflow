@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Flows, Projection } from "../api";
+import type { Flows, MonthMeasures, Projection } from "../api";
 import Home, { comingUp } from "./Home";
 
 const FLOWS: Flows = {
@@ -77,7 +77,7 @@ const PROJECTION: Projection = {
   next_payday: null,
   alerts: [],
 };
-const SHEET = {
+const SHEET: { items: Record<string, unknown>[] } & Record<string, unknown> = {
   as_of: "2026-11-05",
   assets: "500000",
   liabilities: "20000",
@@ -133,6 +133,53 @@ const SHEET = {
   ],
 };
 
+const period = (
+  month: string,
+  start: string,
+  end: string,
+  money_in: string,
+  spent: string,
+  set_aside: string,
+) => ({
+  month,
+  start,
+  end,
+  money_in,
+  spent,
+  set_aside,
+  free_cash: String(Number(money_in) - Number(spent)),
+  left_over: String(Number(money_in) - Number(spent) - Number(set_aside)),
+});
+const MEASURES: MonthMeasures = {
+  month: "2026-10-01",
+  through: "2026-10-31",
+  running: false,
+  this: period("2026-10-01", "2026-10-01", "2026-10-31", "5000", "1100", "500"),
+  before: period("2026-09-01", "2026-09-01", "2026-09-30", "4000", "1000", "500"),
+  months: [
+    period("2026-09-01", "2026-09-01", "2026-09-30", "4000", "1000", "500"),
+    period("2026-10-01", "2026-10-01", "2026-10-31", "5000", "1100", "500"),
+  ],
+};
+SHEET.items.push({
+  key: "account-7",
+  name: "Banco Pichincha",
+  side: "asset",
+  holding_class: "cash",
+  value: "7954.48",
+  as_of: "2026-11-08",
+  source: "statement",
+  holding_id: null,
+  account_id: 7,
+  is_active: true,
+  notes: null,
+  history: [],
+  purchase: null,
+  loan: null,
+  category_id: null,
+  recurring_template_id: null,
+});
+
 let settings: Record<string, unknown>;
 let review: object;
 
@@ -166,6 +213,57 @@ beforeEach(() => {
         return json({ user: "local", settings });
       }
       if (url.startsWith("/api/cashflow/flows")) return json(FLOWS);
+      if (url.startsWith("/api/cashflow/measures")) return json(MEASURES);
+      if (url.startsWith("/api/investments/ibkr"))
+        return json({
+          holding_id: 9,
+          as_of: "2026-11-10",
+          total: "16440.72",
+          cash: "10",
+          previous_total: "16300",
+          previous_as_of: "2026-11-09",
+          stale: false,
+          positions: [
+            {
+              symbol: "VOO",
+              description: null,
+              asset_class: "ETF",
+              currency: "USD",
+              quantity: "3",
+              price: "690",
+              value: "2252.38",
+              cost_basis: null,
+              unrealized: "446.29",
+            },
+          ],
+        });
+      if (url.startsWith("/api/budget/"))
+        return json({
+          month: "2026-10-01",
+          day_share: "1",
+          budgeted: "1500",
+          spent: "1100",
+          unbudgeted: "0",
+          left: "400",
+          has_plans: true,
+          groups: [
+            {
+              group_id: 1,
+              name: "Groceries",
+              color: null,
+              budget: "1200",
+              rollover: false,
+              carried: "0",
+              spent: "1100",
+              available: "1200",
+              left: "100",
+              expected: "1200",
+              status: "on_track",
+              suggested: null,
+              since: null,
+            },
+          ],
+        });
       if (url.startsWith("/api/review")) return json(review);
       if (url === "/api/todo")
         return json({
@@ -208,7 +306,10 @@ function renderHome() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter
+        initialEntries={["/?month=2026-10"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Home />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -239,16 +340,25 @@ describe("Home", () => {
 
     expect(screen.getByText("Money in", { selector: "dt" }).nextSibling).toHaveTextContent("5,000.00");
     expect(screen.getByRole("button", { name: "Money in: 5,000.00. See the lines" })).toBeInTheDocument();
-    expect(screen.getByText("+25% vs Sep")).toBeInTheDocument();
+    expect(screen.getByText("+25% vs Sep: 4,000.00")).toBeInTheDocument();
+    expect(screen.getByText("Set aside", { selector: "dt" }).nextSibling).toHaveTextContent("500.00");
+    expect(screen.getByText("Left over", { selector: "dt" }).nextSibling).toHaveTextContent("3,400.00");
+    expect(screen.getByRole("button", { name: "What is Spent?" })).toBeInTheDocument();
     expect(await screen.findByText("480,000.00")).toBeInTheDocument();
-    expect(screen.getByText("Lowest cash ahead", { selector: "dt" }).nextSibling).toHaveTextContent(
-      "-120.00",
-    );
+    const now = screen.getByRole("region", { name: "Your money now" });
+    expect(within(now).getByText("Banco Pichincha")).toBeInTheDocument();
+    expect(within(now).getByText("statement Nov 8")).toBeInTheDocument();
+    const inv = screen.getByRole("region", { name: "Investments" });
+    expect(await within(inv).findByText("16,440.72")).toBeInTheDocument();
+    expect(within(inv).getByText("VOO")).toBeInTheDocument();
+    const budget = screen.getByRole("region", { name: "Budget: planned vs actual" });
+    expect(await within(budget).findByText("Groceries")).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /Groceries/ })).toBeInTheDocument();
     const coming = screen.getByRole("region", { name: "Coming up, next 14 days" });
     expect(await within(coming).findByText("BIESS mortgage")).toBeInTheDocument();
     expect(within(coming).getByText("3,580.55")).toBeInTheDocument();
+    expect(within(coming).getByText("-120.00")).toBeInTheDocument();
     const goals = screen.getByRole("region", { name: "Goals" });
     expect(await within(goals).findByText("Held for Rubén")).toBeInTheDocument();
     expect(within(goals).getByRole("progressbar", { name: "New house: paid" })).toHaveAttribute(
@@ -263,21 +373,47 @@ describe("Home", () => {
   it("hides, reorders and restores widgets for the person", async () => {
     renderHome();
     await screen.findByRole("heading", { level: 1, name: "October 2026" });
+    await screen.findByText("Money in", { selector: "dt" });
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
     const panel = screen.getByRole("region", { name: "Customize Home" });
-    fireEvent.click(within(panel).getAllByRole("button", { name: "Hide" })[5]); // Inbox
+    const all = [
+      "needs",
+      "kpis",
+      "money",
+      "networth",
+      "cashflow",
+      "investments",
+      "budget",
+      "goals",
+      "coming",
+      "where",
+      "inbox",
+    ];
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Hide" })[10]); // Inbox
     await waitFor(() => expect(screen.queryByRole("region", { name: "Inbox" })).not.toBeInTheDocument());
-    expect(settings.home).toEqual({ widgets: ["needs", "kpis", "where", "coming", "goals"] });
-    fireEvent.click(within(panel).getByRole("button", { name: "Move Goals up" }));
+    expect(settings.home).toEqual({ widgets: all.slice(0, 10), layout: 2 });
+    fireEvent.click(within(panel).getByRole("button", { name: "Move Coming up up" }));
     await waitFor(() =>
-      expect(settings.home).toEqual({ widgets: ["needs", "kpis", "where", "goals", "coming"] }),
+      expect(settings.home).toEqual({
+        widgets: [
+          "needs",
+          "kpis",
+          "money",
+          "networth",
+          "cashflow",
+          "investments",
+          "budget",
+          "coming",
+          "goals",
+          "where",
+        ],
+        layout: 2,
+      }),
     );
     fireEvent.click(within(panel).getByRole("button", { name: "Show" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "Inbox" })).toBeInTheDocument());
     fireEvent.click(within(panel).getByRole("button", { name: "Back to the default" }));
-    await waitFor(() =>
-      expect(settings.home).toEqual({ widgets: ["needs", "kpis", "where", "coming", "goals", "inbox"] }),
-    );
+    await waitFor(() => expect(settings.home).toEqual({ widgets: all, layout: 2 }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("region", { name: "Customize Home" })).not.toBeInTheDocument();
   });
@@ -288,7 +424,7 @@ describe("Home", () => {
       const u = String(url);
       const json = (d: unknown) => Promise.resolve(new Response(JSON.stringify(d)));
       if (u.startsWith("/api/me/settings"))
-        return json({ user: "local", settings: { home: { widgets: ["needs", "inbox"] } } });
+        return json({ user: "local", settings: { home: { widgets: ["needs", "inbox"], layout: 2 } } });
       if (u.startsWith("/api/cashflow/flows")) return json(FLOWS);
       if (u.startsWith("/api/review")) return json(review);
       if (u === "/api/status") return json({ months: [] });

@@ -51,6 +51,7 @@ export const CLASSES: {
 ];
 const SOURCE: Record<string, string> = {
   statement: "latest statement",
+  bank_sync: "bank sync",
   excel: "Cash Flow sheet",
   manual: "entered here",
   lines: "payments in its category",

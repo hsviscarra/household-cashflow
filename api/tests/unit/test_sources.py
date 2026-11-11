@@ -138,3 +138,30 @@ def test_bank_sync_covers_its_days(db: Session) -> None:
     assert status.sync_coverage(db, [acc], date(2026, 11, 20))[acc.account_id][1] == date(
         2026, 11, 10
     )
+
+
+def test_net_worth_uses_the_synced_balance(db: Session) -> None:
+    """ADR-073: a synced account's balance is the bank's, as of the sync."""
+    import json
+
+    from app.services import networth
+
+    acc = db.scalars(select(Account).where(Account.last4 == "8872")).one()
+    acc.sync_id = "S1"
+    summary = {"accounts": [{"sync_id": "S1", "balance": "2000.00", "balance_date": "2026-11-10"}]}
+    db.add(
+        LoadLog(
+            source="bank_sync",
+            loaded_by="t",
+            rows_loaded=0,
+            summary=json.dumps(summary),
+            loaded_at=datetime(2026, 11, 10, 6),
+        )
+    )
+    db.commit()
+    [item] = [i for i in networth.accounts(db, TODAY) if i.account_id == acc.account_id]
+    assert item.value == Decimal("2000.00") and item.as_of == date(2026, 11, 10)
+    assert item.source == "bank_sync"
+    assert networth.accounts(db, date(2026, 11, 9)) == [] or all(
+        i.account_id != acc.account_id for i in networth.accounts(db, date(2026, 11, 9))
+    )

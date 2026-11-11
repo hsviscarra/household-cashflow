@@ -11,6 +11,7 @@
   not counted, because the house and its loan don't exist until delivery.
 """
 
+import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from app.models import (
     Category,
     ChangeLog,
     Holding,
+    LoadLog,
     RecurringEntry,
     RecurringTemplate,
     Transaction,
@@ -135,6 +137,40 @@ class BalanceSheet:
 
 
 # ---------------------------------------------------------------- reading
+def synced_balances(db: Session, accounts: dict[int, Account]) -> dict[int, tuple[date, Decimal]]:
+    """Each linked account's balance and its day, from the last bank sync run."""
+    by_sync = {a.sync_id: a.account_id for a in accounts.values() if a.sync_id}
+    if not by_sync:
+        return {}
+    last = db.scalars(
+        select(LoadLog)
+        .where(LoadLog.source == "bank_sync")
+        .order_by(LoadLog.load_id.desc())
+        .limit(1)
+    ).first()
+    if last is None:
+        return {}
+    try:
+        rows = json.loads(last.summary).get("accounts") or []
+    except (ValueError, AttributeError):
+        return {}
+    out: dict[int, tuple[date, Decimal]] = {}
+    for r in rows:
+        aid = by_sync.get(r.get("sync_id"))
+        if aid is None or not r.get("balance"):
+            continue
+        try:
+            day = (
+                date.fromisoformat(r.get("balance_date") or "")
+                if r.get("balance_date")
+                else (last.loaded_at.date())
+            )
+            out[aid] = (day, Decimal(str(r["balance"])))
+        except (ValueError, ArithmeticError):
+            continue
+    return out
+
+
 def accounts(db: Session, as_of: date) -> list[Item]:
     accounts = {a.account_id: a for a in db.scalars(select(Account))}
     latest: dict[int, tuple[date, Decimal | None, str]] = {}
@@ -145,8 +181,17 @@ def accounts(db: Session, as_of: date) -> list[Item]:
         history[s.account_id].append(Value(None, s.end, s.closing, "statement", s.file_name))
         if s.account_id not in latest or s.end >= latest[s.account_id][0]:
             latest[s.account_id] = (s.end, s.closing, s.file_name)
+    # Bank sync's balance, when newer than the last statement (ADR-073): what the bank shows now.
+    for account_id, (day, balance) in synced_balances(db, accounts).items():
+        if day > as_of:
+            continue
+        a = accounts[account_id]
+        value = -balance if a.kind == "credit_card" else balance  # SimpleFIN: owed is negative
+        history[account_id].append(Value(None, day, value, "bank_sync", None))
+        if account_id not in latest or day > latest[account_id][0]:
+            latest[account_id] = (day, value, "bank_sync")
     out = []
-    for account_id, (end, closing, _) in latest.items():
+    for account_id, (end, closing, how) in latest.items():
         a = accounts[account_id]
         card = a.kind == "credit_card"
         out.append(
@@ -157,7 +202,7 @@ def accounts(db: Session, as_of: date) -> list[Item]:
                 holding_class="card" if card else "cash",
                 value=closing,
                 as_of=end,
-                source="statement",
+                source="bank_sync" if how == "bank_sync" else "statement",
                 account_id=account_id,
                 is_active=a.is_active,
                 history=sorted(history[account_id], key=lambda v: v.as_of),

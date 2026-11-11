@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
@@ -25,7 +25,7 @@ from app.schemas import (
     SourcesIn,
     SourcesOut,
 )
-from app.services import cashflow, history_load, networth, recurring, sources
+from app.services import cashflow, history_load, measures, networth, recurring, sources
 from app.services.excel_history import ParsedWorkbook, parse_workbook
 
 router = APIRouter(prefix="/api", tags=["history"])
@@ -84,6 +84,32 @@ def monthly_cashflow(
     if end:
         q = q.where(v.c.cash_month <= end)
     return [MonthlyCashflowOut.model_validate(r._mapping) for r in db.execute(q)]
+
+
+@router.get("/cashflow/measures")
+def cashflow_measures(
+    db: DB,
+    month: date | None = None,
+    today: date | None = None,
+    person: str | None = None,
+    months: Annotated[int, Query(ge=1, le=36)] = 12,
+) -> dict[str, Any]:
+    """Money in, spent, set aside, free cash and left over (ADR-073): this month so far against
+    the same days of the month before, and the last `months` months."""
+    day = today or date.today()
+    r = measures.month(db, month or day, day, person or None, months)
+
+    def period(p: measures.Period) -> dict[str, Any]:
+        return {"month": p.month, "start": p.start, "end": p.end, **p.measures.out()}
+
+    return {
+        "month": r.month,
+        "through": r.through,
+        "running": r.running,
+        "this": period(r.this),
+        "before": period(r.before),
+        "months": [period(p) for p in r.months],
+    }
 
 
 @router.get("/cashflow/categories", response_model=list[CategoryMonthOut])
