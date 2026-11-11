@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.91.0] — More alerts by email
+
+### Added
+- The daily email now also tells you about an **unusual charge**, a **bill due in 3 days or
+  late**, a **budget at 80% or over**, and a **large transfer with no other side**, each once.
+  Data Status has an "Email alerts" card to turn kinds off (ADR-082).
+
 ## [0.90.0] — Claude classifies suppliers for taxes
 
 ### Added

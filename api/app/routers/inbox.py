@@ -142,7 +142,7 @@ def _check_in(request: Request, db: Session, today: date | None) -> AlertsOut:
     subject = (
         f"Cash flow: {new[0].title}" if len(new) == 1 else f"Cash flow: {len(new)} things need you"
     )
-    lines = [f"- {a.title}. {a.text}" for a in new]
+    lines = [f"- {a.title}. {a.text}".strip() for a in new]
     text = "\n".join([*lines, "", f"Where each account stands: {base}/status"]) if new else ""
     return AlertsOut(
         alerts=[AlertOut(title=a.title, text=a.text) for a in new], subject=subject, text=text

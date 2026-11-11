@@ -4,9 +4,11 @@ from dataclasses import asdict
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.ops.backup import BackupStore
 from app.schemas import (
@@ -98,3 +100,39 @@ def backup_status(store: Annotated[BackupStore, Depends(get_backup_store)]) -> B
     """The latest backup and restore drill (F17), and whether either is overdue."""
     s = backups.status(store)
     return BackupStatusOut(**asdict(s))
+
+
+class AlertKindOut(BaseModel):
+    key: str
+    label: str
+    on: bool
+
+
+class AlertSettingsOut(BaseModel):
+    kinds: list[AlertKindOut]
+    now: list[str]  # what would be emailed today, sent already or not
+
+
+class AlertSettingsIn(BaseModel):
+    off: list[str]
+
+
+def _alert_settings(db: Session) -> AlertSettingsOut:
+    skip = watchdog.off(db)
+    return AlertSettingsOut(
+        kinds=[AlertKindOut(key=k, label=v, on=k not in skip) for k, v in watchdog.KINDS.items()],
+        now=[f"{a.title}. {a.text}".strip() for a in watchdog.alerts(db)],
+    )
+
+
+@router.get("/alerts", response_model=AlertSettingsOut)
+def alert_settings(db: DB) -> AlertSettingsOut:
+    """Which kinds of alert the daily email carries (ADR-082), and what it would say today."""
+    return _alert_settings(db)
+
+
+@router.put("/alerts", response_model=AlertSettingsOut)
+def set_alert_settings(body: AlertSettingsIn, db: DB, request: Request) -> AlertSettingsOut:
+    who = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    watchdog.set_off(db, set(body.off), who)
+    return _alert_settings(db)
