@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Account, Category, ChangeLog, MerchantRule, Transaction
-from app.seeds import NEW_HOUSE, NEW_HOUSE_RULE
+from app.seeds import INSTALLMENT, INSTALLMENT_PATTERN, NEW_HOUSE, NEW_HOUSE_RULE
 from app.services import classify
 from app.services import rules as rule_engine
 from tests.unit.test_costs_api import _line
@@ -27,6 +27,26 @@ def test_trust_payments_are_new_house_debt_payments(db: Session) -> None:
     line = "TRANSFERENCIA FIDEICOMISO INMOBILIARIO KALANI CUOTA 3"
     assert rule_engine.matches(rule_engine.Rule.of(rule), line, Decimal("-3075.36"))
     assert classify.type_for(house, Decimal("-3075.36")) == "debt_payment"
+
+
+def test_the_installment_is_known_by_its_exact_amount(db: Session) -> None:
+    """ADR-070: Produbanco prints the installment as a plain third-party transfer; only 3,075.36
+    of that text is the house, ahead of any rule calling those transfers own-account moves."""
+    house = _new_house(db)
+    rules = [rule_engine.Rule.of(r) for r in db.scalars(select(MerchantRule))]
+    own = db.scalar(select(Category).where(Category.name == "Between Own Accounts"))
+    assert own is not None
+    rules.append(
+        rule_engine.Rule(
+            0, "TRANSFERENCIA CTAS TERCEROS", "contains", own.category_id, 50, True, None, None
+        )
+    )
+    text = "TRANSFERENCIA CTAS TERCEROS BCA ENL"
+    hit = rule_engine.first_match(rules, text, -INSTALLMENT)
+    assert hit is not None and hit.category_id == house.category_id
+    assert hit.pattern == INSTALLMENT_PATTERN
+    other = rule_engine.first_match(rules, text, Decimal("-150.00"))
+    assert other is not None and other.category_id == own.category_id
 
 
 def test_a_purchase_paid_through_a_savings_category_counts_as_debt(

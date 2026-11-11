@@ -108,7 +108,8 @@ def test_rules_listed_in_priority_order_with_paths(client: TestClient) -> None:
         v6.MERCHANT_RULES,
         v7.MERCHANT_RULES,
     )
-    assert len(rules) == sum(len(r) for r in seeded) + 1  # v10: the new house's trust (ADR-056)
+    # v10: the new house's trust (ADR-056); v11: its installment by amount (ADR-070)
+    assert len(rules) == sum(len(r) for r in seeded) + 2
     priorities = [r["priority"] for r in rules]
     assert priorities == sorted(priorities)
     uber_eats = next(r for r in rules if r["pattern"] == "UBER EATS")

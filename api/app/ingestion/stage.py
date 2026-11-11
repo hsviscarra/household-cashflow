@@ -38,7 +38,16 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import bank_sync, classify, inbox, invoices, people, recurring, transfers
+from app.services import (
+    bank_sync,
+    classify,
+    inbox,
+    invoices,
+    payday,
+    people,
+    recurring,
+    transfers,
+)
 from app.services import rules as rule_engine
 
 log = logging.getLogger(__name__)
@@ -401,7 +410,7 @@ def approve(db: Session, batch: ImportBatch, user: str) -> tuple[int, int]:
                     import_batch_id=batch.batch_id,
                     txn_date=s.txn_date,
                     post_date=s.post_date,
-                    cash_month=s.txn_date.replace(day=1),
+                    cash_month=payday.cash_month(s.txn_date, s.description_raw, s.amount),
                     amount=s.amount,
                     description_raw=s.description_raw,
                     merchant=s.merchant,

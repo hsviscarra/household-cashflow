@@ -38,7 +38,7 @@ from app.models import (
     Transaction,
     TransferNote,
 )
-from app.services import classify
+from app.services import classify, payday
 from app.services import rules as rule_engine
 
 SOURCE = "bank_sync"
@@ -258,7 +258,7 @@ def _row(
         account_id=account.account_id,
         txn_date=day,
         post_date=_day(t.get("posted")),
-        cash_month=day.replace(day=1),
+        cash_month=payday.cash_month(day, description or "", amount),
         amount=amount,
         description_raw=description or "(no description)",
         merchant=hit.merchant() if hit else classify.merchant_key(description)[:200] or None,

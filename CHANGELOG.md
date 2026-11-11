@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.80.0] — The house installment and Lauren's payday
+
+### Fixed
+- The new house's 3,075.36 installments and the 25,678.22 down payment, printed by Produbanco as
+  plain third-party transfers, were left out of the cash flow as transfers between own accounts.
+  A rule by exact amount now makes them New house debt payments, and the ones loaded were moved
+  (ADR-070).
+- Lauren's salary paid on the 1st or 2nd counts in the month before, so September has its salary
+  and October has one instead of two.
+
 ## [0.79.0] — Claude reads taxes, groceries, bills and budget
 
 ### Added
