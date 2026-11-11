@@ -27,7 +27,8 @@ test("load the Excel history, then see it on Cash flow", async ({ page }) => {
   // Other tests may add statement months to 2026, so check the years that only the workbook fills.
   const history = page.getByRole("heading", { level: 2, name: /^In .* you / });
   await expect(page.getByRole("heading", { level: 1, name: "Cash flow" })).toBeVisible();
-  await expect(history).toContainText("2026 you");
+  // "In Jan–Jun 2026, … came in: you spent …" (ADR-073), or "In … 2026 you kept …" while it loads.
+  await expect(history).toContainText(/2026,? /);
   await expect(page.getByRole("img", { name: "Money in and out by month, 2026" })).toBeVisible();
   await expect(page.getByRole("rowheader", { name: "Salary" })).toBeVisible();
 
