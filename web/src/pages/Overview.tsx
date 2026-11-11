@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import {
   fetchCategoryMonths,
+  fetchMeasures,
   fetchReconcile,
   fetchMonthly,
   fetchPlan,
@@ -14,6 +15,7 @@ import {
 } from "../api";
 import { ExportLinks } from "../components/ExportLinks";
 import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
+import Info from "../components/Info";
 import { SourcesSection } from "../components/SourcesSection";
 import { InOutColumns, Legend, TrendLine, type ColumnDatum } from "../components/charts";
 import { money, monthLong, monthShort, num, parts, pct, signed } from "../money";
@@ -58,6 +60,12 @@ export default function Overview() {
   );
   const asked = Number(params.get("year"));
   const year = years.includes(asked) ? asked : years[years.length - 1];
+  // The year in the four measures (ADR-073): Dec of the year, 12 months back (to today).
+  const yearly = useQuery({
+    queryKey: ["cashflow", "measures", "year", year],
+    queryFn: () => fetchMeasures(`${year}-12-01`, null, 12),
+    enabled: !!year && view === "spending",
+  });
 
   if (monthly.error)
     return (
@@ -113,10 +121,29 @@ export default function Overview() {
     ] as ColumnDatum[]
   ).sort((a, b) => a.key.localeCompare(b.key));
 
+  const ym = (yearly.data?.months ?? []).filter((p) => parts(p.month).year === year);
+  const sum = (k: "money_in" | "spent" | "set_aside" | "left_over") => ym.reduce((s, p) => s + num(p[k]), 0);
+  const four = view === "spending" && ym.length > 0;
+
   return (
     <section>
       <h2 className="font-display text-3xl font-bold leading-tight">
-        {net >= 0 ? (
+        {four ? (
+          <>
+            In {span}, <span className="num">{money(sum("money_in"))}</span> came in: you spent{" "}
+            <span className="num">{money(sum("spent"))}</span>, set aside{" "}
+            <span className="num">{money(sum("set_aside"))}</span>, and{" "}
+            {sum("left_over") >= 0 ? (
+              <>
+                <span className="num">{money(sum("left_over"))}</span> was left over.
+              </>
+            ) : (
+              <>
+                <span className="num">{money(-sum("left_over"))}</span> came out of your accounts.
+              </>
+            )}
+          </>
+        ) : net >= 0 ? (
           <>
             In {span} you kept <span className="num">{money(net)}</span> of{" "}
             <span className="num">{money(income)}</span>.
@@ -166,12 +193,41 @@ export default function Overview() {
         ))}
       </div>
 
-      <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiCard label="Money in" value={money(income)} />
-        <KpiCard label="Money out" value={money(out)} />
-        <KpiCard label="Kept" value={signed(net)} tone={net < 0 ? "bad" : undefined} />
-        <KpiCard label="Share kept" value={pct(income ? net / income : null)} />
-      </dl>
+      {four ? (
+        <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {(
+            [
+              ["money_in", "Money in"],
+              ["spent", "Spent"],
+              ["set_aside", "Set aside"],
+              ["left_over", "Left over"],
+            ] as const
+          ).map(([k, label]) => (
+            <div key={k} className="relative">
+              <span className="absolute right-3 top-3 z-10">
+                <Info k={k} />
+              </span>
+              <KpiCard
+                label={label}
+                value={k === "left_over" ? signed(sum(k)) : money(sum(k))}
+                note={
+                  k === "set_aside" && sum("money_in")
+                    ? `${pct(sum(k) / sum("money_in"))} of money in`
+                    : undefined
+                }
+                tone={k === "left_over" && sum(k) < 0 ? "bad" : undefined}
+              />
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <KpiCard label="Money in" value={money(income)} />
+          <KpiCard label="Money out" value={money(out)} />
+          <KpiCard label="Kept" value={signed(net)} tone={net < 0 ? "bad" : undefined} />
+          <KpiCard label="Share kept" value={pct(income ? net / income : null)} />
+        </dl>
+      )}
       <p className="mt-3 text-sm text-muted">
         Money out = spending <span className="num">{money(expenses)}</span>
         {view === "cash" && (
@@ -402,7 +458,10 @@ function CategoryTable({ year, months }: { year: number; months: string[] }) {
 /** Kept vs what the balances did, and what explains the gap (ADR-051). */
 function WhereMoney({ from, to }: { from: string; to: string }) {
   const [open, setOpen] = useState(false);
-  const q = useQuery({ queryKey: ["cashflow", "reconcile", from, to], queryFn: () => fetchReconcile(from, to) });
+  const q = useQuery({
+    queryKey: ["cashflow", "reconcile", from, to],
+    queryFn: () => fetchReconcile(from, to),
+  });
   const r = q.data;
   if (!r?.accounts) return null;
   const gap = num(r.gap);
@@ -411,13 +470,17 @@ function WhereMoney({ from, to }: { from: string; to: string }) {
     <section aria-label="Where's the money" className="card mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="font-display text-xl font-bold">Where’s the money?</h2>
-        <button className="text-sm font-semibold text-primary" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <button
+          className="text-sm font-semibold text-primary"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+        >
           {open ? "Hide the accounts" : "See the accounts"}
         </button>
       </div>
       <p className="mt-2">
-        You kept <span className="num font-semibold">{signed(num(r.kept))}</span> from {monthShort(r.start)} to{" "}
-        {monthShort(r.end)}; your bank and card balances changed by{" "}
+        You kept <span className="num font-semibold">{signed(num(r.kept))}</span> from {monthShort(r.start)}{" "}
+        to {monthShort(r.end)}; your bank and card balances changed by{" "}
         <span className="num font-semibold">{signed(num(r.balances_change))}</span>.{" "}
         {ok ? (
           <span className="text-good-ink">They agree.</span>
@@ -429,7 +492,8 @@ function WhereMoney({ from, to }: { from: string; to: string }) {
       </p>
       {r.workbook_months > 0 && (
         <p className="mt-1 text-sm text-muted">
-          {r.workbook_months} of these months come from the Cash Flow workbook, which has no balances to compare.
+          {r.workbook_months} of these months come from the Cash Flow workbook, which has no balances to
+          compare.
         </p>
       )}
       {!ok && r.causes.length > 0 && (
@@ -471,7 +535,9 @@ function WhereMoney({ from, to }: { from: string; to: string }) {
                     {a.end !== null ? money(a.end) : "—"}
                     {a.end_on && <span className="block text-xs text-muted">{monthShort(a.end_on)}</span>}
                   </td>
-                  <td className="num py-1.5 text-right font-semibold">{a.change !== null ? signed(num(a.change)) : "—"}</td>
+                  <td className="num py-1.5 text-right font-semibold">
+                    {a.change !== null ? signed(num(a.change)) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -16,6 +16,7 @@ from app.schemas import (
     GapOut,
     LoadOut,
     MonthStatusOut,
+    SourceOut,
     StatusAccountOut,
     StatusItemOut,
     StatusOut,
@@ -86,6 +87,7 @@ def get_status(
             )
             for t in s.timeline
         ],
+        sources=[SourceOut(**vars(x)) for x in s.sources],
     )
 
 

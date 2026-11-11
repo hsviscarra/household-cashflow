@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DataStatus, MonthStatus } from "../api";
-import StatusPage, { downloadText, missingGaps, summary } from "./Status";
+import StatusPage, { Arrivals, downloadText, missingGaps, summary } from "./Status";
 
 const ACCOUNTS = [
   { account_id: 1, name: "Checking", kind: "checking", owner: "Joint" },
@@ -242,5 +242,44 @@ describe("Data Status: statement periods", () => {
     expect(downloadText({ closes: ["2026-06-03", "2026-07-03"] })).toBe(
       "Download the statements closing Jun 3, 2026 and Jul 3, 2026",
     );
+  });
+});
+
+describe("Where each account stands", () => {
+  it("says how each account's data arrives and what's next", () => {
+    render(
+      <MemoryRouter>
+        <Arrivals
+          sources={[
+            {
+              account_id: 1,
+              name: "Diners Club Hernan",
+              how: "email",
+              last_day: "2026-10-03",
+              state: "late",
+              note: "Closed Nov 3 and hasn't arrived: check the Gmail script, or upload it on Import",
+            },
+            {
+              account_id: 2,
+              name: "BofA Adv Plus Banking",
+              how: "bank_sync",
+              last_day: "2026-11-11",
+              state: "up_to_date",
+              note: "Nothing to do",
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    const late = screen.getByText("Diners Club Hernan").closest("tr")!;
+    expect(within(late).getByText("Late")).toBeInTheDocument();
+    expect(within(late).getByText("Email, by the Gmail script")).toBeInTheDocument();
+    expect(within(late).getByRole("link", { name: /check the Gmail script/ })).toHaveAttribute(
+      "href",
+      "/import",
+    );
+    const bofa = screen.getByText("BofA Adv Plus Banking").closest("tr")!;
+    expect(within(bofa).getByText("Bank sync, daily")).toBeInTheDocument();
+    expect(within(bofa).getByText("Up to date")).toBeInTheDocument();
   });
 });

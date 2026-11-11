@@ -817,6 +817,17 @@ export type DataStatus = {
   months: MonthStatus[];
   loads: { loaded_at: string; source: string; file_name: string | null; rows: number; loaded_by: string }[];
   statements?: AccountTimeline[];
+  sources?: AccountSource[];
+};
+/** How an account's data arrives and where it stands today (ADR-072). */
+export type AccountSource = {
+  account_id: number;
+  name: string;
+  how: "bank_sync" | "email" | "upload";
+  last_day: string | null;
+  state: "up_to_date" | "on_its_way" | "on_import" | "you_upload" | "late";
+  note: string;
+  expected?: string | null;
 };
 export type TimelineStatement = {
   statement_file_id: number;
@@ -1046,6 +1057,30 @@ export type HoldingInput = {
   recurring_template_id?: number | null;
   notes?: string | null;
 };
+// ---------- the four measures (ADR-073) ----------
+export type MeasurePeriod = {
+  month: string;
+  start: string;
+  end: string;
+  money_in: string;
+  spent: string;
+  set_aside: string;
+  free_cash: string;
+  left_over: string;
+};
+export type MonthMeasures = {
+  month: string;
+  through: string;
+  running: boolean;
+  this: MeasurePeriod;
+  before: MeasurePeriod;
+  months: MeasurePeriod[];
+};
+export const fetchMeasures = (month: string, person?: string | null, months?: number) =>
+  send<MonthMeasures>(
+    "GET",
+    `/api/cashflow/measures${query({ month, person: person ?? undefined, months })}`,
+  );
 export const fetchBalanceSheet = () => send<BalanceSheet>("GET", "/api/networth");
 export const createHolding = (h: HoldingInput) => send<{ holding_id: number }>("POST", "/api/holdings", h);
 export const updateHolding = (id: number, h: Partial<HoldingInput> & { is_active?: boolean }) =>

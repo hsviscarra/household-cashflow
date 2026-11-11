@@ -469,6 +469,19 @@ def data_status(months: int = 3) -> dict[str, Any]:
     shown = [m for m in st.months if m.source == "statements"][: max(months, 1)]
     return {
         "today": st.today.isoformat(),
+        # How each account's data arrives (bank sync, email, upload) and where it stands today:
+        # late and you_upload need a person; on_its_way is normal.
+        "sources": [
+            {
+                "account": x.name,
+                "how": x.how,
+                "state": x.state,
+                "last_day": x.last_day.isoformat() if x.last_day else None,
+                "expected": x.expected.isoformat() if x.expected else None,
+                "note": x.note,
+            }
+            for x in st.sources
+        ],
         "months": [
             {
                 "month": _month(m.month),

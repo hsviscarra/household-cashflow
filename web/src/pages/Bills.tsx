@@ -156,6 +156,7 @@ export default function BillsPage({ start }: { start?: View }) {
       <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
           label="Committed this month"
+          info="committed"
           value={money(committed)}
           note={`${out.length} ${out.length === 1 ? "item" : "items"} going out`}
         />
@@ -295,7 +296,9 @@ function BillRow({ b }: { b: Bill }) {
       <span className="num w-28 text-right font-semibold">
         {money(size(b))}
         {b.paid !== null && num(b.paid) !== num(b.expected) && (
-          <span className="block text-xs font-normal text-muted">expected {money(Math.abs(num(b.expected)))}</span>
+          <span className="block text-xs font-normal text-muted">
+            expected {money(Math.abs(num(b.expected)))}
+          </span>
         )}
       </span>
     </li>

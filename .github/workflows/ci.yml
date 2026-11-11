@@ -44,8 +44,13 @@ jobs:
             curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -o /tmp/msprod.deb
             sudo dpkg -i /tmp/msprod.deb
           fi
-          sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc
+          # Ubuntu's mirrors sometimes drop out on the runner: retry a few times before failing.
+          for i in 1 2 3 4; do
+            sudo apt-get -o Acquire::Retries=3 update \
+              && sudo ACCEPT_EULA=Y apt-get -o Acquire::Retries=3 install -y msodbcsql18 unixodbc \
+              && break
+            sleep $((i * 30))
+          done
           odbcinst -q -d
       - name: Tesseract OCR (Pacificard statements are pictures)
         run: sudo apt-get install -y --no-install-recommends tesseract-ocr && tesseract --version

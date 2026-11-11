@@ -324,3 +324,13 @@ One primary per screen. Labels say what happens; the confirmation repeats the wo
   edits and exports.
 - **Accessibility:** text contrast ≥ 4.5:1, visible focus ring (`primary`), real buttons and links,
   labels on every input, category names beside colors.
+
+## Explanations (ADR-073)
+
+- Every number and block title that isn't self-evident carries an ⓘ (`<Info k="…">`): a 16 px
+  circled "i" beside the label, opening a 288 px card on hover, focus or tap. The card: the name
+  in bold, one sentence of what it means, then "How it's calculated" and "Doesn't include" in
+  muted text when they apply.
+- The words live in `web/src/explain.ts`, written once; a number shown in two places shows the
+  same explanation. `KpiCard` takes `info`.
+- Comparisons name their period: "vs Oct 1–11" while a month runs, "vs Sep" once it's over.

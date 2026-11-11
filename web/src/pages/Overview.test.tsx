@@ -86,6 +86,7 @@ const CASH = [
   { ...month("2026-02-01", "9200", "250", "900", "0", "4050", "7650"), card_payments: "4000" },
 ];
 let urls: string[];
+let measures: object | null = null;
 
 beforeEach(() => {
   urls = [];
@@ -95,17 +96,24 @@ beforeEach(() => {
       urls.push(url);
       const body = url.includes("/api/cashflow/lines")
         ? []
-        : url.includes("/api/sources")
-        ? { statements_from: "2026-07-01", workbook_first: "2021-01-01", workbook_last: "2026-06-01", check: [] }
-        : url.includes("/reconcile")
-        ? RECON
-        : url.includes("/monthly?view=cash")
-        ? CASH
-        : url.includes("/monthly")
-          ? MONTHLY
-          : url.includes("/plan")
-            ? PLAN
-            : CATS;
+        : url.includes("/api/cashflow/measures") && measures
+          ? measures
+          : url.includes("/api/sources")
+            ? {
+                statements_from: "2026-07-01",
+                workbook_first: "2021-01-01",
+                workbook_last: "2026-06-01",
+                check: [],
+              }
+            : url.includes("/reconcile")
+              ? RECON
+              : url.includes("/monthly?view=cash")
+                ? CASH
+                : url.includes("/monthly")
+                  ? MONTHLY
+                  : url.includes("/plan")
+                    ? PLAN
+                    : CATS;
       return Promise.resolve(new Response(JSON.stringify(body)));
     }),
   );
@@ -156,6 +164,38 @@ const RECON = {
 };
 
 describe("Cash flow history (the former Overview)", () => {
+  it("shows the year in the four measures (ADR-073)", async () => {
+    const p = (month: string, money_in: string, spent: string, set_aside: string, left_over: string) => ({
+      month,
+      start: month,
+      end: month,
+      money_in,
+      spent,
+      set_aside,
+      free_cash: "0",
+      left_over,
+    });
+    measures = {
+      month: "2026-12-01",
+      through: "2026-11-11",
+      running: false,
+      this: p("2026-12-01", "0", "0", "0", "0"),
+      before: p("2026-11-01", "0", "0", "0", "0"),
+      months: [
+        p("2026-01-01", "9000", "2000", "1000", "6000"),
+        p("2026-02-01", "9000", "9000", "26000", "-26000"),
+      ],
+    };
+    renderAt();
+    const h2 = await screen.findByRole("heading", { level: 2, name: /came in/ });
+    expect(h2).toHaveTextContent(
+      "In Jan–Feb 2026, 18,000.00 came in: you spent 11,000.00, set aside 27,000.00, and 20,000.00 came out of your accounts.",
+    );
+    expect(screen.getByText("Set aside", { selector: "dt" }).nextSibling).toHaveTextContent("27,000.00");
+    expect(screen.getByRole("button", { name: "What is Left over?" })).toBeInTheDocument();
+    measures = null;
+  });
+
   it("leads with the latest year in a sentence and shows the tiles", async () => {
     renderAt();
     const h2 = await screen.findByRole("heading", { level: 2, name: /^In / });

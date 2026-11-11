@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -127,6 +127,19 @@ class AccountTimeline:
 
 
 @dataclass
+class Source:
+    """How an account's data arrives and where it stands today (ADR-072)."""
+
+    account_id: int
+    name: str
+    how: str  # bank_sync, email, upload
+    last_day: date | None  # the last day its loaded data covers
+    state: str  # up_to_date, on_its_way, on_import, you_upload, late
+    note: str
+    expected: date | None = None  # when the next data should be there
+
+
+@dataclass
 class Status:
     today: date
     excel_through: date | None
@@ -134,6 +147,118 @@ class Status:
     months: list[MonthStatus]
     loads: list[Load]
     timeline: list[AccountTimeline] = field(default_factory=list)
+    sources: list[Source] = field(default_factory=list)
+
+
+# Banks whose statements reach Gmail and the Apps Script posts them (ADR-020).
+EMAILED = ("PICHINCHA", "PACIFICARD", "DINERS")
+EMAIL_LAG = 7  # days after a statement closes by which its email has usually arrived
+
+
+def how_it_arrives(a: Account) -> str:
+    if a.sync_id:
+        return "bank_sync"
+    text = f"{a.institution} {a.name}".upper()
+    return "email" if any(e in text for e in EMAILED) else "upload"
+
+
+def _short(d: date) -> str:
+    return f"{d:%b} {d.day}"
+
+
+def sources(
+    accounts: list[Account],
+    timeline: list[AccountTimeline],
+    waiting: dict[int, list[tuple[date, date, str]]],
+    today: date,
+) -> list[Source]:
+    """Every open account: how its data arrives, the last day it covers, and whether the next
+    piece is on its way, late, or waiting on a person."""
+    lines = {t.account_id: t for t in timeline}
+    out = []
+    for a in accounts:
+        if a.closed_on is not None and a.closed_on < today - timedelta(days=45):
+            continue
+        t = lines.get(a.account_id)
+        if t is None:
+            continue
+        how = how_it_arrives(a)
+        last = max((x.end for x in t.statements if x.state in ("loaded", "synced")), default=None)
+        open_gaps = [g for g in t.gaps if g.start <= today]
+        on_import = [
+            w
+            for w_start, w_end, w in waiting.get(a.account_id, [])
+            for g in open_gaps
+            if w_start <= g.end and w_end >= g.start
+        ]
+        closes = sorted(c for g in open_gaps for c in g.closes if c < today)
+        if not open_gaps or (how == "bank_sync" and last is not None and last >= today):
+            src = Source(a.account_id, a.name, how, last, "up_to_date", "Nothing to do")
+        elif on_import:
+            src = Source(
+                a.account_id,
+                a.name,
+                how,
+                last,
+                "on_import",
+                f"On Import, {on_import[0]}: open it and approve",
+            )
+        elif how == "bank_sync":
+            src = Source(
+                a.account_id,
+                a.name,
+                how,
+                last,
+                "late",
+                f"Bank sync hasn't run since {_short(last)}" if last else "Bank sync hasn't run",
+            )
+        elif not closes:
+            due = next((g.due for g in open_gaps if g.due), None)
+            src = Source(
+                a.account_id,
+                a.name,
+                how,
+                last,
+                "on_its_way",
+                f"The bank issues it around {_short(due)}" if due else "Not issued yet",
+                due,
+            )
+        elif how == "email":
+            by = closes[0] + timedelta(days=EMAIL_LAG)
+            if by >= today:
+                src = Source(
+                    a.account_id,
+                    a.name,
+                    how,
+                    last,
+                    "on_its_way",
+                    f"Closed {_short(closes[0])}; its email usually arrives by {_short(by)}",
+                    by,
+                )
+            else:
+                src = Source(
+                    a.account_id,
+                    a.name,
+                    how,
+                    last,
+                    "late",
+                    f"Closed {_short(closes[0])} and hasn't arrived: check the Gmail script,"
+                    " or upload it on Import",
+                    by,
+                )
+        else:
+            src = Source(
+                a.account_id,
+                a.name,
+                how,
+                last,
+                "you_upload",
+                f"Download the statement closing {_short(closes[0])} and upload it on Import",
+                closes[0],
+            )
+        out.append(src)
+    order = {"late": 0, "you_upload": 1, "on_import": 2, "on_its_way": 3, "up_to_date": 4}
+    return sorted(out, key=lambda x: (order[x.state], x.name))
 
 
 @dataclass
@@ -224,6 +349,39 @@ def next_cycle_end(end: date) -> date:
     if end == month_end(end):  # month-end statements (Produbanco): the next month's last day
         return m.replace(day=last)
     return m.replace(day=min(end.day, last))
+
+
+SYNC_FRESH = 3  # days: a sync older than this no longer counts up to today
+
+
+def sync_coverage(
+    db: Session, accounts: list[Account], today: date
+) -> dict[int, tuple[date, date]]:
+    """The days bank sync covers for each linked account: from its first synced line to the last
+    sync (to today while the last sync is fresh)."""
+    linked = [a.account_id for a in accounts if a.sync_id]
+    if not linked:
+        return {}
+    last = db.scalars(
+        select(LoadLog)
+        .where(LoadLog.source == "bank_sync")
+        .order_by(LoadLog.load_id.desc())
+        .limit(1)
+    ).first()
+    if last is None:
+        return {}
+    synced = last.loaded_at.date()
+    end = today if (today - synced).days <= SYNC_FRESH else synced
+    out: dict[int, tuple[date, date]] = {}
+    rows = db.execute(
+        select(Transaction.account_id, func.min(Transaction.txn_date))
+        .where(Transaction.account_id.in_(linked), Transaction.source == "bank_sync")
+        .group_by(Transaction.account_id)
+    )
+    for aid, first_day in rows:
+        if aid is not None and first_day is not None and first_day <= end:
+            out[aid] = (first_day, end)
+    return out
 
 
 def statement_files(db: Session) -> dict[int, list[TimelineStatement]]:
@@ -391,6 +549,13 @@ def month_status(db: Session, today: date | None = None, with_loads: bool = True
     by_account: dict[int, list[_Stmt]] = defaultdict(list)
     for s in stmts:
         by_account[s.account_id].append(s)
+    # Bank sync covers its accounts' days like a statement does (ADR-072): no PDF is asked for.
+    covered: dict[int, list[tuple[date, date]]] = defaultdict(list)
+    for s in stmts:
+        covered[s.account_id].append((s.start, s.end))
+    for aid, (s_start, s_end) in sync_coverage(db, accounts, today).items():
+        covered[aid].append((s_start, s_end))
+        files[aid].append(TimelineStatement(0, "Bank sync", s_start, s_end, "synced", None))
 
     if excel_through is not None:
         first = recurring.add_months(excel_through, 1)
@@ -414,7 +579,7 @@ def month_status(db: Session, today: date | None = None, with_loads: bool = True
             # Closed or opened during the month: expected only while it was open.
             a_end = min(end, a.closed_on) if a.closed_on else end
             a_start = max(m, a.opened_on) if a.opened_on else m
-            periods = [(s.start, s.end) for s in by_account[a.account_id]]
+            periods = covered[a.account_id]
             gaps = _gaps(periods, a_start, a_end)
             uncovered = sum((g_end - g_start).days + 1 for g_start, g_end in gaps)
             days = (a_end - a_start).days + 1
@@ -471,6 +636,7 @@ def month_status(db: Session, today: date | None = None, with_loads: bool = True
         out,
         loads(db) if with_loads else [],
         list(lines.values()),
+        sources(accounts, list(lines.values()), waiting, today),
     )
 
 
