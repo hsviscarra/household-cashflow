@@ -40,6 +40,19 @@ def test_statement_ties_out() -> None:
     assert (pay.section, pay.amount) == ("payment", Decimal("40.24"))
 
 
+def test_foreign_amount_with_its_own_sign() -> None:
+    """October 2026: purchases abroad print "M.E. + rate M.L. +"; they were left out and the
+    statement didn't tie out by exactly their sum."""
+    lines = [
+        ln.replace("CONS. 25.00 1.0000 25.00 +", "CONS. 25.00 + 1.0000 25.00 +")
+        for ln in PRODU_CARD_LINES
+    ]
+    p = PARSERS["produbanco"](read_pages(produbanco_card_full(lines=lines)))
+    assert p.tieout_ok and not p.rejects, [c for c in p.checks if not c.ok]
+    shop = next(ln for ln in p.lines if ln.description == "TIENDA EN LINEA")
+    assert shop.amount == Decimal("-25.00")
+
+
 def test_a_skipped_line_is_caught() -> None:
     lines = [ln for ln in PRODU_CARD_LINES if "TARIFA" not in ln]
     p = PARSERS["produbanco"](read_pages(produbanco_card_full(lines=lines)))

@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.88.2] — Produbanco Visa: purchases abroad
+
+### Fixed
+- The October Produbanco Visa statement didn't tie out by 7.69: purchases abroad now print the
+  foreign amount with its own sign ("2.92 + 1.0000 2.92 +") and those lines were left out.
+
 ## [0.88.1] — The check-in gets through, and Diners' new sender
 
 ### Fixed
