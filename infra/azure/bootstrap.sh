@@ -65,7 +65,7 @@ SIMPLEFIN_ACCESS_URL="${SIMPLEFIN_ACCESS_URL:-$(secret simplefin-access)}"
 deploy() {
   az deployment group create -g "$RG" -n cashflow -f infra/azure/main.bicep \
     -p prefix="$PREFIX" sqlAdminPassword="$SQL_PASSWORD" allowedEmails="$ALLOWED_EMAILS" \
-       ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" alertEmail="$ALERT_EMAIL" \
+       ghcrUsername="$GH_USER" ghcrToken="$GHCR_TOKEN" \
        anthropicApiKey="${ANTHROPIC_API_KEY:-}" mcpToken="${MCP_TOKEN:-}" \
        readerPassword="${READER_PASSWORD:-}" inboxToken="${INBOX_TOKEN:-}" \
        invoiceBuyers="${INVOICE_BUYERS:-}" simplefinAccessUrl="${SIMPLEFIN_ACCESS_URL:-}" "$@" \
@@ -122,6 +122,9 @@ for kv in "AZURE_CLIENT_ID=$DEPLOY_APP_ID" "AZURE_TENANT_ID=$TENANT_ID" \
           "AZURE_SUBSCRIPTION_ID=$SUB_ID" "AZURE_RG=$RG" "AZURE_APP_NAME=$APP"; do
   gh variable set "${kv%%=*}" --repo "$REPO" --body "${kv#*=}"
 done
+
+echo "Cost guard: \$20 budget, alerts, kill switch (ADR-076)..."
+ALERT_EMAIL="$ALERT_EMAIL" RG="$RG" PREFIX="$PREFIX" ./infra/azure/setup-cost-guard.sh
 
 echo
 echo "Done. App: https://$FQDN (shows a placeholder until the first deploy from main)."

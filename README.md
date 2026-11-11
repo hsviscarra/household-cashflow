@@ -65,11 +65,14 @@ The workbook stays out of git; see `docs/adr/0002-excel-history.md` for how it i
 ## Deploy
 
 - **One-time setup:** [`infra/azure/bootstrap.sh`](infra/azure/bootstrap.sh) creates the Azure
-  resources (Container App, Azure SQL free offer, billed past the allowance at 1 vCore (ADR-046), storage, $10 budget alert), the
+  resources (Container App, Azure SQL free offer, billed past the allowance at 1 vCore (ADR-046), storage), the
   Microsoft sign-in, and the GitHub OIDC identity used by deploys.
 - **Every merge to `main`:** CI passes → `deploy.yml` builds the image to GHCR, rolls the Container
   App and smoke-tests `/api/health` for the new git SHA.
 - **Rollback:** run the Deploy workflow manually with the previous image tag (git SHA).
+- **Cost guard:** a $20 monthly cap with alerts and a kill switch that stops the app;
+  one-time [`infra/azure/setup-cost-guard.sh`](infra/azure/setup-cost-guard.sh), `--restart` to
+  turn it back on (ADR-076).
 - **Backups:** nightly, kept 30 days, restore-drilled monthly; one-time
   [`infra/azure/setup-backups.sh`](infra/azure/setup-backups.sh). How to restore:
   [docs/runbooks/backups.md](docs/runbooks/backups.md).

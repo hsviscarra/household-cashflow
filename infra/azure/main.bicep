@@ -64,12 +64,6 @@ param simplefinAccessUrl string = ''
 @description('Password of the read-only database login the MCP endpoint uses (F18).')
 param readerPassword string = ''
 
-@description('Email for the monthly budget alert.')
-param alertEmail string
-
-@description('First day of the current month, for the budget start date.')
-param budgetStartDate string = utcNow('yyyy-MM-01')
-
 var suffix = uniqueString(resourceGroup().id)
 // Microsoft personal accounts (consumers tenant).
 var msaIssuer = '${environment().authentication.loginEndpoint}9188040d-6c67-4c5b-b112-36a304b66dad/v2.0'
@@ -108,7 +102,7 @@ resource db 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   properties: {
     useFreeLimit: true
     // Keep running past the free allowance (Hernan, Nov 2026): the app must not stop for weeks.
-    // The budget below emails at $5, $10 and when the month is forecast to pass $10.
+    // cost-guard.bicep emails on the way to $20 and stops the app there (ADR-076).
     freeLimitExhaustionBehavior: 'BillOverUsage'
     autoPauseDelay: 60
     minCapacity: json('0.5')
@@ -252,39 +246,7 @@ resource blobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
   }
 }
 
-// ---------- Cost guard: alert at $1 ----------
-resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
-  name: '${prefix}-budget'
-  properties: {
-    category: 'Cost'
-    amount: 10
-    timeGrain: 'Monthly'
-    timePeriod: { startDate: budgetStartDate }
-    notifications: {
-      actualOver50: {
-        enabled: true
-        operator: 'GreaterThan'
-        threshold: 50
-        contactEmails: [ alertEmail ]
-        thresholdType: 'Actual'
-      }
-      actualOver100: {
-        enabled: true
-        operator: 'GreaterThan'
-        threshold: 100
-        contactEmails: [ alertEmail ]
-        thresholdType: 'Actual'
-      }
-      forecastOver100: {
-        enabled: true
-        operator: 'GreaterThan'
-        threshold: 100
-        contactEmails: [ alertEmail ]
-        thresholdType: 'Forecasted'
-      }
-    }
-  }
-}
+// The budget, its alerts and the kill switch live in cost-guard.bicep (ADR-076).
 
 output appName string = app.name
 output fqdn string = app.properties.configuration.ingress.fqdn
