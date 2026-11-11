@@ -433,6 +433,8 @@ export type Batch = {
   decided_at: string | null;
 };
 export type Txn = {
+  /** On the answer to an edit: the rule saved because this merchant got the same category twice (ADR-079). */
+  learned?: { rule_id: number; pattern: string; lines: number } | null;
   transaction_id: number;
   txn_date: string;
   post_date: string | null;

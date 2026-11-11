@@ -386,6 +386,14 @@ class ApproveOut(BaseModel):
     skipped_duplicates: int
 
 
+class LearnedOut(BaseModel):
+    """The rule saved because a merchant was categorized the same way twice by hand."""
+
+    rule_id: int
+    pattern: str
+    lines: int
+
+
 class TransactionOut(BaseModel):
     transaction_id: int
     txn_date: date
@@ -407,6 +415,8 @@ class TransactionOut(BaseModel):
     category_source: str | None = None
     parent_transaction_id: int | None = None
     parts: int = 0  # > 0: split into this many parts, which count instead of this line
+    # Set on the answer to an edit that taught the app a rule (ADR-079).
+    learned: "LearnedOut | None" = None
     transfer_group_id: int | None = None
     transfer_with: "TransferLegOut | None" = None  # the other side of a matched transfer
     recurring_entry_id: int | None = None  # F11: the recurring entry this line pays

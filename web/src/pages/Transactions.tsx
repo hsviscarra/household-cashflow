@@ -14,6 +14,7 @@ import {
   removeSplit,
   splitTransaction,
   unlinkTransfer,
+  updateRule,
   updateTransaction,
   type Txn,
 } from "../api";
@@ -22,6 +23,16 @@ import { LineDetails } from "../components/MerchantReview";
 import { PersonNote, SaveView, TableSettings } from "../components/Personalize";
 import { addMonths, money, monthLong, num, showAmount } from "../money";
 import { personParam, useColumns, usePerson, useSavedViews, type Person } from "../prefs";
+
+/** The second time a merchant gets the same category by hand, the app saves the rule (ADR-079). */
+export function learnedMessage(saved: Txn, undo: () => void): { text: string; undo: () => void } {
+  const l = saved.learned!;
+  const more = l.lines ? ` ${l.lines} more ${l.lines === 1 ? "line" : "lines"} got it too.` : "";
+  return {
+    text: `Saved, and learned: “${l.pattern}” now goes to ${saved.category_path ?? "that category"} by itself.${more}`,
+    undo,
+  };
+}
 
 const SOURCE_LABEL: Record<string, string> = {
   statement: "Statement",
@@ -678,17 +689,26 @@ function TxnEditor({ t, onDone }: { t: Txn; onDone: () => void }) {
             if (!Object.keys(body).length) return onDone();
             save.mutate(body, {
               onSuccess: (saved) =>
-                setMessage({
-                  text: `Saved: ${saved.category_path ?? "no category"}.`,
-                  undo:
-                    body.category_id && previous
-                      ? () =>
-                          save.mutate(
-                            { category_id: previous },
-                            { onSuccess: () => setMessage({ text: "Change undone." }) },
-                          )
-                      : undefined,
-                }),
+                setMessage(
+                  saved.learned
+                    ? learnedMessage(saved, () =>
+                        updateRule(saved.learned!.rule_id, { is_active: false }).then(() => {
+                          invalidate();
+                          setMessage({ text: "Rule turned off. The lines keep their category." });
+                        }),
+                      )
+                    : {
+                        text: `Saved: ${saved.category_path ?? "no category"}.`,
+                        undo:
+                          body.category_id && previous
+                            ? () =>
+                                save.mutate(
+                                  { category_id: previous },
+                                  { onSuccess: () => setMessage({ text: "Change undone." }) },
+                                )
+                            : undefined,
+                      },
+                ),
             });
           }}
         >
@@ -726,7 +746,19 @@ function TxnEditor({ t, onDone }: { t: Txn; onDone: () => void }) {
           setCategoryId(id);
           save.mutate(
             { category_id: id },
-            { onSuccess: (saved) => setMessage({ text: `Saved: ${saved.category_path ?? "no category"}.` }) },
+            {
+              onSuccess: (saved) =>
+                setMessage(
+                  saved.learned
+                    ? learnedMessage(saved, () =>
+                        updateRule(saved.learned!.rule_id, { is_active: false }).then(() => {
+                          invalidate();
+                          setMessage({ text: "Rule turned off. The lines keep their category." });
+                        }),
+                      )
+                    : { text: `Saved: ${saved.category_path ?? "no category"}.` },
+                ),
+            },
           );
         }}
       />

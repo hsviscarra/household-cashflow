@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Txn } from "../api";
 import { PersonSwitch, SavedViewLinks } from "../components/Personalize";
-import TransactionsPage, { keep, matches, toCsv, type Filters } from "./Transactions";
+import TransactionsPage, { keep, learnedMessage, matches, toCsv, type Filters } from "./Transactions";
 
 const base: Txn = {
   transaction_id: 1,
@@ -96,6 +96,20 @@ function renderAt(path = "/transactions?month=2026-10") {
     </QueryClientProvider>,
   );
 }
+
+describe("ADR-079: a rule learned from two choices by hand", () => {
+  it("says what was learned and how many more lines got it", () => {
+    const saved = {
+      category_path: "Groceries / Supermarket",
+      learned: { rule_id: 9, pattern: "PANADERIA AMBATO", lines: 1 },
+    } as Txn;
+    expect(learnedMessage(saved, () => {}).text).toBe(
+      "Saved, and learned: “PANADERIA AMBATO” now goes to Groceries / Supermarket by itself. 1 more line got it too.",
+    );
+    saved.learned!.lines = 0;
+    expect(learnedMessage(saved, () => {}).text).not.toContain("more line");
+  });
+});
 
 describe("transaction filters", () => {
   it("matches every word against the description, merchant, note and category", () => {
