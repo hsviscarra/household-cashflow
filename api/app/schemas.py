@@ -33,6 +33,7 @@ class AccountIn(BaseModel):
     is_active: bool = True
     # Closed or suspended on this day: no statements are expected after it (old ones still load).
     closed_on: date | None = None
+    opened_on: date | None = None  # opened on this day: no statements expected before it
 
 
 class AccountPatch(BaseModel):
@@ -44,6 +45,7 @@ class AccountPatch(BaseModel):
     last4: str | None = Field(default=None, pattern=r"^\d{4}$")
     is_active: bool | None = None
     closed_on: date | None = None
+    opened_on: date | None = None
 
 
 class AccountOut(_Out):
@@ -56,6 +58,7 @@ class AccountOut(_Out):
     last4: str | None
     is_active: bool
     closed_on: date | None = None
+    opened_on: date | None = None
 
 
 # ---------- categories ----------
@@ -748,6 +751,7 @@ class AccountTimelineOut(BaseModel):
     account_id: int
     name: str
     closed_on: date | None
+    opened_on: date | None = None
     start_day: int | None  # its statements usually start on this day of the month
     statements: list[TimelineStatementOut]
     gaps: list[GapOut]

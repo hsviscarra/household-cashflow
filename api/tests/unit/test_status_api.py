@@ -374,3 +374,19 @@ def test_a_period_only_the_parser_read_still_counts(client: TestClient, db: Sess
     assert "the bank issues it around Jul 31" in " ".join(
         _texts(_month(_status(client, "2026-07-10"), "2026-07-01"))
     )
+
+
+def test_an_account_is_not_expected_before_it_opened(client: TestClient, db: Session) -> None:
+    """ADR-071: an account opened in August isn't missing July."""
+    keep = _only_produbanco(db)
+    _upload(client, "jun.pdf", s.produbanco_full(period=JUNE, lines=PHONE))
+    st = _status(client, "2026-08-20")
+    assert any("Produbanco" in t for t in _texts(_month(st, "2026-07-01")))
+    resp = client.patch(f"/api/accounts/{keep.account_id}", json={"opened_on": "2026-08-01"})
+    assert resp.json()["opened_on"] == "2026-08-01"
+    st = _status(client, "2026-08-20")
+    jul = _month(st, "2026-07-01")
+    assert not [t for t in _texts(jul) if "Produbanco" in t] and jul["coverage"] == []
+    [acc] = st["statements"]
+    assert acc["opened_on"] == "2026-08-01"
+    assert all(g["start"] >= "2026-08-01" for g in acc["gaps"])

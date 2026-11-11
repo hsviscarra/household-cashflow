@@ -66,6 +66,7 @@ def get_status(
                 account_id=t.account_id,
                 name=t.name,
                 closed_on=t.closed_on,
+                opened_on=t.opened_on,
                 start_day=t.start_day,
                 statements=[
                     TimelineStatementOut(

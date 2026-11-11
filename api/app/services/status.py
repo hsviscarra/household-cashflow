@@ -120,6 +120,7 @@ class AccountTimeline:
     account_id: int
     name: str
     closed_on: date | None
+    opened_on: date | None
     start_day: int | None  # the day of the month its statements usually start
     statements: list[TimelineStatement]
     gaps: list[Gap]
@@ -331,9 +332,8 @@ def timeline(
     for a in accounts:
         stmts = files.get(a.account_id, [])
         horizon = min(today, a.closed_on) if a.closed_on else today
-        gaps = [
-            Gap(s, e) for s, e in _gaps([(t.start, t.end) for t in stmts], expected_from, horizon)
-        ]
+        since = max(expected_from, a.opened_on) if a.opened_on else expected_from
+        gaps = [Gap(s, e) for s, e in _gaps([(t.start, t.end) for t in stmts], since, horizon)]
         if stmts and gaps and gaps[-1].start > max(t.end for t in stmts):
             last_end = max(t.end for t in stmts)
             due = next_cycle_end(last_end)
@@ -352,6 +352,7 @@ def timeline(
                 a.account_id,
                 a.name,
                 a.closed_on,
+                a.opened_on,
                 days.most_common(1)[0][0] if days else None,
                 stmts,
                 gaps,
@@ -408,12 +409,15 @@ def month_status(db: Session, today: date | None = None, with_loads: bool = True
         for a in accounts:
             if a.closed_on is not None and a.closed_on < m:
                 continue  # closed before this month: nothing expected
-            # Closed during the month: expected only up to the closing day.
+            if a.opened_on is not None and a.opened_on > end:
+                continue  # opened after this month: nothing expected
+            # Closed or opened during the month: expected only while it was open.
             a_end = min(end, a.closed_on) if a.closed_on else end
+            a_start = max(m, a.opened_on) if a.opened_on else m
             periods = [(s.start, s.end) for s in by_account[a.account_id]]
-            gaps = _gaps(periods, m, a_end)
+            gaps = _gaps(periods, a_start, a_end)
             uncovered = sum((g_end - g_start).days + 1 for g_start, g_end in gaps)
-            days = (a_end - m).days + 1
+            days = (a_end - a_start).days + 1
             ms.coverage.append(Coverage(a.account_id, days - uncovered, days))
             a_last = min(a_end, today)  # the current month is checked up to today
             open_gaps = [

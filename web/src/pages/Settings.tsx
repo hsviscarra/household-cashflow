@@ -206,8 +206,8 @@ function BankSyncTab({ notify }: { notify: Notify }) {
           <h2 className="text-lg font-semibold">Bank sync</h2>
           <p className="text-sm text-muted">
             {last ? `Last synced ${new Date(last.at + "Z").toLocaleString()}` : "Not synced yet"} ·{" "}
-            {b.pending_lines} synced {b.pending_lines === 1 ? "line waits" : "lines wait"} for a statement.
-            It syncs by itself when you open the app, twice a day at most.
+            {b.pending_lines} synced {b.pending_lines === 1 ? "line waits" : "lines wait"} for a statement. It
+            syncs by itself when you open the app, twice a day at most.
           </p>
         </div>
         <button className="btn btn-primary" disabled={run.isPending} onClick={() => run.mutate()}>
@@ -236,7 +236,9 @@ function BankSyncTab({ notify }: { notify: Notify }) {
                   <tr key={a.sync_id} className="border-b border-line last:border-0">
                     <td className="px-4 py-2">
                       <span className="font-semibold">{a.org}</span> · {a.name}
-                      <span className="block text-sm text-muted">{a.movements} movements in the last 44 days</span>
+                      <span className="block text-sm text-muted">
+                        {a.movements} movements in the last 44 days
+                      </span>
                     </td>
                     <td className="num px-4 py-2 text-right">{a.balance ? money(a.balance) : "—"}</td>
                     <td className="px-4 py-2">
@@ -268,8 +270,8 @@ function BankSyncTab({ notify }: { notify: Notify }) {
         </section>
       )}
       <p className="text-sm text-muted">
-        Synced lines are pending until the month’s statement is approved; then each statement line takes
-        its place and keeps the category, person and notes you gave it.
+        Synced lines are pending until the month’s statement is approved; then each statement line takes its
+        place and keeps the category, person and notes you gave it.
       </p>
     </div>
   );
@@ -295,6 +297,7 @@ const EMPTY_ACCOUNT: AccountInput = {
   last4: null,
   is_active: true,
   closed_on: null,
+  opened_on: null,
 };
 
 const closedLabel = (iso: string) =>
@@ -377,6 +380,7 @@ function AccountRow({ account: a, onEdit }: { account: Account; onEdit: () => vo
         <div className="font-semibold">
           {a.name}
           {!a.is_active && <span className="pill pill-muted ml-2">Inactive</span>}
+          {a.opened_on && <span className="pill pill-muted ml-2">Opened {closedLabel(a.opened_on)}</span>}
           {a.closed_on && <span className="pill pill-muted ml-2">Closed {closedLabel(a.closed_on)}</span>}
         </div>
         <div className="text-sm text-muted">
@@ -406,7 +410,7 @@ function AccountForm(props: {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (last4Bad) return;
-    const { name, institution, kind, owner, country, last4, is_active, closed_on } = v;
+    const { name, institution, kind, owner, country, last4, is_active, closed_on, opened_on } = v;
     props.onSubmit({
       name: name.trim(),
       institution: institution.trim(),
@@ -416,6 +420,7 @@ function AccountForm(props: {
       last4: last4 || null,
       is_active,
       closed_on: closed_on || null,
+      opened_on: opened_on || null,
     });
   };
 
@@ -495,6 +500,21 @@ function AccountForm(props: {
           </span>
         )}
       </label>
+      <div className="md:col-span-3 md:max-w-xs">
+        <label>
+          <span className="label">Opened on (optional)</span>
+          <input
+            className="field"
+            type="date"
+            value={v.opened_on ?? ""}
+            onChange={(e) => set("opened_on", e.target.value || null)}
+            aria-describedby="opened-help"
+          />
+        </label>
+        <span id="opened-help" className="mt-1 block text-sm text-muted">
+          Data Status doesn't expect statements before this day.
+        </span>
+      </div>
       <div className="md:col-span-3 md:max-w-xs">
         <label>
           <span className="label">Closed or suspended on (optional)</span>

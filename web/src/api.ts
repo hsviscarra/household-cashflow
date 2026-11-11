@@ -74,6 +74,7 @@ export type Account = {
   last4: string | null;
   is_active: boolean;
   closed_on?: string | null; // closed or suspended: no statements expected after this day
+  opened_on?: string | null; // opened: no statements expected before this day
 };
 export type AccountInput = Omit<Account, "account_id">;
 
@@ -837,6 +838,7 @@ export type AccountTimeline = {
   account_id: number;
   name: string;
   closed_on: string | null;
+  opened_on?: string | null;
   start_day: number | null;
   statements: TimelineStatement[];
   gaps: StatementGap[];
