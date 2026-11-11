@@ -9,6 +9,7 @@ Months are "YYYY-MM"; amounts are USD strings with two decimals.
 """
 
 from collections import defaultdict
+from dataclasses import fields, is_dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -32,8 +33,10 @@ from app.models import (
     v_monthly_cashflow,
     v_spending_line,
 )
-from app.services import ibkr, invoices, networth
+from app.services import budget as budget_service
+from app.services import gastos, goals, groceries, ibkr, invoices, iva, networth, product_labels
 from app.services import loans as loan_service
+from app.services import recurring as recurring_service
 from app.services import report as report_service
 from app.services import status as status_service
 from app.services.classify import merchant_key
@@ -599,6 +602,107 @@ def purchases(month: str, top: int = 15) -> dict[str, Any]:
             for k, v in sorted(vendors.items(), key=lambda kv: -kv[1]["amount"])
         ],
     }
+
+
+def _plain(v: Any) -> Any:
+    """A service's dataclasses as JSON: money and dates as text."""
+    if is_dataclass(v) and not isinstance(v, type):
+        return {f.name: _plain(getattr(v, f.name)) for f in fields(v)}
+    if isinstance(v, dict):
+        return {str(k): _plain(x) for k, x in v.items()}
+    if isinstance(v, list | tuple | set):
+        return [_plain(x) for x in v]
+    if isinstance(v, Decimal):
+        return str(v)
+    if isinstance(v, date):
+        return v.isoformat()
+    return v
+
+
+@mcp.tool()
+def taxes(year: int) -> dict[str, Any]:
+    """Gastos personales for a tax year, as the app's Taxes page shows them: for Hernan and
+    Lauren, the deductible invoices by SRI category (vivienda, educacion, salud, alimentacion,
+    vestimenta, turismo), the cap their cargas familiares allow, the deductible amount and the
+    18% rebate, how many invoices still need a category, and invoices with no person yet.
+    Amounts are before IVA. Nothing here is filed with the SRI."""
+    with _session() as db:
+        return dict(_plain(gastos.summary(db, year)))
+
+
+@mcp.tool()
+def iva_return(month: str, person: str = "Hernan") -> dict[str, Any]:
+    """The monthly IVA return (Form 104) the app prepares for a person and month (YYYY-MM):
+    the form's fields (401 sales, 411/421 IVA charged, 500/510/520 purchases, 601-620 credit and
+    tax due), sales issued, withholdings received, credit and debit notes, and the 30 largest
+    purchases (the rest are counted). Credit carries from the opening month entered in the app."""
+    with _session() as db:
+        r = iva.month(db, person, _m(month))
+    out = dict(_plain(r))
+    purchases = sorted(out.pop("purchases"), key=lambda p: -Decimal(p.get("total") or 0))
+    out["purchases"] = purchases[:30]
+    out["purchases_count"] = len(purchases)
+    return out
+
+
+@mcp.tool()
+def groceries_trends(month: str, months: int = 12) -> dict[str, Any]:
+    """Supermarket spending up to a month (YYYY-MM): for each of the last `months` months
+    (6 to 24), the statements' Groceries spending, what the supermarket invoices bought by aisle,
+    trips and average basket; spending by day of the week; products whose unit price went up or
+    down the most; products first bought this month; regulars not bought this month. Also this
+    month's stores and the grocery charges whose invoice hasn't arrived."""
+    m = _m(month)
+    with _session() as db:
+        t = groceries.trends(db, m, months)
+        g = groceries.build(db, m)
+    out = dict(_plain(t))
+    out.pop("cells", None)  # by month, aisle, type and brand: groceries_products has those
+    out["this_month"] = {
+        "spent": _s(g.spent),
+        "usual": _s(g.usual),
+        "invoiced": _s(g.invoiced),
+        "stores": _plain(g.stores),
+        "missing_invoices": _plain(g.missing),
+    }
+    return out
+
+
+@mcp.tool()
+def groceries_products(month: str, months: int = 1) -> dict[str, Any]:
+    """What the supermarket invoices bought in a month (YYYY-MM), or the `months` up to it:
+    totals by aisle, by type of product (milk, rice, chicken…) and by brand, and the 40 products
+    that cost the most with quantity and unit price. Labels come from rules a person confirmed or
+    Claude suggested in the app; `unlabeled` counts products without a type yet."""
+    with _session() as db:
+        p = product_labels.products(db, _m(month), max(1, min(months, 24)))
+    out = dict(_plain(p))
+    out["products"] = out["products"][:40]
+    return out
+
+
+@mcp.tool()
+def bills(month: str) -> dict[str, Any]:
+    """The bills, subscriptions and recurring income due in a month (YYYY-MM), as the app's
+    Bills & subscriptions page shows them: expected and paid amount (signed: negative = money
+    out), status (paid, due, late, skipped), due day, account, the average of the three months
+    before and payments left when the item has an end."""
+    m = _m(month)
+    with _session() as db:
+        rows = recurring_service.bills(db, m, date.today())
+    return {"month": _month(m), "bills": _plain(rows)}
+
+
+@mcp.tool()
+def budget(month: str) -> dict[str, Any]:
+    """The month's budget (YYYY-MM) by group: budget, carried over, spent, left, the pace
+    allowed by today and status (over, ahead, on_track); spending in groups without a budget;
+    and every savings goal with its progress, the monthly amount needed and whether it's on pace."""
+    m = _m(month)
+    with _session() as db:
+        b = budget_service.month_view(db, m)
+        g = goals.all_goals(db)
+    return {"budget": _plain(b), "goals": _plain(g)}
 
 
 def get_writer_engine() -> Any:

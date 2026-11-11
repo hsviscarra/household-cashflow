@@ -140,6 +140,12 @@ def test_the_protocol_over_http(
             "data_status",
             "save_portfolio",
             "purchases",
+            "taxes",
+            "iva_return",
+            "groceries_trends",
+            "groceries_products",
+            "bills",
+            "budget",
         }
         called = _rpc(
             client,
@@ -306,3 +312,21 @@ def test_data_status(household: Engine, monkeypatch: pytest.MonkeyPatch) -> None
         for g in got["missing_statements"]
     )
     assert mcp_server.data_status(months=0)["months"] == got["months"][:1]
+
+
+def test_taxes_groceries_bills_and_budget(household: Engine) -> None:
+    """ADR-069: the Taxes, Groceries, Bills and Budget pages, read by Claude."""
+    t = mcp_server.taxes(2026)
+    assert t["year"] == 2026 and {p["person"] for p in t["people"]} == {"Hernan", "Lauren"}
+    r = mcp_server.iva_return("2026-10")
+    assert r["person"] == "Hernan" and "form" in r and r["purchases_count"] == 0
+    g = mcp_server.groceries_trends("2026-10", 6)
+    assert len(g["months"]) == 6 and "cells" not in g and "missing_invoices" in g["this_month"]
+    json.dumps(g)  # plain JSON
+    p = mcp_server.groceries_products("2026-10", 3)
+    assert p["months"] == 3 and isinstance(p["by_type"], list)
+    b = mcp_server.bills("2026-10")
+    assert b["month"] == "2026-10" and isinstance(b["bills"], list)
+    bu = mcp_server.budget("2026-10")
+    assert bu["budget"]["month"] == "2026-10-01" and isinstance(bu["goals"], list)
+    json.dumps(bu)
