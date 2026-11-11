@@ -31,7 +31,9 @@ SUMMARY = re.compile(rf"^US\$ ({AMT}) US\$ ({AMT}) US\$ ({AMT}) US\$ ({AMT})$")
 LINE = re.compile(rf"^(?P<d>\d{{2}}/\d{{2}}/\d{{4}}) (?P<rest>.+) (?P<amt>{AMT}) (?P<sign>[+-])$")
 DATED = re.compile(r"^\d{2}/\d{2}/\d{4} ")
 OPERATION = re.compile(r" (?P<op>CONS\.?|N/D(?:\(\*\))?|N/C(?:\(\*\))?|PAGO|DIF\.?|INT\.?)$")
-NUMBER = re.compile(r" [\d,]*\d\.\d{2,6}$")  # a foreign amount or an exchange rate
+# A foreign amount or an exchange rate before the dollar amount; from October 2026 the foreign
+# amount carries its own sign ("CONS. 2.92 + 1.0000 2.92 +").
+NUMBER = re.compile(r" [\d,]*\d\.\d{2,6}(?: [+-])?$")
 COUNTRY = re.compile(r" [A-Z]{2} \d{3}$")  # "EC 840": country and currency code of a purchase
 HOLDER = re.compile(r"^\d{4}X{4,}\d{3,4} (?P<name>[A-ZÁÉÍÓÚÑ ]{5,})$")
 TOTALS = {
