@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.79.0] — Claude reads taxes, groceries, bills and budget
+
+### Added
+- Six read-only tools for Claude (ADR-069): `taxes` (gastos personales by person and SRI
+  category, cap and rebate), `iva_return` (Form 104 for a month), `groceries_trends` and
+  `groceries_products` (a year by aisle, prices, patterns; by type and brand), `bills` (paid, due
+  or late this month) and `budget` (by group, with savings goals).
+
 ## [0.78.3] — Waking the database
 
 ### Fixed
