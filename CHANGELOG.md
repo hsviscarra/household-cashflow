@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.88.0] — Rules learned from your choices
+
+### Added
+- The **second time** you give a merchant the same category by hand, the app saves the rule and
+  applies it to the lines still waiting. Transactions says what it learned, with Undo. Not for
+  bare transfer texts or a merchant you categorized two ways (ADR-079).
+
 ## [0.87.0] — The arrival watchdog
 
 ### Added

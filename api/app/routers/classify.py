@@ -19,6 +19,7 @@ from app.models import Account, Category, ImportBatch, StgTransaction, Transacti
 from app.schemas import (
     AcceptedOut,
     ChangeOut,
+    LearnedOut,
     LineSourceOut,
     ResolveIn,
     ResolveOut,
@@ -34,7 +35,15 @@ from app.schemas import (
     TransactionPatch,
     TransferLegOut,
 )
-from app.services import classify, inbox, line_context, line_source, recurring, transfers
+from app.services import (
+    classify,
+    inbox,
+    line_context,
+    line_source,
+    recurring,
+    rules_suggest,
+    transfers,
+)
 from app.services import suggest as suggestions
 
 router = APIRouter(prefix="/api", tags=["classification"])
@@ -206,9 +215,14 @@ def edit_transaction(
     except classify.ClassifyError as exc:
         db.rollback()
         raise _fail(exc) from exc
+    learned = None
     if "category_id" in fields:
         recurring.recategorized(db, row, _user(request))
-    return _one_out(db, row)
+        learned = rules_suggest.learn(db, row, _user(request))
+    out = _one_out(db, row)
+    if learned is not None:
+        out.learned = LearnedOut(**vars(learned))
+    return out
 
 
 @router.put("/transactions/{transaction_id}/split", response_model=list[TransactionOut])
