@@ -327,7 +327,7 @@ def test_suggestions_are_stored_shown_and_accepted(
     sent: list[Any] = []
 
     def fake(
-        asked: list[suggest.Asked], categories: list[str], descriptions: dict[str, str]
+        asked: list[suggest.Asked], categories: list[str], descriptions: dict[str, str], *_a: object
     ) -> list[suggest.Answer]:
         sent.append((asked, categories, descriptions))
         keys = {x.merchant_key for x in asked} | {"UNKNOWN"}

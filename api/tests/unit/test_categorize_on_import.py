@@ -150,7 +150,10 @@ def test_ask_claude_about_one_statement_and_accept_the_likely_ones(
     asked: list[str] = []
 
     def fake(
-        groups: list[suggest.Asked], categories: list[str], descriptions: dict[str, str]
+        groups: list[suggest.Asked],
+        categories: list[str],
+        descriptions: dict[str, str],
+        *_a: object,
     ) -> list[suggest.Answer]:
         asked.extend(g.merchant_key for g in groups)
         sure = {"DEBITO VISA": ("Groceries / Supermarket", Decimal("0.92"))}

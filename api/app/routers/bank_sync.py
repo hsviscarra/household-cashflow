@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.models import Account, Transaction
-from app.services import bank_sync, invoices, people, recurring, transfers
+from app.services import bank_sync, inbox, invoices, people, recurring, transfers
 
 router = APIRouter(prefix="/api/bank-sync", tags=["bank sync"])
 DB = Annotated[Session, Depends(get_session)]
@@ -102,6 +102,14 @@ def run(
         )
         for month in sorted(set(months)):
             recurring.match(db, month, user)
+        # ADR-077: Claude categorizes what no rule knew, as after an approved statement.
+        done = inbox.autopilot(db, user)
+        return {
+            "ran": True,
+            "added": result.added,
+            "auto": {"merchants": done.merchants, "lines": done.lines},
+            **_status(db),
+        }
     return {"ran": True, "added": result.added, **_status(db)}
 
 
