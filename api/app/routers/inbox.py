@@ -27,7 +27,7 @@ from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
 from app.routers.invoices import receive_xml
-from app.services import digest, people
+from app.services import digest, people, watchdog
 
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
 DB = Annotated[Session, Depends(get_session)]
@@ -113,6 +113,39 @@ def weekly_digest(
         actions=d.actions,
         text=digest.text(d, base),
         html=digest.to_html(d, base),
+    )
+
+
+class AlertOut(BaseModel):
+    title: str
+    text: str
+
+
+class AlertsOut(BaseModel):
+    alerts: list[AlertOut]
+    subject: str
+    text: str
+
+
+@router.get("/alerts", response_model=AlertsOut)
+def check_in(
+    request: Request,
+    db: DB,
+    today: Annotated[date | None, Query(description="For tests; default today")] = None,
+) -> AlertsOut:
+    """The Gmail script calls this on every run (ADR-078): the call is its heartbeat, and the
+    answer is what to email now. Each alert comes once."""
+    watchdog.check_in(db)
+    new = watchdog.fresh(db, today)
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    base = f"{proto}://{request.headers.get('host', request.url.netloc)}"
+    subject = (
+        f"Cash flow: {new[0].title}" if len(new) == 1 else f"Cash flow: {len(new)} things need you"
+    )
+    lines = [f"- {a.title}. {a.text}" for a in new]
+    text = "\n".join([*lines, "", f"Where each account stands: {base}/status"]) if new else ""
+    return AlertsOut(
+        alerts=[AlertOut(title=a.title, text=a.text) for a in new], subject=subject, text=text
     )
 
 

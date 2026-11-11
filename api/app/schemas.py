@@ -767,6 +767,14 @@ class SourceOut(BaseModel):
     expected: date | None = None
 
 
+class ScriptOut(BaseModel):
+    """The Gmail script's heartbeat (ADR-078)."""
+
+    state: Literal["ok", "silent", "never"]
+    last_seen: datetime | None
+    note: str
+
+
 class StatusOut(BaseModel):
     today: date
     excel_through: date | None
@@ -777,6 +785,7 @@ class StatusOut(BaseModel):
     statements: list[AccountTimelineOut] = []
     # How each account's data arrives and where it stands today (ADR-072).
     sources: list[SourceOut] = []
+    script: ScriptOut | None = None
 
 
 # ---------------- F13: spending analytics ----------------

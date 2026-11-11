@@ -193,7 +193,10 @@ function DataThrough() {
   if (!sources.length) return null;
   const days = sources.map((x) => x.last_day).filter((d): d is string => !!d);
   const oldest = days.length ? days.reduce((a, b) => (a < b ? a : b)) : null;
-  const late = sources.filter((x) => x.state === "late" || x.state === "you_upload").length;
+  // The Gmail script gone silent counts too: nothing by email arrives until it runs again (ADR-078).
+  const late =
+    sources.filter((x) => x.state === "late" || x.state === "you_upload").length +
+    (status.data?.script?.state === "silent" ? 1 : 0);
   return (
     <Link
       to="/status#arrivals"

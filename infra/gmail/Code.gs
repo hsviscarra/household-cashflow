@@ -81,8 +81,44 @@ const TIME_BUDGET_MS = 4.5 * 60 * 1000;
  * Mondays, then the weekly digest (ADR-038).
  */
 function run() {
-  importStatements_(RECENT);
+  try {
+    importStatements_(RECENT);
+  } finally {
+    // Even when the import fails: the app counts on this daily check-in (ADR-078).
+    checkIn_();
+  }
   if (new Date().getDay() === 1) sendDigest_();
+}
+
+/**
+ * Tells the app this script ran (its heartbeat) and emails what the app says needs someone now:
+ * a statement that is late, each one once (GET /api/inbox/alerts, ADR-078). To ALERTS_TO, else
+ * DIGEST_TO, else this account.
+ */
+function checkIn_() {
+  const url = (props_().getProperty('APP_URL') || '').replace(/\/+$/, '');
+  const token = props_().getProperty('INBOX_TOKEN') || '';
+  for (let i = 0; i < 3; i++) {
+    const response = UrlFetchApp.fetch(`${url}/api/inbox/alerts`, {
+      headers: { Authorization: `Bearer ${token}` },
+      muteHttpExceptions: true,
+    });
+    if (response.getResponseCode() === 200) {
+      const a = JSON.parse(response.getContentText());
+      if (a.alerts.length) {
+        const to =
+          props_().getProperty('ALERTS_TO') ||
+          props_().getProperty('DIGEST_TO') ||
+          Session.getEffectiveUser().getEmail();
+        MailApp.sendEmail({ to: to, subject: a.subject, body: a.text });
+        console.log(`Alert sent to ${to}: ${a.subject}`);
+      }
+      return;
+    }
+    console.warn(`Check-in: HTTP ${response.getResponseCode()}; trying again.`);
+    Utilities.sleep(20000);
+  }
+  console.warn('Check-in: the app did not answer; tomorrow it tries again.');
 }
 
 /** By hand, any day: send the weekly digest now (the first time it asks to send email for you). */
