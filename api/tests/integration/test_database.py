@@ -74,7 +74,7 @@ def test_reference_tables_seeded() -> None:
                 v7.MERCHANT_RULES,
             )
         )
-        + 1,  # v10: the new house's trust
+        + 2,  # v10: the new house's trust; v11: its installment by amount
     }
 
 

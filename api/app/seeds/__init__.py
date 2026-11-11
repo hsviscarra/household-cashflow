@@ -1,5 +1,6 @@
 """Seed loaders shared by migrations and tests."""
 
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Connection, Table, delete, func, insert, select, update
@@ -402,6 +403,10 @@ def load_v9(conn: Connection, category: Table) -> None:
 NEW_HOUSE = ("Housing", "New house")
 # The developer's trust collects the new house's reserva, entrada and installments (ADR-056).
 NEW_HOUSE_RULE = "KALANI"
+# The monthly installment leaves Lauren's Produbanco as "TRANSFERENCIA CTAS TERCEROS BCA ENL",
+# which never names the trust: the exact amount does (ADR-070).
+INSTALLMENT_PATTERN = "TRANSFERENCIA CTAS TERCEROS"
+INSTALLMENT = Decimal("3075.36")
 
 
 def load_v10(conn: Connection, category: Table, merchant_rule: Table) -> None:
@@ -431,6 +436,33 @@ def load_v10(conn: Connection, category: Table, merchant_rule: Table) -> None:
                     "match_type": "contains",
                     "category_id": cid,
                     "priority": 10,
+                }
+            ],
+        )
+
+
+def load_v11(conn: Connection, category: Table, merchant_rule: Table) -> None:
+    """The new house's monthly installment by its exact amount (ADR-070). Migration 0046."""
+    cid = _category_ids(conn, category).get("/".join(NEW_HOUSE))
+    if cid is None:
+        return
+    taken = conn.execute(
+        select(merchant_rule.c.rule_id).where(
+            merchant_rule.c.pattern == INSTALLMENT_PATTERN,
+            merchant_rule.c.amount_min == INSTALLMENT,
+        )
+    ).first()
+    if taken is None:
+        conn.execute(
+            insert(merchant_rule),
+            [
+                {
+                    "pattern": INSTALLMENT_PATTERN,
+                    "match_type": "contains",
+                    "category_id": cid,
+                    "priority": 5,
+                    "amount_min": INSTALLMENT,
+                    "amount_max": INSTALLMENT,
                 }
             ],
         )
