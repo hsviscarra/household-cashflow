@@ -10,11 +10,11 @@ connected with its own login, creates the user or sets its password from READER_
 
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, text
 from sqlalchemy.engine import URL, make_url
 
 from app.config import get_settings
-from app.db import get_engine
+from app.db import get_engine, make_engine
 
 READER = "cashflow_reader"
 ROLE = "mart_reader"
@@ -73,7 +73,7 @@ def get_reader_engine() -> Engine:
     """The MCP endpoint's engine: the read-only login when READER_PASSWORD is set."""
     if not get_settings().reader_password:
         return get_engine()
-    return create_engine(reader_url(), pool_pre_ping=True, pool_recycle=1800)
+    return make_engine(reader_url())
 
 
 if __name__ == "__main__":  # pragma: no cover
