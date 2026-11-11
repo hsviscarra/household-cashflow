@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.86.0] — Claude categorizes on arrival, with more to go on
+
+### Added
+- Lines from the daily **bank sync** are categorized by Claude when no rule knows them, like the
+  lines of an approved statement: sure ones (90% or more) are applied with a rule and can be
+  undone, the rest wait with the suggestion filled in (ADR-077).
+- Claude is asked with **what the app already knows**: whose line it is, the card's purpose,
+  earlier lines of the same amount and their category, the products of a matching invoice, and
+  your recent choices by hand as examples.
+
 ## [0.85.1] — Claude's read-only login reads every page
 
 ### Fixed
