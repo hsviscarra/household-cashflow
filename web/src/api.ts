@@ -2005,3 +2005,8 @@ export type SinkingFund = {
 };
 export const fetchYearlyBills = (month: string) =>
   send<SinkingFund[]>("GET", `/api/budget/${month}/yearly-bills`);
+
+// ---------- email alerts (ADR-082) ----------
+export type AlertSettings = { kinds: { key: string; label: string; on: boolean }[]; now: string[] };
+export const fetchAlertSettings = () => send<AlertSettings>("GET", "/api/alerts");
+export const saveAlertSettings = (off: string[]) => send<AlertSettings>("PUT", "/api/alerts", { off });

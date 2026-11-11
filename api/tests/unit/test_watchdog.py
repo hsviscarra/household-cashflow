@@ -99,3 +99,102 @@ def test_status_and_claude_see_the_script(client: TestClient, db: Session) -> No
     watchdog.check_in(db, datetime(2026, 1, 1))
     got = client.get("/api/status").json()["script"]
     assert got["state"] == "silent" and got["last_seen"].startswith("2026-01-01")
+
+
+def test_more_kinds_and_turning_them_off(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-082: bills, budgets, unusual charges and large transfers join the late statements;
+    each kind can be turned off, and one that fails doesn't stop the rest."""
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.services import budget, digest, recurring, transfers
+
+    today = date(2026, 11, 11)
+    _late(monkeypatch)  # no late statements
+    monkeypatch.setattr(
+        digest,
+        "_unusual",
+        lambda db, t: [digest.Item("ACME: 300.00 on Nov 09, usually about 40.00", "/x")],
+    )
+    bill = SimpleNamespace(
+        template_id=4, name="Internet", expected=Decimal("-45.00"), status="due", due_day=13
+    )
+    paid = SimpleNamespace(
+        template_id=5, name="Rent", expected=Decimal("-500"), status="paid", due_day=12
+    )
+    far = SimpleNamespace(
+        template_id=6, name="Gym", expected=Decimal("-30"), status="due", due_day=25
+    )
+    late = SimpleNamespace(
+        template_id=7, name="Water", expected=Decimal("-20"), status="late", due_day=5
+    )
+    monkeypatch.setattr(recurring, "bills", lambda db, m, t: [bill, paid, far, late])
+    groups = [
+        SimpleNamespace(
+            group_id=1,
+            name="Dining",
+            budget=Decimal(200),
+            available=Decimal(200),
+            spent=Decimal(170),
+        ),
+        SimpleNamespace(
+            group_id=2,
+            name="Transport",
+            budget=Decimal(100),
+            available=Decimal(100),
+            spent=Decimal(130),
+        ),
+        SimpleNamespace(
+            group_id=3,
+            name="Health",
+            budget=Decimal(100),
+            available=Decimal(100),
+            spent=Decimal(10),
+        ),
+        SimpleNamespace(
+            group_id=4, name="Gifts", budget=None, available=Decimal(0), spent=Decimal(50)
+        ),
+    ]
+    monkeypatch.setattr(budget, "month_view", lambda db, m, t: SimpleNamespace(groups=groups))
+
+    def boom(_db: Session) -> list[object]:
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(transfers, "unmatched", boom)
+
+    titles = [a.title for a in watchdog.alerts(db, today)]
+    assert titles == [
+        "Unusual charge",
+        "Internet is due in 2 days",
+        "Water is late",
+        "Dining is at 85% of its budget of 200.00",
+        "Transport is over its budget: 130.00 of 100.00",
+    ]
+
+    big = SimpleNamespace(
+        transaction_id=9,
+        amount=Decimal("-900"),
+        txn_date=date(2026, 10, 25),
+        description_raw="WIRE OUT",
+    )
+    small = SimpleNamespace(
+        transaction_id=10, amount=Decimal("-90"), txn_date=date(2026, 10, 25), description_raw="X"
+    )
+    new = SimpleNamespace(
+        transaction_id=11, amount=Decimal("-900"), txn_date=date(2026, 11, 9), description_raw="Y"
+    )
+    monkeypatch.setattr(transfers, "unmatched", lambda db: [big, small, new])
+    assert [a.key for a in watchdog.alerts(db, today) if a.key.startswith("transfer")] == [
+        "transfer:9"
+    ]
+
+    got = client.get("/api/alerts").json()
+    assert [k["key"] for k in got["kinds"]] == ["late", "unusual", "bill", "budget", "transfer"]
+    assert all(k["on"] for k in got["kinds"])
+    saved = client.put("/api/alerts", json={"off": ["budget", "unusual", "nonsense"]}).json()
+    assert {k["key"] for k in saved["kinds"] if not k["on"]} == {"budget", "unusual"}
+    assert watchdog.off(db) == {"budget", "unusual"}
+    left = [a.key.split(":")[0] for a in watchdog.alerts(db, today)]
+    assert set(left) == {"bill", "transfer"}

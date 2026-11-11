@@ -9,14 +9,20 @@
   Home and Data Status, and in Claude's daily check.
 """
 
+import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AppSetting
+from app.services import budget, digest, recurring, transfers
 from app.services import status as status_service
+
+log = logging.getLogger(__name__)
 
 SEEN_KEY = "gmail-script:last-seen"
 SENT_KEY = "alert-sent:"  # + the alert's key: the day it was emailed
@@ -79,8 +85,33 @@ class Alert:
     text: str
 
 
-def alerts(db: Session, today: date | None = None) -> list[Alert]:
-    """Everything worth an email today, whether or not it was already sent."""
+KINDS = {
+    "late": "A statement is late",
+    "unusual": "An unusual charge",
+    "bill": "A bill is due in 3 days or late",
+    "budget": "A budget reached 80% or went over",
+    "transfer": "A large transfer has no other side",
+}
+OFF_KEY = "alerts-off"  # kinds a person turned off, comma-separated (all on by default)
+BILL_DAYS = 3
+BUDGET_SHARE = Decimal("0.80")
+TRANSFER_MIN = Decimal(500)
+TRANSFER_DAYS = 10
+
+
+def off(db: Session) -> set[str]:
+    row = db.get(AppSetting, OFF_KEY)
+    return {k for k in (row.setting_value.split(",") if row else []) if k in KINDS}
+
+
+def set_off(db: Session, kinds: set[str], user: str) -> set[str]:
+    kinds = {k for k in kinds if k in KINDS}
+    _put(db, OFF_KEY, ",".join(sorted(kinds)), user[:200])
+    db.commit()
+    return kinds
+
+
+def _late(db: Session, today: date) -> list[Alert]:
     st = status_service.month_status(db, today, with_loads=False)
     out = []
     for s in st.sources:
@@ -88,6 +119,100 @@ def alerts(db: Session, today: date | None = None) -> list[Alert]:
             continue
         when = s.expected.isoformat() if s.expected else "x"
         out.append(Alert(f"late:{s.account_id}:{when}", f"{s.name}: statement is late", s.note))
+    return out
+
+
+def _unusual(db: Session, today: date) -> list[Alert]:
+    out = []
+    for i in digest._unusual(db, today):
+        key = hashlib.sha1(i.text.encode()).hexdigest()[:20]
+        out.append(Alert(f"unusual:{key}", "Unusual charge", i.text))
+    return out
+
+
+def _bills(db: Session, today: date) -> list[Alert]:
+    month = today.replace(day=1)
+    out = []
+    for b in recurring.bills(db, month, today):
+        if b.expected >= 0 or b.status not in ("due", "late") or b.due_day is None:
+            continue
+        days = b.due_day - today.day
+        if b.status == "late":
+            title, text = (
+                f"{b.name} is late",
+                f"It was due on day {b.due_day} and no payment is in.",
+            )
+        elif 0 <= days <= BILL_DAYS:
+            when = "today" if days == 0 else f"in {days} {'day' if days == 1 else 'days'}"
+            title, text = (
+                f"{b.name} is due {when}",
+                f"About {-b.expected:,.2f}, on day {b.due_day}.",
+            )
+        else:
+            continue
+        out.append(Alert(f"bill:{b.template_id}:{month:%Y-%m}:{b.status}", title, text))
+    return out
+
+
+def _budget(db: Session, today: date) -> list[Alert]:
+    month = today.replace(day=1)
+    out = []
+    for g in budget.month_view(db, month, today).groups:
+        if g.budget is None or g.available <= 0:
+            continue
+        if g.spent > g.available:
+            level, words = "over", f"over its budget: {g.spent:,.2f} of {g.available:,.2f}"
+        elif g.spent >= g.available * BUDGET_SHARE:
+            level, words = (
+                "80",
+                f"at {g.spent / g.available:.0%} of its budget of {g.available:,.2f}",
+            )
+        else:
+            continue
+        out.append(Alert(f"budget:{g.group_id}:{month:%Y-%m}:{level}", f"{g.name} is {words}", ""))
+    return out
+
+
+def _transfers(db: Session, today: date) -> list[Alert]:
+    out = []
+    for t in transfers.unmatched(db):
+        age = (today - t.txn_date).days
+        if abs(t.amount) < TRANSFER_MIN or not TRANSFER_DAYS <= age <= 60:
+            continue
+        out.append(
+            Alert(
+                f"transfer:{t.transaction_id}",
+                f"A transfer of {abs(t.amount):,.2f} has no other side",
+                f"{t.description_raw} on {t.txn_date:%b} {t.txn_date.day}: pair it or say where "
+                "it went on Transfers to settle.",
+            )
+        )
+    return out[:5]
+
+
+FINDERS = {
+    "late": _late,
+    "unusual": _unusual,
+    "bill": _bills,
+    "budget": _budget,
+    "transfer": _transfers,
+}
+
+
+def alerts(db: Session, today: date | None = None) -> list[Alert]:
+    """Everything worth an email today, whether or not it was already sent: the kinds a person
+    left on (ADR-082). One kind failing doesn't stop the others."""
+    today = today or date.today()
+    skip = off(db)
+    out: list[Alert] = []
+    for kind, find in FINDERS.items():
+        if kind in skip:
+            continue
+        try:
+            out += find(db, today)
+        except Exception:
+            db.rollback()
+            log.exception("Alerts: %s failed", kind)
     return out
 
 

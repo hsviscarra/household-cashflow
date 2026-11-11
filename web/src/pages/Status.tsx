@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
+import AlertSettings from "../components/AlertSettings";
 import { BackupPanel } from "../components/BackupPanel";
 import { SourcesSection } from "../components/SourcesSection";
 import {
@@ -76,6 +77,7 @@ export default function StatusPage() {
             </p>
           )}
           {(data.sources?.length ?? 0) > 0 && <Arrivals sources={data.sources!} />}
+          <AlertSettings />
           <ul className="mt-6 space-y-4" aria-label="Months">
             {statementMonths.map((m, i) => (
               <MonthCard key={m.month} m={m} open={i === 0} />
