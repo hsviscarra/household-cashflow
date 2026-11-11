@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.85.1] — Claude's read-only login reads every page
+
+### Fixed
+- Asking Claude for the data status, balance sheet, taxes, IVA, groceries, bills or budget failed
+  with "SELECT permission was denied": the read-only login lacked the tables those read. It now
+  reads all of `core` and the load log, still nothing raw and no writes (migration 0050, ADR-069).
+
 ## [0.85.0] — A $20 cost guard
 
 ### Added

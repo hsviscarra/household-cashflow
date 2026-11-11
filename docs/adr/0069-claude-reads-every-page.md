@@ -20,3 +20,14 @@ only, through the same session as the other tools.
 
 Claude can answer tax, grocery, bill and budget questions without the app open. A tool on Hernan's
 Mac picks up new tools when its MCP server restarts.
+
+## Amended (0.85.1, Nov 2026): the read-only login reads all of core
+
+The six tools, and the bank-sync coverage that ADR-072 and ADR-073 added to data status and the
+balance sheet, read tables the read-only login was never granted (budget plans, goals, tax
+profiles, settings, `audit.load_log`), so they failed with "SELECT permission was denied" where
+the login is used: the app's `/mcp` endpoint and the server on Hernan's Mac. The integration test
+only called the older tools, on a database with no synced account. Migration 0050 grants
+`mart_reader` SELECT on the whole `core` schema and on `audit.load_log`, so a new core table is
+readable without another migration; raw statement lines, staging, the workbook's cells and the
+change log stay out, and it still can't write. The test now calls every tool through the login.

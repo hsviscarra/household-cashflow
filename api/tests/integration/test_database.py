@@ -771,8 +771,9 @@ def test_backup_and_restore_drill_on_sql_server(tmp_path: object) -> None:
 def test_mcp_reader_is_read_only_on_sql_server(
     tmp_path: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """F18: the cashflow_reader login reads the mart views (the MCP tools work through it) and
-    nothing else: no core table, no writes. 0018 down takes its access away; up gives it back."""
+    """F18: the cashflow_reader login reads the mart views and core (every MCP tool works through
+    it) and nothing else: no raw lines, no change log, no writes. 0018 down takes its access
+    away; up gives it back."""
     from pathlib import Path
 
     from fastapi.testclient import TestClient
@@ -806,8 +807,11 @@ def test_mcp_reader_is_read_only_on_sql_server(
             assert conn.execute(text("SELECT COUNT(*) FROM [mart].[v_monthly_cashflow]")).scalar()
             # 0020: the balance sheet's tables are readable; anything else isn't, nor any write.
             assert conn.execute(text("SELECT COUNT(*) FROM [core].[holding]")).scalar() is not None
+            # 0050: all of core and the load log are readable (budget, goals, taxes, bank sync).
+            for table in ("[core].[budget_plan]", "[core].[app_setting]", "[audit].[load_log]"):
+                assert conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() is not None
             for sql in (
-                "SELECT TOP 1 * FROM [core].[merchant_rule]",
+                "SELECT TOP 1 * FROM [audit].[change_log]",
                 "SELECT TOP 1 * FROM [raw].[raw_line]",
                 "DELETE FROM [core].[holding] WHERE 1 = 0",
                 "DELETE FROM [core].[category] WHERE 1 = 0",
@@ -827,9 +831,27 @@ def test_mcp_reader_is_read_only_on_sql_server(
         assert "net_worth" in mcp_server.balance_sheet()  # the app's own code, read-only login
         assert isinstance(mcp_server.loans(), list)
         assert mcp_server.monthly_report(last)["month"] == last
-        assert "missing_statements" in mcp_server.data_status()  # no audit.load_log needed
+        assert "missing_statements" in mcp_server.data_status()
+        # Every other tool too (0050): each reads its page's tables through the same login.
+        assert isinstance(mcp_server.taxes(int(last[:4])), dict)
+        assert isinstance(mcp_server.iva_return(last), dict)
+        assert isinstance(mcp_server.groceries_trends(last), dict)
+        assert isinstance(mcp_server.groceries_products(last), dict)
+        assert isinstance(mcp_server.bills(last), dict)
+        assert isinstance(mcp_server.budget(last), dict)
+        assert isinstance(mcp_server.purchases(last), dict)
+        assert isinstance(mcp_server.top_merchants(last), list)
         ro.dispose()
 
+        _alembic("downgrade", "0049")
+        ro = create_engine(reader.reader_url())
+        with ro.connect() as conn:
+            for table in ("[core].[budget_plan]", "[audit].[load_log]"):
+                with pytest.raises(DBAPIError, match="permission"):
+                    conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                conn.rollback()
+            assert conn.execute(text("SELECT COUNT(*) FROM [core].[holding]")).scalar() is not None
+        ro.dispose()
         _alembic("downgrade", "0019")
         ro = create_engine(reader.reader_url())
         with ro.connect() as conn, pytest.raises(DBAPIError, match="permission"):
