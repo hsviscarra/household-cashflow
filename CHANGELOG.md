@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.89.0] — Smarter transfer pairing
+
+### Added
+- Transfers to settle offers the other side when **less arrived than left** (a wire's fee): one
+  click pairs them and books the difference as a bank fee (ADR-080).
+- Say once where a transfer goes ("the other side is Lauren's flexible savings") and the next
+  one with the same text and amount is **settled the same way by itself** after 10 days.
+
 ## [0.88.2] — Produbanco Visa: purchases abroad
 
 ### Fixed
