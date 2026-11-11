@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.78.3] — Waking the database
+
+### Fixed
+- The first call after the database paused (Claude's nightly check, the first page of the day)
+  timed out at login. Logins now wait up to a minute and try again while the database wakes up
+  (ADR-068).
+
 ## [0.78.2] — A line given its category counts as paid
 
 ### Fixed
