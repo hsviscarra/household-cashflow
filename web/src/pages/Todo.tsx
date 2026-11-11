@@ -172,7 +172,18 @@ function SectionView({ s, ctx }: { s: TodoSection; ctx: Ctx }) {
         <h2 className="font-display text-2xl font-bold tracking-tight">
           {s.title} <span className="num text-muted">· {s.count}</span>
         </h2>
-        <p className="mt-2 rounded-[10px] bg-info-bg p-3 text-sm text-info-ink">{HOW[s.key] ?? s.hint}</p>
+        <p className="mt-2 rounded-[10px] bg-info-bg p-3 text-sm text-info-ink">
+          {HOW[s.key] ?? s.hint}
+          {s.key === "transfers" && (
+            <>
+              {" "}
+              <Link to="/transfers" className="font-semibold underline">
+                Settle them all on Transfers to settle
+              </Link>
+              : pair them, say where the money went, or recategorize, several at once.
+            </>
+          )}
+        </p>
       </div>
       <ul className="card divide-y divide-line">
         {s.tasks.map((t) => (

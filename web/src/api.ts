@@ -673,6 +673,31 @@ export const statementPageUrl = (id: number, page?: number | null) =>
   `/api/statements/${id}/file${page ? `#page=${page}` : ""}`;
 
 // ---------- transfers (F10) ----------
+export type TransferCandidate = {
+  transaction_id: number;
+  txn_date: string;
+  amount: string;
+  description: string;
+  account_name: string | null;
+  days: number;
+};
+export type UnsettledLine = {
+  transaction_id: number;
+  txn_date: string;
+  amount: string;
+  description: string;
+  account_name: string | null;
+  category_id: number | null;
+  statement_file_id: number | null;
+  candidates: TransferCandidate[];
+};
+export type TransferBunch = { key: string; description: string; amount: string; lines: UnsettledLine[] };
+export const fetchTransferWorkbench = () =>
+  send<{ places: string[]; bunches: TransferBunch[] }>("GET", "/api/transfers/workbench");
+export const pairTransfer = (a: number, b: number) =>
+  send<{ group: number }>("POST", "/api/transfers/pair", { a, b });
+export const settleOutside = (ids: number[], place: string) =>
+  send<{ settled: number }>("POST", "/api/transfers/outside", { ids, place });
 export const fetchUnmatchedTransfers = (month?: string | null) =>
   send<Txn[]>("GET", `/api/transfers/unmatched${month ? `?month=${month}` : ""}`);
 export const matchTransfers = () => send<{ pairs: number }>("POST", "/api/transfers/match");

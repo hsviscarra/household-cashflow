@@ -25,6 +25,7 @@ import ReviewPage from "./pages/Review";
 import Settings from "./pages/Settings";
 import SpendingPage from "./pages/Spending";
 import StatusPage from "./pages/Status";
+import TransfersPage from "./pages/Transfers";
 import TodoPage from "./pages/Todo";
 import TransactionsPage from "./pages/Transactions";
 import { useDensity, useTheme, type Theme } from "./prefs";
@@ -124,6 +125,14 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
     tabs: [
       ["/transactions", "All lines"],
       ["/transactions/categories", "By category"],
+    ],
+  },
+  {
+    home: "/people",
+    label: "People & transfers",
+    tabs: [
+      ["/people", "People"],
+      ["/transfers", "Transfers to settle"],
     ],
   },
   {
@@ -298,6 +307,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/transactions": <TransactionsPage />,
   "/review": <ReviewPage />,
   "/people": <PeoplePage />,
+  "/transfers": <TransfersPage />,
   "/recurring": <BillsPage />,
   "/status": <StatusPage />,
   "/todo": <TodoPage />,
