@@ -1,6 +1,6 @@
 """The arrival watchdog (ADR-078): the app notices when data stops arriving.
 
-- **Heartbeat.** The Gmail script (ADR-020) checks in on every run (`GET /api/inbox/alerts`).
+- **Heartbeat.** The Gmail script (ADR-020) checks in on every run (`GET /api/inbox?alerts=true`).
   The time is kept in core.app_setting; more than SILENT_DAYS without one and the script has
   probably stopped (an expired authorization, a removed trigger), so nothing by email arrives.
 - **Alerts.** What a person should hear about without opening the app: a statement that is late
