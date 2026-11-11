@@ -1160,8 +1160,12 @@ def test_invoices_on_sql_server(tmp_path: object, monkeypatch: pytest.MonkeyPatc
         ro = create_engine(reader.reader_url())
         monkeypatch.setattr(mcp_server, "get_reader_engine", lambda: ro)
         assert mcp_server.purchases("2026-10")["total"] == "15.98"
-        with ro.connect() as conn, pytest.raises(DBAPIError, match="permission"):
-            conn.execute(text("SELECT TOP 1 * FROM [core].[product_rule]"))
+        with ro.connect() as conn:
+            # 0050: core is readable, product rules included; the change log still isn't.
+            rules = conn.execute(text("SELECT COUNT(*) FROM [core].[product_rule]")).scalar()
+            assert rules is not None
+            with pytest.raises(DBAPIError, match="permission"):
+                conn.execute(text("SELECT TOP 1 * FROM [audit].[change_log]"))
         ro.dispose()
     finally:
         monkeypatch.delenv("READER_PASSWORD")
