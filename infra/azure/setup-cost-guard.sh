@@ -36,14 +36,24 @@ fi
 SUB_ID=$(az account show --query id -o tsv)
 LOCATION=$(az group show -n "$RG" --query location -o tsv)
 
+# Azure won't change a budget's start date, so a budget that exists keeps its own.
+started() {
+  az rest -m get --url "https://management.azure.com$1/providers/Microsoft.Consumption/budgets/$2?api-version=2023-11-01" \
+    --query "properties.timePeriod.startDate" -o tsv 2>/dev/null | cut -c1-10
+}
+RG_START=$(started "/subscriptions/$SUB_ID/resourceGroups/$RG" "$PREFIX-budget" || true)
+SUB_START=$(started "/subscriptions/$SUB_ID" "$PREFIX-subscription-budget" || true)
+
 echo "1/2 Resource group $RG: \$$AMOUNT budget, emails at 25/50/80/100% and forecast, kill switch..."
 az deployment group create -g "$RG" -n cashflow-cost-guard -f infra/azure/cost-guard.bicep \
-  -p prefix="$PREFIX" alertEmail="$ALERT_EMAIL" amount="$AMOUNT" -o none
+  -p prefix="$PREFIX" alertEmail="$ALERT_EMAIL" amount="$AMOUNT" \
+     ${RG_START:+budgetStartDate="$RG_START"} -o none
 
 echo "2/2 Subscription $SUB_ID: \$$AMOUNT budget and cost anomaly alert..."
 az deployment sub create -l "$LOCATION" -n cashflow-cost-guard-sub \
   -f infra/azure/cost-guard-sub.bicep \
-  -p prefix="$PREFIX" alertEmail="$ALERT_EMAIL" amount="$AMOUNT" -o none
+  -p prefix="$PREFIX" alertEmail="$ALERT_EMAIL" amount="$AMOUNT" \
+     ${SUB_START:+budgetStartDate="$SUB_START"} -o none
 
 echo
 echo "Done. Budgets:"

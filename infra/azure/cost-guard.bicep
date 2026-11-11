@@ -22,7 +22,7 @@ var suffix = uniqueString(resourceGroup().id)
 // Built-in Contributor, scoped below to the app and the database only.
 var contributor = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
-  'b24988ac-6180-42d0-ab88-20f7382dd24c'
+  'b24988ac-6180-42a0-ab88-20f7382dd24c'
 )
 var arm = environment().resourceManager
 
