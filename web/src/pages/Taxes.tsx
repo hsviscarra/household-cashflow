@@ -303,7 +303,8 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
   const qc = useQueryClient();
   const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const groups = cats.data ?? [];
-  const [everyIssuer, setEveryIssuer] = useState(false);
+  // On by default: one choice settles every invoice of the supplier that has none of its own.
+  const [everyIssuer, setEveryIssuer] = useState(true);
   const save = useMutation({
     mutationFn: (body: GastosChoice) => chooseGastos(r.invoice_id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["gastos", year] }),
@@ -323,6 +324,10 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
         </p>
       </div>
       <div className="grid gap-2 md:flex md:flex-wrap md:items-center">
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={everyIssuer} onChange={(e) => setEveryIssuer(e.target.checked)} />
+          All from this supplier
+        </label>
         <label className="sr-only" htmlFor={`who-${r.invoice_id}`}>
           Whose invoice
         </label>
@@ -331,7 +336,12 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
           className="field h-10 md:!w-36"
           value={r.person ?? ""}
           disabled={save.isPending}
-          onChange={(e) => save.mutate({ person: (e.target.value || null) as GastosChoice["person"] })}
+          onChange={(e) =>
+            save.mutate({
+              person: (e.target.value || null) as GastosChoice["person"],
+              remember_issuer: everyIssuer,
+            })
+          }
         >
           <option value="">Nobody</option>
           <option value="Hernan">Hernan</option>
@@ -352,10 +362,6 @@ function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
         <span className={`pill ${r.category && r.category !== "none" ? "" : "text-muted"}`}>
           {sriWords(r)}
         </span>
-        <label className="flex items-center gap-1.5 text-sm">
-          <input type="checkbox" checked={everyIssuer} onChange={(e) => setEveryIssuer(e.target.checked)} />
-          All from this supplier
-        </label>
       </div>
       {save.error && <p className="text-sm text-danger-ink">{(save.error as Error).message}</p>}
     </li>

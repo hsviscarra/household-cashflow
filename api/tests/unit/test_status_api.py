@@ -159,7 +159,27 @@ def test_imports_lines_transfers_and_recurring_items_are_listed(
     assert kinds["uncategorized"]["link"] == "/review?month=2026-06"
     assert kinds["transfer"]["text"] == "1 transfer is missing the other side"
     assert kinds["recurring"]["text"] == "1 recurring item not paid yet: Water"
-    assert kinds["recurring"]["link"] == "/recurring?year=2026"
+    assert kinds["recurring"]["link"] == "/recurring?month=2026-06"
+    # While June is the current month, only a bill past its day is asked for (ADR-085): Water
+    # has no day yet, Rent was due on the 5th.
+    client.post(
+        "/api/recurring/templates",
+        json={
+            "name": "Rent",
+            "category_id": water.category_id,
+            "type": "expense",
+            "amount": "500",
+            "start_month": "2026-06-01",
+            "due_day": 5,
+        },
+    )
+    client.post("/api/recurring/generate", json={"month": "2026-06-01"})
+    mid = _month(_status(client, "2026-06-12"), "2026-06-01")
+    assert [i["text"] for i in mid["items"] if i["kind"] == "recurring"] == [
+        "1 recurring item past its day with no line yet: Rent"
+    ]
+    early = _month(_status(client, "2026-06-03"), "2026-06-01")
+    assert not [i for i in early["items"] if i["kind"] == "recurring"]
     july_items = _month(st, "2026-07-01")["items"]
     imports = [i["text"] for i in july_items if i["kind"] == "import"]
     assert imports == ["july.pdf waits for approval", "july-bad.pdf doesn't tie out"]

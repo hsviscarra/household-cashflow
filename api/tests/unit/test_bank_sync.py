@@ -2,7 +2,8 @@
 
 import base64
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -11,8 +12,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Account, Category, LoadLog, Transaction
-from app.services import bank_sync
+from app.models import Account, Category, LoadLog, MerchantRule, Transaction
+from app.services import bank_sync, classify, refresh, status
 from tests.fixtures import statements as s
 
 PDF = "application/pdf"
@@ -218,3 +219,52 @@ def test_sync_error_is_reported(
 
 def test_not_due_without_setup(db: Session) -> None:
     assert bank_sync.due(db) is False
+
+
+def test_daily_check_in_syncs_and_days_without_movements_are_covered(
+    client: TestClient, db: Session, feed: list[tuple[str, dict[str, str]]]
+) -> None:
+    """ADR-085: the check-in's sync runs only when due, and coverage starts where the first sync
+    started asking, not at the first line it happened to bring."""
+    checking = db.scalars(select(Account).where(Account.last4 == "8872")).one()
+    checking.sync_id = "ACT-BOFA"
+    db.commit()
+    done = refresh.bank_if_due(db, "gmail script", date(2026, 9, 16))
+    assert done is not None and done.added == 3
+    assert refresh.bank_if_due(db, "gmail script", date(2026, 9, 16)) is None  # not due again
+    db.execute(update(LoadLog).values(loaded_at=datetime(2026, 9, 16, 11)))
+    db.commit()
+    cover = status.sync_coverage(db, [checking], date(2026, 9, 16))
+    # The first line is Sep 8; the sync asked from 44 days before Sep 16.
+    assert cover[checking.account_id] == (date(2026, 8, 3), date(2026, 9, 16))
+
+
+def test_rules_reach_waiting_lines(db: Session) -> None:
+    acct = db.scalars(select(Account).where(Account.last4 == "8872")).one()
+    cat = db.scalars(select(Category).where(Category.parent_id.is_not(None))).first()
+    assert cat is not None
+    line = Transaction(
+        natural_key="rule-sweep-1",
+        account_id=acct.account_id,
+        txn_date=date(2026, 9, 2),
+        cash_month=date(2026, 9, 1),
+        amount=Decimal("-8.99"),
+        description_raw="PRIME VIDEO *2X4AB1CD3 888-802-3080 WA",
+        type="expense",
+        source="statement",
+    )
+    db.add_all(
+        [
+            line,
+            MerchantRule(
+                pattern="PRIME VIDEO * -802- WA",
+                match_type="contains",
+                category_id=cat.category_id,
+                priority=50,
+            ),
+        ]
+    )
+    db.commit()
+    assert classify.apply_rules(db, "gmail script") == 1
+    assert line.category_id == cat.category_id and line.category_source == "rule"
+    assert classify.apply_rules(db, "gmail script") == 0

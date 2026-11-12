@@ -5,7 +5,6 @@ written to audit.change_log with its old and new value.
 """
 
 import hashlib
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
@@ -41,16 +40,8 @@ class ClassifyError(Exception):
 
 
 def merchant_key(description: str) -> str:
-    """What groups lines of the same merchant: uppercase, reference numbers (4+ digits) and
-    store numbers and confirmation codes dropped, so "MICROSOFT*123456 MSBILL" and
-    "MICROSOFT*987654 MSBILL" are one, and so are two Zelle payments to the same person."""
-    text = rule_engine.normalize(description)
-    # Confirmation and payment codes ("CONF# AB12CD34E", "ID:PAYCO1234X"): letters and digits mixed.
-    text = re.sub(r"\b(?:CONF#|ID:)\s*\S+", " ", text)
-    text = re.sub(r"\b(?=[A-Z]*\d)(?=\d*[A-Z])[A-Z\d]{6,}\b", " ", text)
-    text = re.sub(r"[#*]?\d{4,}", " ", text)
-    text = re.sub(r"\s#?\d{1,3}\b", " ", text)
-    return " ".join(text.split())[:200]
+    """What groups lines of the same merchant; the rule engine owns it (`rules.key`)."""
+    return rule_engine.key(description)
 
 
 def type_for(category: Category, amount: Decimal) -> str:
@@ -427,6 +418,29 @@ def apply_rule(db: Session, rule: MerchantRule, user: str, skip: set[int] | None
             if rule.merchant_name:
                 t.merchant = engine_rule.merchant()
             count += 1
+    return count
+
+
+def apply_rules(db: Session, user: str) -> int:
+    """Categorize every uncategorized loaded line that an active rule matches, the first rule by
+    priority winning as in an import. The daily check-in runs it, so a rule that starts to match
+    (ADR-085) or was saved while a line was elsewhere still reaches it. The caller commits."""
+    rows = {r.rule_id: r for r in db.scalars(select(MerchantRule).where(MerchantRule.is_active))}
+    rules = [rule_engine.Rule.of(r) for r in rows.values()]
+    cats = {c.category_id: c for c in db.scalars(select(Category))}
+    count = 0
+    for t in uncategorized(db):
+        hit = rule_engine.first_match(rules, t.description_raw, t.amount)
+        if hit is None or hit.category_id not in cats:
+            continue
+        reason = f"Rule {hit.rule_id}"
+        set_category(db, t, cats[hit.category_id], "rule", reason, user, hit.rule_id)
+        if hit.set_person and t.person != hit.set_person:
+            _log(db, t, "person", t.person, hit.set_person, reason, user)
+            t.person = hit.set_person
+        if hit.merchant_name:
+            t.merchant = hit.merchant()
+        count += 1
     return count
 
 

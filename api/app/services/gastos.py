@@ -217,6 +217,10 @@ def rows(db: Session, year: int) -> list[Row]:
             category, c_src = BY_CATEGORY.get(name) or BY_CATEGORY[group or ""], "paid"
         elif inv.invoice_id in products:
             category, c_src = products[inv.invoice_id], "products"
+        elif t is not None and t.category_id in paths:
+            # Paid by a line whose category isn't in any SRI group: not deductible, the same as
+            # choosing that category here by hand, so it isn't asked for again (ADR-085).
+            category, c_src = "none", "paid"
         else:
             category, c_src = None, None
         out.append(
@@ -337,6 +341,8 @@ def choose(
         if person is not None and person not in PEOPLE:
             raise GastosError(f"Person must be one of {', '.join(PEOPLE)}.")
         inv.person = person
+        if remember_issuer and person is not None:
+            _same_person(db, inv, person)
     if set_app_category:
         # An app category (the same list as everywhere else); its SRI group follows from it.
         if category_id is not None and db.get(Category, category_id) is None:
@@ -372,6 +378,38 @@ def choose(
                 inv.gp_category = None  # the rule decides, so changing it later moves this too
     db.commit()
     return inv
+
+
+def _same_person(db: Session, inv: Invoice, person: str) -> None:
+    """With "all from this supplier": the supplier's other invoices of the year that are nobody's
+    yet (no choice, and not paid by a line that says whose) become this person's too."""
+    year = inv.issue_date.year
+    others = list(
+        db.scalars(
+            select(Invoice).where(
+                Invoice.issuer_ruc == inv.issuer_ruc,
+                Invoice.invoice_id != inv.invoice_id,
+                Invoice.person.is_(None),
+                Invoice.issue_date >= date(year, 1, 1),
+                Invoice.issue_date < date(year + 1, 1, 1),
+            )
+        )
+    )
+    paid_ids = [o.transaction_id for o in others if o.transaction_id]
+    known = (
+        set(
+            db.scalars(
+                select(Transaction.transaction_id).where(
+                    Transaction.transaction_id.in_(paid_ids), Transaction.person.in_(PEOPLE)
+                )
+            )
+        )
+        if paid_ids
+        else set()
+    )
+    for o in others:
+        if o.transaction_id not in known:
+            o.person = person
 
 
 def set_profile(db: Session, person: str, year: int, cargas: int, catastrophic: bool) -> GpProfile:

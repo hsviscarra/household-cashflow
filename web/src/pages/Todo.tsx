@@ -41,7 +41,7 @@ const HOW: Record<string, string> = {
   transfers:
     "Money moved between accounts and the app can't find the other side. Say what it was (the house, a loan, a person), or press “Other side isn't in the app” when it came from or went to an account you don't track. If that statement is just not uploaded yet, leave it: it pairs up on its own.",
   books:
-    "Three kinds of loose ends. A statement to upload: the month isn't complete without it. An import to approve: a statement you uploaded that's waiting for you to check it. A bill not paid: something you told the app comes every month (rent, school, insurance) and no line paid it yet; open Bills and link the line that paid it, or change the bill if it changed. Each button takes you there.",
+    "Three kinds of loose ends. A statement to upload: only for days that neither bank sync nor an emailed statement covered. An import to approve: a statement that's waiting for you to check it. A bill past its day: something that comes every month (rent, school, insurance) and no line paid it yet; lines pay bills on their own when a statement or the bank sync brings them. If it was paid, open Bills → Edit (year grid), click the month's cell and link the line, or mark it skipped.",
   loans: "Say Yes when the month's installment is paid; the balance updates from the loan's table.",
   values:
     "Values on Net worth that are old. Enter today's value, or stop counting it if you don't have it any more or it's the same money as another item.",
@@ -99,6 +99,13 @@ export default function TodoPage() {
       <header>
         <h1 className="font-display text-4xl font-bold tracking-tight">To do</h1>
         <p className="mt-1 text-muted">Everything that needs you. Pick a list and work through it.</p>
+        <p className="mt-1 text-sm text-muted">
+          To check what's already categorized,{" "}
+          <Link to="/transactions/categories" className="font-semibold text-primary underline">
+            see every income and expense by category
+          </Link>{" "}
+          and move the lines that are wrong.
+        </p>
       </header>
       {q.error && (
         <p role="alert" className="card border-danger-ink p-4 text-danger-ink">
@@ -307,8 +314,23 @@ function Categorize({ t, ctx }: { t: TodoTask; ctx: Ctx }) {
       ),
     onError: (e: Error) => ctx.notify(e.message, "bad"),
   });
+  const name =
+    suggested === ""
+      ? null
+      : (ctx.groups.flatMap((g) => [g, ...g.children]).find((c) => c.category_id === suggested)?.name ??
+        null);
   return (
     <>
+      {suggested !== "" && name && (
+        <button
+          type="button"
+          className="btn btn-primary h-9 px-4 text-sm"
+          disabled={save.isPending}
+          onClick={() => save.mutate(suggested)}
+        >
+          Accept: {name}
+        </button>
+      )}
       <div className="w-72 max-w-full">
         <CategoryPicker
           label={`Category for ${t.title}`}
@@ -368,6 +390,12 @@ function Who({ t, ctx, transfer = false }: { t: TodoTask; ctx: Ctx; transfer?: b
   const [name, setName] = useState("");
   const id = t.data.transaction_id as number;
   const kinds = new Map(ctx.groups.flatMap((g) => [g, ...g.children]).map((c) => [c.category_id, c.kind]));
+
+  // The category the line has now: keeping it is one press, not choosing it again.
+  const keep = transfer
+    ? (ctx.groups.flatMap((g) => [g, ...g.children]).find((c) => c.category_id === t.data.category_id)
+        ?.name ?? null)
+    : null;
 
   const person = useMutation({
     mutationFn: (counterparty: number) => setWho(id, counterparty),
@@ -475,7 +503,7 @@ function Who({ t, ctx, transfer = false }: { t: TodoTask; ctx: Ctx; transfer?: b
           disabled={settle.isPending}
           onClick={() => settle.mutate()}
         >
-          Other side isn't in the app
+          {keep ? `Keep as ${keep}: other side isn't in the app` : "Other side isn't in the app"}
         </button>
       )}
       <Always on={always} set={setAlways} ok={ok} />

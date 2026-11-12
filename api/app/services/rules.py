@@ -58,9 +58,25 @@ class Rule:
         return (self.merchant_name or self.pattern.strip(" *"))[:100]
 
 
+MAX_KEY = 200  # characters of a merchant key (core.merchant_rule.pattern holds as many)
+
+
 def normalize(text: str) -> str:
     """Uppercase and collapse whitespace so statement descriptions compare consistently."""
     return " ".join(text.upper().split())
+
+
+def key(description: str) -> str:
+    """What groups lines of the same merchant: uppercase, reference numbers (4+ digits) and
+    store numbers and confirmation codes dropped, so "MICROSOFT*123456 MSBILL" and
+    "MICROSOFT*987654 MSBILL" are one, and so are two Zelle payments to the same person."""
+    text = normalize(description)
+    # Confirmation and payment codes ("CONF# AB12CD34E", "ID:PAYCO1234X"): letters and digits mixed.
+    text = re.sub(r"\b(?:CONF#|ID:)\s*\S+", " ", text)
+    text = re.sub(r"\b(?=[A-Z]*\d)(?=\d*[A-Z])[A-Z\d]{6,}\b", " ", text)
+    text = re.sub(r"[#*]?\d{4,}", " ", text)
+    text = re.sub(r"\s#?\d{1,3}\b", " ", text)
+    return " ".join(text.split())[:MAX_KEY]
 
 
 def in_range(rule: Rule, amount: Decimal | None) -> bool:
@@ -80,7 +96,10 @@ def matches(rule: Rule, description: str, amount: Decimal | None = None) -> bool
     text = normalize(description)
     pattern = normalize(rule.pattern)
     if rule.match_type == "contains":
-        return pattern in text
+        # Rules saved from To do and Review carry the merchant key, which drops the numbers in
+        # the middle of a description ("PRIME VIDEO *2X4 888-802-3080" -> "PRIME VIDEO * -802-"):
+        # the key of the line is compared too, or such a rule would never match (ADR-085).
+        return pattern in text or pattern in key(description)
     if rule.match_type == "starts_with":
         return text.startswith(pattern)
     if rule.match_type == "regex":

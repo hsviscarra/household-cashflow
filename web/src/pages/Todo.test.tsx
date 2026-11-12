@@ -37,7 +37,13 @@ const TODO: Todo = {
           amount: "-46.47",
           on: "2026-10-14",
           link: "/review",
-          data: { merchant_key: "NETFLIX", transaction_ids: [1, 2, 3], suggested_category_id: null, statement_file_id: 9, page: 2 },
+          data: {
+            merchant_key: "NETFLIX",
+            transaction_ids: [1, 2, 3],
+            suggested_category_id: null,
+            statement_file_id: 9,
+            page: 2,
+          },
         },
       ],
     },
@@ -113,15 +119,18 @@ beforeEach(() => {
       const json = (d: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(d), { status }));
       if (url === "/api/todo") return json(todo);
       if (url === "/api/categories") return json(GROUPS);
-      if (url === "/api/people" && method === "POST") return json({ counterparty_id: 9, name: "Napoles" }, 201);
+      if (url === "/api/people" && method === "POST")
+        return json({ counterparty_id: 9, name: "Napoles" }, 201);
       if (url === "/api/people") return json([{ counterparty_id: 4, name: "Rubén", is_active: true }]);
       if (url === "/api/review/resolve") return json({ categorized: 3, rule_id: 11, also_by_rule: 0 });
       if (url === "/api/transactions/7") return json({ transaction_id: 7 });
-      if (url === "/api/merchant-rules") return json({ rule_id: 12, pattern: "X", category_path: "Income / Salary" }, 201);
+      if (url === "/api/merchant-rules")
+        return json({ rule_id: 12, pattern: "X", category_path: "Income / Salary" }, 201);
       if (url === "/api/review/who") return json({ transaction_id: 7 });
       if (url === "/api/holdings/3") return json({ holding_id: 3 });
       if (url === "/api/holdings/3/values") return json({ snapshot_id: 1 });
-      if (url === "/api/people" && method === "POST") return json({ counterparty_id: 9, name: "Napoles" }, 201);
+      if (url === "/api/people" && method === "POST")
+        return json({ counterparty_id: 9, name: "Napoles" }, 201);
       if (url === "/api/todo/dismiss" || url === "/api/transfers/8/one-sided")
         return Promise.resolve(new Response(null, { status: 204 }));
       if (url === "/api/holdings/5/installments/41/paid")
@@ -158,10 +167,16 @@ describe("To do", () => {
   it("shows one section at a time, with what to do and a way to act", async () => {
     renderPage();
     const nav = await screen.findByRole("navigation", { name: "Sections" });
-    expect(within(nav).getByRole("button", { name: /Needs a category/ })).toHaveAttribute("aria-current", "true");
+    expect(within(nav).getByRole("button", { name: /Needs a category/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     expect(screen.getByText(/Pick a category for each merchant/)).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Out-of-date values" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "statement" })).toHaveAttribute("href", expect.stringContaining("9"));
+    expect(screen.getByRole("link", { name: "statement" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("9"),
+    );
     fireEvent.click(within(nav).getByRole("button", { name: /Statements, imports and bills/ }));
     const books = screen.getByRole("region", { name: "Statements, imports and bills" });
     expect(within(books).getByRole("link", { name: "Upload it" })).toHaveAttribute("href", "/import");
@@ -180,6 +195,19 @@ describe("To do", () => {
       save_rule: true,
     });
     expect(within(box).queryByText("NETFLIX")).not.toBeInTheDocument();
+  });
+
+  it("accepts a suggested category with one press", async () => {
+    todo.sections[0].tasks[0].data.suggested_category_id = 2;
+    renderPage();
+    const box = await screen.findByRole("region", { name: "Needs a category" });
+    fireEvent.click(await within(box).findByRole("button", { name: "Accept: Salary" }));
+    expect(await screen.findByText("Categorized 3 lines, saved a rule.")).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/api/review/resolve")!.body).toMatchObject({ category_id: 2 });
+    expect(screen.getByRole("link", { name: "see every income and expense by category" })).toHaveAttribute(
+      "href",
+      "/transactions/categories",
+    );
   });
 
   it("calls a transfer income, or gives it a new person", async () => {
@@ -203,11 +231,15 @@ describe("To do", () => {
     await screen.findByRole("navigation", { name: "Sections" });
     box = open(/Who or what is it/);
     await waitFor(() => expect(within(box).getByRole("option", { name: "Rubén" })).toBeInTheDocument());
-    fireEvent.change(within(box).getByLabelText("Who for TRANSFERENCIA KENILITY"), { target: { value: "new" } });
+    fireEvent.change(within(box).getByLabelText("Who for TRANSFERENCIA KENILITY"), {
+      target: { value: "new" },
+    });
     fireEvent.change(within(box).getByLabelText("New person's name"), { target: { value: "Napoles" } });
     fireEvent.click(within(box).getByRole("button", { name: "Add and save" }));
     expect(await screen.findByText("Added Napoles and saved who it is.")).toBeInTheDocument();
-    expect(calls.find((c) => c.method === "POST" && c.url === "/api/people")!.body).toEqual({ name: "Napoles" });
+    expect(calls.find((c) => c.method === "POST" && c.url === "/api/people")!.body).toEqual({
+      name: "Napoles",
+    });
   });
 
   it("settles a transfer whose other side isn't tracked, without a rule for general text", async () => {
@@ -242,7 +274,9 @@ describe("To do", () => {
     renderPage();
     await screen.findByRole("navigation", { name: "Sections" });
     const box = open(/Out-of-date values/);
-    fireEvent.change(within(box).getByLabelText("Today's value of Stock Market"), { target: { value: "1,500.50" } });
+    fireEvent.change(within(box).getByLabelText("Today's value of Stock Market"), {
+      target: { value: "1,500.50" },
+    });
     fireEvent.click(within(box).getByRole("button", { name: "Save value" }));
     expect(await screen.findByText("Saved today's value of Stock Market.")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/api/holdings/3/values")!.body).toMatchObject({ amount: "1500.50" });
@@ -291,7 +325,10 @@ describe("To do", () => {
     const box = open(/Suggestions/);
     pickCategory(within(box).getByRole("combobox", { name: /Different category for UBER/ }), "Sal", "Salary");
     await screen.findByText(/Rule saved/);
-    expect(calls.find((c) => c.url === "/api/merchant-rules")!.body).toMatchObject({ pattern: "UBER", category_id: 2 });
+    expect(calls.find((c) => c.url === "/api/merchant-rules")!.body).toMatchObject({
+      pattern: "UBER",
+      category_id: 2,
+    });
     fireEvent.click(within(box).getByRole("button", { name: "Not a bill" }));
     expect(await screen.findByText("Fine, it won't suggest that bill again.")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/api/todo/dismiss")!.body).toEqual({ key: "bill:NETFLIX" });
@@ -321,7 +358,9 @@ describe("To do", () => {
     const box = open(/Loan payments to confirm/);
     fireEvent.click(within(box).getByRole("button", { name: "Yes, paid" }));
     expect(await screen.findByText("Marked paid. The balance is now 98,000.00.")).toBeInTheDocument();
-    expect(calls.some((c) => c.method === "POST" && c.url === "/api/holdings/5/installments/41/paid")).toBe(true);
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/holdings/5/installments/41/paid")).toBe(
+      true,
+    );
   });
 
   it("says all clear when nothing is left", async () => {

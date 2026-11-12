@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.rules import Rule, first_match, matches, normalize, validate_pattern
+from app.services.rules import Rule, first_match, key, matches, normalize, validate_pattern
 
 
 def rule(pattern: str, match_type: str = "contains", priority: int = 50, rid: int = 1) -> Rule:
@@ -44,3 +44,14 @@ def test_validate_pattern() -> None:
     assert validate_pattern("  ", "contains") is not None
     assert validate_pattern("(", "regex") is not None
     assert validate_pattern("SUPERMAXI", "contains") is None
+
+
+def test_a_rule_saved_from_a_merchant_key_matches_the_line_it_came_from() -> None:
+    """ADR-085: To do saves the merchant key, which drops numbers inside the description."""
+    line = "PRIME VIDEO *2X4AB1CD3 888-802-3080 WA"
+    pattern = key(line)
+    assert pattern == "PRIME VIDEO * -802- WA"
+    assert pattern not in normalize(line)  # why the rule never matched before
+    assert matches(rule(pattern), line) is True
+    assert matches(rule(pattern), "PRIME VIDEO *9Z8YX7WV6 888-802-3080 WA") is True
+    assert matches(rule(pattern), "NETFLIX.COM 888-802-3080") is False
