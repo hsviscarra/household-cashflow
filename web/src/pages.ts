@@ -125,6 +125,14 @@ export const PAGES: PageDef[] = [
     summary: "Interest and fees per card, balances.",
   },
   {
+    path: "/debt/manage",
+    label: "Manage net worth",
+    group: "Wealth",
+    feature: "F14",
+    summary: "Update values, add or pause items, load a loan's table.",
+    hidden: true, // a tab of Net worth (ADR-090)
+  },
+  {
     path: "/projections",
     label: "Forecast",
     group: "Plan",

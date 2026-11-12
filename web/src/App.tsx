@@ -10,6 +10,7 @@ import DebtPage from "./pages/Debt";
 import ImportPage from "./pages/Import";
 import CashFlowPage from "./pages/CashFlow";
 import Home from "./pages/Home";
+import NetWorthManagePage from "./pages/NetWorthManage";
 import PeoplePage from "./pages/People";
 import ProjectionsPage from "./pages/Projections";
 import TaxProjectionPage from "./pages/TaxProjection";
@@ -135,6 +136,14 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
     tabs: [
       ["/people", "People"],
       ["/transfers", "Transfers to settle"],
+    ],
+  },
+  {
+    home: "/debt",
+    label: "Net worth",
+    tabs: [
+      ["/debt", "Overview"],
+      ["/debt/manage", "Manage"],
     ],
   },
   {
@@ -327,6 +336,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/groceries": <GroceriesPage />,
   "/subscriptions": <BillsPage start="found" />,
   "/debt": <DebtPage />,
+  "/debt/manage": <NetWorthManagePage />,
   "/projections": <ProjectionsPage />,
   "/budget": <BudgetPage />,
   "/goals": <GoalsPage />,

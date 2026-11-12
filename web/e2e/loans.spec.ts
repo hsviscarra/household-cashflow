@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 const TABLE = fileURLToPath(new URL("./fixtures/sample-loan-table.pdf", import.meta.url));
 
 test("loan: upload the amortization table, see the balance, summary and payments", async ({ page }) => {
-  await page.goto("/debt");
+  await page.goto("/debt/manage");
   const owe = page.getByRole("region", { name: "What you owe" });
   await expect(owe.getByRole("listitem", { name: "BIESS" })).toBeVisible();
   if (!(await owe.getByRole("listitem", { name: "Sample mortgage" }).isVisible())) {
