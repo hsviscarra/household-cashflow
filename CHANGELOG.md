@@ -5,6 +5,12 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.92.0] — Sign in with Google
+
+### Added
+- **Google sign-in** next to Microsoft: `infra/azure/setup-google-signin.sh` adds it to the
+  running app once the Google client exists (docs/runbooks/google-sign-in.md, ADR-083).
+
 ## [0.91.0] — More alerts by email
 
 ### Added

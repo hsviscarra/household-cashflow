@@ -40,6 +40,12 @@ param authClientId string = ''
 @description('Client secret of the sign-in app registration.')
 param authClientSecret string = ''
 
+@description('Google sign-in next to Microsoft (ADR-083): the OAuth client id; empty leaves it off.')
+param googleClientId string = ''
+
+@secure()
+param googleClientSecret string = ''
+
 @secure()
 @description('Claude API key for category suggestions (F9). Empty = suggestions off.')
 param anthropicApiKey string = ''
@@ -175,6 +181,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'database-url', value: databaseUrl }
         { name: 'ghcr-token', value: ghcrToken }
       ], enableAuth ? [ { name: 'microsoft-provider-secret', value: authClientSecret } ] : [],
+        enableAuth && !empty(googleClientId) ? [ { name: 'google-provider-secret', value: googleClientSecret } ] : [],
         empty(anthropicApiKey) ? [] : [ { name: 'anthropic-api-key', value: anthropicApiKey } ],
         empty(mcpToken) ? [] : [
           { name: 'mcp-token', value: mcpToken }
@@ -217,12 +224,13 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableA
     platform: { enabled: true }
     globalValidation: {
       unauthenticatedClientAction: 'RedirectToLoginPage'
-      redirectToProvider: 'azureactivedirectory'
+      // With Google configured people are sent there; Microsoft stays at /.auth/login/aad.
+      redirectToProvider: empty(googleClientId) ? 'azureactivedirectory' : 'google'
       // /mcp is Claude's endpoint (F18) and /api/inbox the Gmail script's (F20): each checks its
       // own bearer token instead of a sign-in.
       excludedPaths: [ '/api/health', '/mcp', '/api/inbox', '/api/inbox/transfer' ]
     }
-    identityProviders: {
+    identityProviders: union({
       azureActiveDirectory: {
         enabled: true
         registration: {
@@ -231,7 +239,16 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (enableA
           openIdIssuer: msaIssuer
         }
       }
-    }
+    }, empty(googleClientId) ? {} : {
+      google: {
+        enabled: true
+        registration: {
+          clientId: googleClientId
+          clientSecretSettingName: 'google-provider-secret'
+        }
+        login: { scopes: [ 'openid', 'email', 'profile' ] }
+      }
+    })
   }
 }
 
