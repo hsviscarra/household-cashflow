@@ -138,6 +138,14 @@ def delete_template(template_id: int, db: DB, request: Request) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/templates/{template_id}/stop", response_model=CountOut)
+def stop_template(template_id: int, body: MonthIn, db: DB, request: Request) -> CountOut:
+    """The item doesn't apply from this month on: it ends the month before and its planned,
+    unpaid entries from this month are removed (ADR-089)."""
+    n = _run(lambda: recurring.stop(db, template_id, body.month, _user(request)))
+    return CountOut(count=n)
+
+
 @router.post("/templates/{template_id}/amount", response_model=CountOut)
 def change_amount(template_id: int, body: ChangeAmountIn, db: DB, request: Request) -> CountOut:
     n = _run(
@@ -288,6 +296,7 @@ def from_excel(body: FromExcelIn, db: DB, request: Request) -> FromExcelOut:
 # ---------------------------------------------------------------- bills (ADR-031)
 class BillOut(BaseModel):
     template_id: int
+    entry_id: int | None
     name: str
     type: str
     group: str

@@ -11,7 +11,7 @@ import {
   type FlowFilter,
   type FlowLine,
 } from "../api";
-import { money, num } from "../money";
+import { addMonths, money, monthLong, num } from "../money";
 import CategoryPicker from "./CategoryPicker";
 
 // The lines behind a number (ADR-048): opens over the page from any total, lists every line
@@ -64,11 +64,31 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
     onError: (e: Error) => setNote(e.message),
   });
 
+  // ADR-089: the month a line counts in, when the rule got it wrong (a bonus isn't next month's pay).
+  const move = useMutation({
+    mutationFn: ({ line, month }: { line: FlowLine; month: string }) =>
+      updateTransaction(line.transaction_id, { counts_in: month }),
+    onSuccess: (_, { month }) => {
+      setNote(`Moved: it counts in ${monthLong(month)} now.`);
+      qc.invalidateQueries(); // every number by month can change
+    },
+    onError: (e: Error) => setNote(e.message),
+  });
+  const mover = (l: FlowLine) =>
+    l.source === "excel_history" || !l.cash_month ? null : (
+      <CountsIn l={l} onMove={(month) => move.mutate({ line: l, month })} />
+    );
+
   const total = (lines.data ?? []).reduce((s, l) => s + num(l.amount), 0);
   const groups = cats.data ?? [];
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label={target.title}>
+    <div
+      className="fixed inset-0 z-40 flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-label={target.title}
+    >
       <button aria-label="Close" className="absolute inset-0 bg-ink/30" onClick={onClose} />
       <aside className="relative flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-ground shadow-xl">
         <header className="sticky top-0 z-10 border-b border-line bg-ground p-5">
@@ -108,8 +128,8 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
           {(lines.data ?? []).some((l) => l.source === "excel_history") && (
             <p className="mb-3 rounded-xl bg-surface px-4 py-3 text-sm">
               This month counts the <strong>Cash Flow workbook</strong>: its amount is one line per category,
-              so there are no payments to see here. The statements count from the month chosen under
-              “Where the numbers come from” on Cash flow.
+              so there are no payments to see here. The statements count from the month chosen under “Where
+              the numbers come from” on Cash flow.
             </p>
           )}
           {lines.error && <p className="text-warn">{(lines.error as Error).message}</p>}
@@ -120,6 +140,7 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
               <LineRow
                 key={l.transaction_id}
                 l={l}
+                mover={mover(l)}
                 picker={
                   l.source === "excel_history" ? null : (
                     <CategoryPicker
@@ -128,7 +149,9 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
                       groups={groups}
                       value={l.category_id ?? ""}
                       placeholder="No category"
-                      onChange={(id) => id !== "" && id !== l.category_id && recat.mutate({ line: l, category_id: id })}
+                      onChange={(id) =>
+                        id !== "" && id !== l.category_id && recat.mutate({ line: l, category_id: id })
+                      }
                     />
                   )
                 }
@@ -166,6 +189,7 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
               <LineRow
                 key={l.transaction_id}
                 l={l}
+                mover={mover(l)}
                 picker={
                   target.moveTo && l.category_id !== target.moveTo ? (
                     <button
@@ -181,7 +205,9 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
                       groups={groups}
                       value={l.category_id ?? ""}
                       placeholder="No category"
-                      onChange={(id) => id !== "" && id !== l.category_id && recat.mutate({ line: l, category_id: id })}
+                      onChange={(id) =>
+                        id !== "" && id !== l.category_id && recat.mutate({ line: l, category_id: id })
+                      }
                     />
                   )
                 }
@@ -194,7 +220,31 @@ export default function LinesPanel({ target, onClose }: { target: LinesTarget; o
   );
 }
 
-function LineRow({ l, picker }: { l: FlowLine; picker: React.ReactNode }) {
+/** Which month the line counts in: the month of its date or the one before or after it. */
+function CountsIn({ l, onMove }: { l: FlowLine; onMove: (month: string) => void }) {
+  const own = `${l.txn_date.slice(0, 7)}-01`;
+  const now = l.cash_month ?? own;
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-muted">
+      Counts in
+      <select
+        className="field !h-8 !w-auto !py-0 text-xs"
+        aria-label={`Month ${l.description} counts in`}
+        value={now}
+        onChange={(e) => e.target.value !== now && onMove(e.target.value)}
+      >
+        {[addMonths(own, -1), own, addMonths(own, 1)].map((m) => (
+          <option key={m} value={m}>
+            {monthLong(m)}
+          </option>
+        ))}
+      </select>
+      {l.month_override && <span>(set by hand)</span>}
+    </label>
+  );
+}
+
+function LineRow({ l, picker, mover }: { l: FlowLine; picker: React.ReactNode; mover?: React.ReactNode }) {
   const parts = [
     l.account_name,
     l.person,
@@ -230,9 +280,12 @@ function LineRow({ l, picker }: { l: FlowLine; picker: React.ReactNode }) {
             </>
           )}
         </p>
+        {mover}
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        <span className={`num font-semibold ${num(l.amount) > 0 ? "text-flow-in" : ""}`}>{money(l.amount)}</span>
+        <span className={`num font-semibold ${num(l.amount) > 0 ? "text-flow-in" : ""}`}>
+          {money(l.amount)}
+        </span>
         {picker && <div className="w-52">{picker}</div>}
       </div>
     </li>

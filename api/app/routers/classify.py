@@ -76,6 +76,7 @@ def transaction_out(
         txn_date=t.txn_date,
         post_date=t.post_date,
         cash_month=t.cash_month,
+        month_override=t.month_override,
         account_id=t.account_id,
         account_name=account_name,
         description=t.description_raw,
@@ -210,6 +211,7 @@ def edit_transaction(
             notes=body.notes,
             person=body.person,
             counterparty_id=body.counterparty_id,
+            counts_in=body.counts_in,
             fields=fields,
         )
     except classify.ClassifyError as exc:

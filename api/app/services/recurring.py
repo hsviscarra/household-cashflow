@@ -266,6 +266,34 @@ def update_template(db: Session, template_id: int, changes: dict[str, object], u
     db.commit()
 
 
+def stop(db: Session, template_id: int, month: date, user: str) -> int:
+    """The item doesn't apply from `month` on (ADR-089): its last month becomes the one before
+    (or, when it never ran, it is turned off), and the entries still planned from that month
+    with no line paying them are removed. What was paid stays. Returns the entries removed."""
+    month = first(month)
+    t = get_template(db, template_id)
+    last = add_months(month, -1)
+    if last < t.start_month:
+        update_template(db, template_id, {"is_active": False}, user)
+    else:
+        update_template(db, template_id, {"end_month": last}, user)
+    linked = _linked_entry_ids(db)
+    gone = [
+        e.entry_id
+        for e in db.scalars(
+            select(RecurringEntry).where(
+                RecurringEntry.template_id == template_id,
+                RecurringEntry.month >= month,
+                RecurringEntry.status == "planned",
+            )
+        )
+        if e.entry_id not in linked
+    ]
+    for entry_id in gone:
+        delete_entry(db, entry_id, user)
+    return len(gone)
+
+
 def delete_template(db: Session, template_id: int, user: str) -> None:
     t = get_template(db, template_id)
     entry_ids = list(
@@ -981,6 +1009,7 @@ def _unique_name(db: Session, name: str) -> str:
 @dataclass
 class Bill:
     template_id: int
+    entry_id: int | None  # this month's entry, when the month was generated
     name: str
     type: str
     group: str
@@ -1095,6 +1124,7 @@ def bills(db: Session, month: date, today: date | None = None) -> list[Bill]:
         out.append(
             Bill(
                 template_id=t.template_id,
+                entry_id=e.entry_id if e is not None else None,
                 name=t.name,
                 type=t.type,
                 group=t.excel_group or (parent.name if parent else cat.name if cat else ""),

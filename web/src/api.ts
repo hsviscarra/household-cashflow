@@ -588,7 +588,7 @@ export const acceptBatchSuggestions = (id: number) =>
   send<Accepted>("POST", `/api/batches/${id}/accept-suggestions`);
 export const updateTransaction = (
   id: number,
-  body: { category_id?: number; notes?: string | null; person?: Owner | null },
+  body: { category_id?: number; notes?: string | null; person?: Owner | null; counts_in?: string | null },
 ) => send<Txn>("PATCH", `/api/transactions/${id}`, body);
 export const splitTransaction = (id: number, parts: PartInput[]) =>
   send<Txn[]>("PUT", `/api/transactions/${id}/split`, { parts });
@@ -1576,6 +1576,7 @@ export type FlowLine = {
   counterparty?: string | null;
   merchant_key?: string;
   cash_month?: string | null;
+  month_override?: string | null; // a person chose the month it counts in (ADR-089)
 };
 export type FlowFilter = {
   side?: "in" | "out";
@@ -1837,6 +1838,7 @@ export const setWho = (transaction_id: number, counterparty_id: number) =>
 export type BillStatus = "paid" | "due" | "late" | "skipped";
 export type Bill = {
   template_id: number;
+  entry_id: number | null; // this month's entry, when the month was generated
   name: string;
   type: TemplateType;
   group: string;
@@ -1857,6 +1859,9 @@ export type Bill = {
   end_month: string | null;
 };
 export type Bills = { month: string; today: string; bills: Bill[] };
+/** The bill doesn't apply from `month` (YYYY-MM-01) on (ADR-089). */
+export const stopTemplate = (id: number, month: string) =>
+  send<{ count: number }>("POST", `/api/recurring/templates/${id}/stop`, { month });
 export const fetchBills = (month: string) => send<Bills>("GET", `/api/recurring/bills?month=${month}`);
 
 // ---------- gastos personales (ADR-036) ----------
