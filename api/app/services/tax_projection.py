@@ -177,7 +177,7 @@ def _by_month(db: Session, person: str, year: int) -> dict[int, Decimal]:
             Transaction.txn_date >= start,
             Transaction.txn_date < end,
         )
-    )
+    ).all()  # read whole: SQL Server runs one query at a time on a connection
     since = sources.statements_from(db)
     workbook: dict[int, Decimal] = {}
     banks: dict[int, Decimal] = {}
