@@ -99,7 +99,10 @@ def upgrade() -> None:
     batch = "SET NOCOUNT ON;\n" + "\n".join(
         (MOVES, KEEP_CHANGED, ENTRIES, LOG_MONTH, LOG_ENTRY, MOVE, RELINK)
     )
-    op.get_bind().exec_driver_sql(batch + "\nDROP TABLE #links;\nDROP TABLE #moves;")
+    # NOCOUNT goes back off: Alembic checks the row count of its own version update.
+    op.get_bind().exec_driver_sql(
+        batch + "\nDROP TABLE #links;\nDROP TABLE #moves;\nSET NOCOUNT OFF;"
+    )
 
 
 def downgrade() -> None:
