@@ -41,7 +41,7 @@ const HOW: Record<string, string> = {
   transfers:
     "Money moved between accounts and the app can't find the other side. Say what it was (the house, a loan, a person), or press “Other side isn't in the app” when it came from or went to an account you don't track. If that statement is just not uploaded yet, leave it: it pairs up on its own.",
   books:
-    "Three kinds of loose ends. A statement to upload: only for days that neither bank sync nor an emailed statement covered. An import to approve: a statement that's waiting for you to check it. A bill past its day: something that comes every month (rent, school, insurance) and no line paid it yet; lines pay bills on their own when a statement or the bank sync brings them. If it was paid, open Bills → Edit (year grid), click the month's cell and link the line, or mark it skipped.",
+    "Three kinds of loose ends. A statement to upload: only for days that neither bank sync nor an emailed statement covered. An import to approve: a statement that's waiting for you to check it. A bill past its day: something that comes every month (rent, school, insurance) and no line paid it yet; lines pay bills on their own when a statement or the bank sync brings them. On Bills, press Change next to it to fix its day, skip this month or say it doesn't apply any more; to link the line that paid it, use Edit (year grid).",
   loans: "Say Yes when the month's installment is paid; the balance updates from the loan's table.",
   values:
     "Values on Net worth that are old. Enter today's value, or stop counting it if you don't have it any more or it's the same money as another item.",

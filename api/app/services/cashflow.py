@@ -196,6 +196,7 @@ class Line:
     counterparty: str | None = None
     merchant_key: str = ""
     cash_month: date | None = None
+    month_override: date | None = None  # a person chose the month (ADR-089)
 
 
 def _line(r: Transaction, cname: str | None, aname: str | None, who: str | None) -> Line:
@@ -218,6 +219,7 @@ def _line(r: Transaction, cname: str | None, aname: str | None, who: str | None)
         counterparty=who,
         merchant_key=merchant_key(r.description_raw),
         cash_month=r.cash_month,
+        month_override=r.month_override,
     )
 
 

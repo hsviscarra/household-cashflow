@@ -173,6 +173,7 @@ class FlowLineOut(BaseModel):
     counterparty: str | None = None
     merchant_key: str = ""
     cash_month: date | None = None
+    month_override: date | None = None
 
 
 @router.get("/cashflow/flows", response_model=FlowsOut)

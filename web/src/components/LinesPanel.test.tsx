@@ -49,7 +49,9 @@ beforeEach(() => {
       const json = (d: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(d), { status }));
       if (url.startsWith("/api/cashflow/lines")) return json([LINE]);
       if (url.startsWith("/api/cashflow/search"))
-        return json([{ ...LINE, transaction_id: 8, description: "KENILITY BONUS", category_id: 3, amount: "500.0000" }]);
+        return json([
+          { ...LINE, transaction_id: 8, description: "KENILITY BONUS", category_id: 3, amount: "500.0000" },
+        ]);
       if (url === "/api/categories") return json(GROUPS);
       if (url.startsWith("/api/transactions/")) return json({});
       if (url === "/api/merchant-rules") return json({ rule_id: 1 }, 201);
@@ -64,7 +66,12 @@ function renderPanel(onClose = vi.fn()) {
   render(
     <QueryClientProvider client={qc}>
       <LinesPanel
-        target={{ title: "Salary", month: "2026-10-01", filter: { category_id: 2, type: "income" }, moveTo: 2 }}
+        target={{
+          title: "Salary",
+          month: "2026-10-01",
+          filter: { category_id: 2, type: "income" },
+          moveTo: 2,
+        }}
         onClose={onClose}
       />
     </QueryClientProvider>,
@@ -87,13 +94,32 @@ describe("LinesPanel", () => {
     renderPanel();
     await screen.findByText("TRANSFERENCIA KENILITY");
     fireEvent.click(screen.getByLabelText(/make it a rule/));
-    pickCategory(screen.getByRole("combobox", { name: /Category for TRANSFERENCIA KENILITY/ }), "Bon", "Bonus");
+    pickCategory(
+      screen.getByRole("combobox", { name: /Category for TRANSFERENCIA KENILITY/ }),
+      "Bon",
+      "Bonus",
+    );
     expect(await screen.findByText("Changed, and saved a rule for next time.")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/api/transactions/7")!.body).toEqual({ category_id: 3 });
     expect(calls.find((c) => c.url === "/api/merchant-rules")!.body).toMatchObject({
       pattern: "TRANSFERENCIA KENILITY",
       category_id: 3,
     });
+  });
+
+  it("moves a line to the month it counts in", async () => {
+    renderPanel();
+    await screen.findByText("TRANSFERENCIA KENILITY");
+    const month = screen.getByRole("combobox", { name: "Month TRANSFERENCIA KENILITY counts in" });
+    expect(month).toHaveValue("2026-10-01");
+    expect(
+      within(month)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["September 2026", "October 2026", "November 2026"]);
+    fireEvent.change(month, { target: { value: "2026-11-01" } });
+    expect(await screen.findByText("Moved: it counts in November 2026 now.")).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/api/transactions/7")!.body).toEqual({ counts_in: "2026-11-01" });
   });
 
   it("finds a missing line and moves it here; Back and Escape close", async () => {

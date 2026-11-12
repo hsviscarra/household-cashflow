@@ -26,8 +26,8 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
+from app.services import payday, transfers
 from app.services import rules as rule_engine
-from app.services import transfers
 
 # Lower than the seeded merchant rules (10-30): a rule Hernan saves while reviewing is specific.
 REVIEW_RULE_PRIORITY = 15
@@ -499,8 +499,11 @@ def edit(
     notes: str | None = None,
     person: str | None = None,
     counterparty_id: int | None = None,
+    counts_in: date | None = None,
     fields: set[str],
 ) -> None:
+    if "counts_in" in fields:
+        _count_in(db, row, counts_in, user)
     if "category_id" in fields:
         if category_id is None:
             raise ClassifyError("Choose a category.")
@@ -524,6 +527,23 @@ def edit(
     db.commit()
     if row.type == "transfer" and row.transfer_group_id is None:
         transfers.match(db, user)
+
+
+def _count_in(db: Session, row: Transaction, month: date | None, user: str) -> None:
+    """Move a line to the month a person says it counts in (ADR-089). A bill it paid belongs to
+    the old month's entry, so that link is dropped and the new month is matched again."""
+    from app.services import recurring  # recurring's users import this module
+
+    if row.source == "excel_history":
+        raise ClassifyError("The workbook's rows have no day to move.")
+    try:
+        payday.move(db, row, month, user)
+    except payday.MonthError as exc:
+        raise ClassifyError(str(exc)) from exc
+    if row.recurring_entry_id is not None:
+        recurring.unlink_line(db, row.transaction_id, user)
+    db.flush()
+    recurring.match(db, row.cash_month, user)
 
 
 # ---------------- splits ----------------

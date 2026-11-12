@@ -243,6 +243,9 @@ class Transaction(Timestamps, Base):
     post_date: Mapped[date | None] = mapped_column(Date)
     # First day of the month the money moved (cash basis); set by the loader from txn_date.
     cash_month: Mapped[date] = mapped_column(Date, index=True)
+    # The month a person said this line counts in (ADR-089); when set it wins over the rule that
+    # works cash_month out (a yearly bonus paid on the 23rd is that month's, not the next one's).
+    month_override: Mapped[date | None] = mapped_column(Date)
     amount: Mapped[Decimal] = mapped_column(Money)
     description_raw: Mapped[str] = mapped_column(Unicode(400))
     merchant: Mapped[str | None] = mapped_column(Unicode(200))

@@ -5,6 +5,19 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.98.0] — The month of a line, and bills fixed in place
+
+### Added
+- **Counts in**: on any line in the lines behind a number (for example Home → Money in), choose
+  the month it counts in: the month of its date or the one before or after. A bonus paid on the
+  23rd can count in its own month while salaries keep counting in the month they pay for. Stored
+  in `core.transaction.month_override` (migration 0053) and logged (ADR-089).
+- **Change** on each bill: fix the day it's due, skip this month, or say it doesn't apply any
+  more (it ends the month before; what was paid stays).
+
+### Changed
+- To do lists the most money first in Needs a category, Who or what is it and Transfers.
+
 ## [0.97.0] — Income tax projected
 
 ### Added

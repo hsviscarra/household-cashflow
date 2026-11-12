@@ -182,7 +182,7 @@ def _categorize(db: Session, accounts: dict[int, str], skip: set[int]) -> Sectio
     for g in groups:  # transfers that don't say who are asked once, under Who or what is it
         g.lines = [ln for ln in g.lines if ln.transaction_id not in skip]
     groups = [g for g in groups if g.lines]
-    groups.sort(key=lambda g: (-len(g.lines), g.merchant_key))
+    groups.sort(key=lambda g: (-abs(g.total), g.merchant_key))  # most money at stake first
     sec.count = sum(len(g.lines) for g in groups)
     for g in groups[:MAX_TASKS]:
         last = g.lines[-1]
@@ -211,12 +211,18 @@ def _categorize(db: Session, accounts: dict[int, str], skip: set[int]) -> Sectio
     return sec
 
 
+def _at_stake(t: Transaction) -> tuple[Decimal, int]:
+    """Sort key: the most money first (ADR-089), the newest line first among equals."""
+    return (-abs(t.amount), -t.transaction_id)
+
+
 def _who(rows: list[Transaction], accounts: dict[int, str]) -> Section:
     sec = Section(
         "who",
         "Who or what is it",
         "Transfers that don't say who: choose the person, or a category such as Salary.",
     )
+    rows = sorted(rows, key=_at_stake)
     sec.count = len(rows)
     for t in rows[:MAX_TASKS]:
         sec.tasks.append(
@@ -252,7 +258,7 @@ def _transfers(db: Session, accounts: dict[int, str]) -> Section:
     since = sources.statements_from(db)
     # Workbook months count the workbook's rows, not these lines: nothing to ask about them.
     rows = [t for t in transfers.unmatched(db) if since is None or t.cash_month >= since]
-    rows.sort(key=lambda t: (t.txn_date, t.transaction_id), reverse=True)
+    rows.sort(key=_at_stake)
     sec.count = len(rows)
     for t in rows[:MAX_TASKS]:
         sec.tasks.append(

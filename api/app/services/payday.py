@@ -18,10 +18,15 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
-from app.models import Category, Transaction
+from app.models import Category, ChangeLog, Transaction
 
 SALARY_GROUP = "Salary"
 NEXT_FROM_DAY = 15  # paid on or after this day: the pay of the month that follows
+MOVE_MONTHS = 1  # a line may be moved this many months before or after the month of its date
+
+
+class MonthError(Exception):
+    """A month a line can't be moved to."""
 
 
 def first(d: date) -> date:
@@ -69,6 +74,38 @@ def settle(db: Session) -> None:
         salaries = salary_categories(db)
     for t in rows:
         is_salary = t.amount is not None and t.amount > 0 and t.category_id in salaries
-        month = month_for(t.txn_date, is_salary)
+        # A month a person chose for the line wins over the rule (ADR-089).
+        month = t.month_override or month_for(t.txn_date, is_salary)
         if t.cash_month != month:
             t.cash_month = month
+
+
+def months_apart(a: date, b: date) -> int:
+    return abs((a.year - b.year) * 12 + a.month - b.month)
+
+
+def move(db: Session, t: Transaction, month: date | None, user: str) -> None:
+    """Say which month a line counts in (ADR-089), or with None hand it back to the rule. Only
+    the month of its date and the ones next to it: further away is a mistake, not a choice.
+    The change is logged; `settle` applies it to cash_month at the flush. The caller commits."""
+    if month is not None:
+        month = first(month)
+        if months_apart(month, first(t.txn_date)) > MOVE_MONTHS:
+            raise MonthError(
+                f"A line dated {t.txn_date:%b %d} can count in {t.txn_date:%B} or the month "
+                "before or after it."
+            )
+    if month == t.month_override:
+        return
+    db.add(
+        ChangeLog(
+            table_name="core.transaction",
+            row_id=t.transaction_id,
+            column_name="month_override",
+            old_value=t.month_override.isoformat() if t.month_override else None,
+            new_value=month.isoformat() if month else None,
+            reason="Counts in another month",
+            changed_by=user,
+        )
+    )
+    t.month_override = month

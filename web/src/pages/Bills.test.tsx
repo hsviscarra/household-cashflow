@@ -8,6 +8,7 @@ import BillsPage, { repeats, weeks } from "./Bills";
 
 const bill = (p: Partial<Bill>): Bill => ({
   template_id: 1,
+  entry_id: null,
   name: "BIESS",
   type: "debt_payment",
   group: "Housing",
@@ -35,6 +36,7 @@ const BILLS: Bills = {
     bill({}),
     bill({
       template_id: 2,
+      entry_id: 52,
       name: "Ecuasanitas",
       group: "Insurance",
       due_day: 1,
@@ -83,13 +85,16 @@ const BILLS: Bills = {
 };
 
 let urls: string[];
+let sent: { url: string; body: unknown }[];
 
 beforeEach(() => {
   urls = [];
+  sent = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string) => {
+    vi.fn((url: string, init?: RequestInit) => {
       urls.push(url);
+      if (init?.body) sent.push({ url, body: JSON.parse(String(init.body)) });
       const json = (d: unknown) => Promise.resolve(new Response(JSON.stringify(d)));
       if (url.startsWith("/api/recurring/bills")) return json(BILLS);
       if (url === "/api/subscriptions")
@@ -176,6 +181,30 @@ describe("Bills & subscriptions", () => {
     expect(screen.getByText("No set day yet")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Oct →|← Oct/ }));
     expect(urls).toContain("/api/recurring/bills?month=2026-10-01");
+  });
+
+  it("changes a bill where it's listed: its day, skip, or stop it", async () => {
+    renderAt();
+    const late = await screen.findByRole("region", { name: "Late" });
+    fireEvent.click(within(late).getByRole("button", { name: "Change Ecuasanitas" }));
+    fireEvent.change(within(late).getByLabelText("Day Ecuasanitas is due"), { target: { value: "20" } });
+    fireEvent.click(within(late).getByRole("button", { name: "Save day" }));
+    await vi.waitFor(() => expect(sent.some((c) => c.url === "/api/recurring/templates/2")).toBe(true));
+    expect(sent.find((c) => c.url === "/api/recurring/templates/2")!.body).toEqual({ due_day: 20 });
+
+    fireEvent.click(within(late).getByRole("button", { name: "Change Ecuasanitas" }));
+    fireEvent.click(within(late).getByRole("button", { name: "Skip this month" }));
+    await vi.waitFor(() => expect(sent.some((c) => c.url === "/api/recurring/entries/52")).toBe(true));
+    expect(sent.find((c) => c.url === "/api/recurring/entries/52")!.body).toEqual({ status: "skipped" });
+
+    fireEvent.click(within(late).getByRole("button", { name: "Change Ecuasanitas" }));
+    fireEvent.click(within(late).getByRole("button", { name: "Doesn't apply any more" }));
+    expect(late).toHaveTextContent("Ends before November 2026; what was paid stays.");
+    fireEvent.click(within(late).getByRole("button", { name: "Yes, stop it" }));
+    await vi.waitFor(() => expect(sent.some((c) => c.url === "/api/recurring/templates/2/stop")).toBe(true));
+    expect(sent.find((c) => c.url === "/api/recurring/templates/2/stop")!.body).toEqual({
+      month: "2026-11-01",
+    });
   });
 
   it("groups items with totals", async () => {

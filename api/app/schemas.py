@@ -399,6 +399,7 @@ class TransactionOut(BaseModel):
     txn_date: date
     post_date: date | None
     cash_month: date
+    month_override: date | None = None  # set when a person chose the month (ADR-089)
     account_id: int | None
     account_name: str | None
     description: str
@@ -487,6 +488,8 @@ class TransactionPatch(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
     person: Owner | None = None
     counterparty_id: int | None = None  # null clears it
+    # The month the line counts in (any day of it); null hands it back to the rule (ADR-089).
+    counts_in: date | None = None
 
 
 class PartIn(BaseModel):
