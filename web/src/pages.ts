@@ -153,6 +153,14 @@ export const PAGES: PageDef[] = [
     summary: "Each person's deductible personal expenses from the SRI invoices, the cap and the 18% rebate.",
   },
   {
+    path: "/taxes/income",
+    label: "Income tax",
+    group: "Taxes & reports",
+    feature: "P1",
+    summary: "The year's income tax projected: what is owed, what would lower it, what to set aside.",
+    hidden: true, // a tab of Taxes (ADR-060)
+  },
+  {
     path: "/taxes/iva",
     label: "Monthly IVA",
     group: "Taxes & reports",
@@ -167,6 +175,7 @@ export const PAGES: PageDef[] = [
     group: "Taxes & reports",
     feature: "A8",
     summary: "What is missing, unusual or decided by the app, before the month is done.",
+    hidden: true, // a tab of Monthly report (ADR-087)
   },
   {
     path: "/report",

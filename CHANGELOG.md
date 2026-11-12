@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.97.0] — Income tax projected
+
+### Added
+- **Taxes → Income tax**: for each of you, the year's income (received plus a typical month for
+  the months to come), the tax by the SRI's 2026 table, the rebate from your invoices, what is
+  left to pay in March and how much to set aside each month. It shows how much more in invoices
+  would still lower the tax before December 31. The year's withholding, exempt income and
+  deductions are entered once per person. The payment appears in the forecast (ADR-088).
+
 ## [0.96.0] — Close the month
 
 ### Added
