@@ -134,9 +134,13 @@ describe("Tax deductions", () => {
     const row = (await screen.findAllByRole("listitem")).find((li) => li.textContent?.includes("FARMACIA"))!;
     expect(row).toHaveTextContent("Apr 10, 2026 · invoice 001-001-000000123 · 12.00 before VAT, 13.80 paid");
     expect(row).toHaveTextContent("whose: from the line that paid it");
-    fireEvent.click(within(row).getByLabelText("All from this supplier"));
+    expect(within(row).getByLabelText("All from this supplier")).toBeChecked(); // on by default
     expect(row).toHaveTextContent("No SRI group yet");
-    pickCategory(await within(row).findByRole("combobox", { name: /Category for FARMACIA/ }), "Pharm", "Pharmacy");
+    pickCategory(
+      await within(row).findByRole("combobox", { name: /Category for FARMACIA/ }),
+      "Pharm",
+      "Pharmacy",
+    );
     await vi.waitFor(() =>
       expect(calls.some((c) => c.method === "PUT" && c.url === "/api/invoices/7/gastos")).toBe(true),
     );
@@ -147,7 +151,7 @@ describe("Tax deductions", () => {
     fireEvent.change(within(row).getByLabelText("Whose invoice"), { target: { value: "" } });
     await vi.waitFor(() =>
       expect(calls.filter((c) => c.url === "/api/invoices/7/gastos").map((c) => c.body)).toContain(
-        '{"person":null}',
+        '{"person":null,"remember_issuer":true}',
       ),
     );
 

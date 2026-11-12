@@ -5,6 +5,26 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.94.0] — To do that settles things
+
+### Fixed
+- **A saved rule no longer comes back as a suggestion.** Rules saved from To do carried a
+  shortened form of the bank's text and never matched it; they match now, and every rule runs
+  over the waiting lines once a day (ADR-085).
+- **Statements aren't asked for days the bank sync covered**: a day with no movements counted as
+  missing.
+- **Bills not due yet aren't listed as not paid** in the current month; only those past their day.
+
+### Added
+- **Accept** a suggested category with one press in To do; a transfer that has a category offers
+  "Keep as …".
+- **All from this supplier** is on by default for invoices and also carries whose they are; an
+  invoice paid by a line that isn't deductible stops asking for a category.
+- The **bank sync also runs with the daily email check** (about 6 am), without opening the app.
+- To do links to **Transactions → By category** to check what is already categorized.
+- The code standard in the Definition of Done, and `docs/refactors.md` with what existing code
+  falls short of it.
+
 ## [0.93.0] — A salary counts in the month it pays for
 
 ### Changed

@@ -32,7 +32,7 @@ from app.models import (
     Transaction,
     TransferNote,
 )
-from app.services import classify, recurring, transfers
+from app.services import bank_sync, classify, recurring, transfers
 
 DAY = timedelta(days=1)
 DASH = "\u2013"
@@ -351,15 +351,38 @@ def next_cycle_end(end: date) -> date:
     return m.replace(day=min(end.day, last))
 
 
+SHOWN_BILLS = 4  # names spelled out in "N recurring items not paid yet"
 SYNC_FRESH = 3  # days: a sync older than this no longer counts up to today
+
+
+def _first_synced(db: Session, linked: set[int]) -> dict[int, date]:
+    """The day of the first sync that reached each linked account (from the sync log)."""
+    out: dict[int, date] = {}
+    runs = db.scalars(
+        select(LoadLog).where(LoadLog.source == "bank_sync").order_by(LoadLog.load_id)
+    )
+    for run in runs:
+        try:
+            seen = json.loads(run.summary).get("accounts") or []
+        except (ValueError, AttributeError):
+            continue  # an older log line without the account list
+        for a in seen:
+            aid = a.get("account_id") if isinstance(a, dict) else None
+            if aid in linked:
+                out.setdefault(aid, run.loaded_at.date())
+        if len(out) == len(linked):
+            break
+    return out
 
 
 def sync_coverage(
     db: Session, accounts: list[Account], today: date
 ) -> dict[int, tuple[date, date]]:
-    """The days bank sync covers for each linked account: from its first synced line to the last
-    sync (to today while the last sync is fresh)."""
-    linked = [a.account_id for a in accounts if a.sync_id]
+    """The days bank sync covers for each linked account, up to the last sync (to today while
+    the last sync is fresh). It starts where the first sync started asking: the bank was asked
+    for every movement since then, so a day without one is covered, not missing (ADR-085). With
+    no record of that, it starts at the first synced line."""
+    linked = {a.account_id for a in accounts if a.sync_id}
     if not linked:
         return {}
     last = db.scalars(
@@ -372,15 +395,21 @@ def sync_coverage(
         return {}
     synced = last.loaded_at.date()
     end = today if (today - synced).days <= SYNC_FRESH else synced
+    asked_from = {aid: day - bank_sync.LOOKBACK for aid, day in _first_synced(db, linked).items()}
+    first_line: dict[int, date] = {
+        aid: day
+        for aid, day in db.execute(
+            select(Transaction.account_id, func.min(Transaction.txn_date))
+            .where(Transaction.account_id.in_(linked), Transaction.source == "bank_sync")
+            .group_by(Transaction.account_id)
+        )
+        if aid is not None and day is not None
+    }
     out: dict[int, tuple[date, date]] = {}
-    rows = db.execute(
-        select(Transaction.account_id, func.min(Transaction.txn_date))
-        .where(Transaction.account_id.in_(linked), Transaction.source == "bank_sync")
-        .group_by(Transaction.account_id)
-    )
-    for aid, first_day in rows:
-        if aid is not None and first_day is not None and first_day <= end:
-            out[aid] = (first_day, end)
+    for aid in linked:
+        starts = [d for d in (asked_from.get(aid), first_line.get(aid)) if d is not None]
+        if starts and min(starts) <= end:
+            out[aid] = (min(starts), end)
     return out
 
 
@@ -619,7 +648,7 @@ def month_status(db: Session, today: date | None = None, with_loads: bool = True
             ms.items.append(Item("statement", text, "/import"))
         _pending_imports(db, ms)
         _lines(db, ms)
-        _recurring(db, ms)
+        _recurring(db, ms, today)
         _notes(db, ms, by_account)
         out.append(ms)
     _balance_breaks(db, by_account, {a.account_id: a for a in accounts}, out)
@@ -728,32 +757,45 @@ def _notes(db: Session, ms: MonthStatus, by_account: dict[int, list[_Stmt]]) -> 
         ms.items.append(Item("note", f"{len(late)} {word} no statement line", "/people", len(late)))
 
 
-def _recurring(db: Session, ms: MonthStatus) -> None:
-    linked = set(
-        db.scalars(
-            select(Transaction.recurring_entry_id).where(
-                Transaction.recurring_entry_id.is_not(None), Transaction.cash_month == ms.month
+def _recurring(db: Session, ms: MonthStatus, today: date) -> None:
+    """Bills expected and not paid. A month that's over lists every one; the current month only
+    those past their day (as the Bills page calls late), so a bill due on the 28th isn't asked
+    for on the 12th (ADR-085)."""
+    if ms.month == recurring.first(today):
+        names = [b.name for b in recurring.bills(db, ms.month, today) if b.status == "late"]
+        what = "past {} day with no line yet".format("its" if len(names) == 1 else "their")
+    else:
+        linked = set(
+            db.scalars(
+                select(Transaction.recurring_entry_id).where(
+                    Transaction.recurring_entry_id.is_not(None),
+                    Transaction.cash_month == ms.month,
+                )
             )
         )
-    )
-    names = [
-        name
-        for entry_id, name in db.execute(
-            select(RecurringEntry.entry_id, RecurringTemplate.name)
-            .join(RecurringTemplate, RecurringTemplate.template_id == RecurringEntry.template_id)
-            .where(RecurringEntry.month == ms.month, RecurringEntry.status == "planned")
-            .order_by(RecurringTemplate.sort_order, RecurringTemplate.name)
-        )
-        if entry_id not in linked
-    ]
+        names = [
+            name
+            for entry_id, name in db.execute(
+                select(RecurringEntry.entry_id, RecurringTemplate.name)
+                .join(
+                    RecurringTemplate, RecurringTemplate.template_id == RecurringEntry.template_id
+                )
+                .where(RecurringEntry.month == ms.month, RecurringEntry.status == "planned")
+                .order_by(RecurringTemplate.sort_order, RecurringTemplate.name)
+            )
+            if entry_id not in linked
+        ]
+        what = "not paid yet"
     if names:
-        shown = ", ".join(names[:4]) + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+        shown = ", ".join(names[:SHOWN_BILLS]) + (
+            f" and {len(names) - SHOWN_BILLS} more" if len(names) > SHOWN_BILLS else ""
+        )
         word = "item" if len(names) == 1 else "items"
         ms.items.append(
             Item(
                 "recurring",
-                f"{len(names)} recurring {word} not paid yet: {shown}",
-                f"/recurring?year={ms.month.year}",
+                f"{len(names)} recurring {word} {what}: {shown}",
+                f"/recurring?month={ms.month:%Y-%m}",
                 len(names),
             )
         )

@@ -195,3 +195,58 @@ def test_person_and_category_from_the_paying_line(client: TestClient, db: Sessio
     db.commit()
     [row] = client.get("/api/gastos/2026/invoices").json()
     assert row["category"] == "alimentacion" and row["category_source"] == "products"
+
+
+def test_all_from_this_supplier_and_the_paying_line(
+    buyers: None, client: TestClient, db: Session
+) -> None:
+    """ADR-085: one choice settles the supplier's other invoices (category and whose), and an
+    invoice paid by a line whose category isn't deductible isn't asked for again."""
+    shop = "1790000000009"
+    goods = [("TORNILLOS", "1", "10.00", "15")]
+    upload(
+        client,
+        *(
+            (
+                f"s{n}.xml",
+                factura(key=key(20 + n), buyer="9999999999999", day=d, ruc=shop, lines=goods),
+            )
+            for n, d in enumerate(("03/02/2026", "04/03/2026", "05/04/2026"))
+        ),
+    )
+    rows = client.get("/api/gastos/2026/invoices", params={"status": "to_classify"}).json()
+    assert len(rows) == 3 and all(r["person"] is None for r in rows)
+    first = rows[0]["invoice_id"]
+    out = client.put(
+        f"/api/invoices/{first}/gastos", json={"person": "Hernan", "remember_issuer": True}
+    )
+    assert out.status_code == 200, out.text
+    out = client.put(
+        f"/api/invoices/{first}/gastos", json={"category": "vivienda", "remember_issuer": True}
+    )
+    assert out.status_code == 200, out.text
+    s = client.get("/api/gastos/2026").json()
+    assert s["unassigned"] == 0 and s["people"][0]["to_classify"] == 0
+    assert not client.get("/api/gastos/2026/invoices", params={"status": "to_classify"}).json()
+
+    # Paid by a card line categorized as something the SRI doesn't deduct: not deductible.
+    upload(
+        client,
+        (
+            "p.xml",
+            factura(
+                key=key(30), buyer=HERNAN_ID, day="06/05/2026", ruc="1790000000010", lines=goods
+            ),
+        ),
+    )
+    inv = db.scalars(select(Invoice).where(Invoice.issuer_ruc == "1790000000010")).one()
+    line = card_line(db, date(2026, 5, 6), inv.total, n=9)
+    line.category_id = _cat(db, "Water").category_id
+    inv.transaction_id = line.transaction_id
+    db.commit()
+    row = next(
+        r
+        for r in client.get("/api/gastos/2026/invoices").json()
+        if r["invoice_id"] == inv.invoice_id
+    )
+    assert row["category"] == "none" and row["category_source"] == "paid"

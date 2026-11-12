@@ -12,3 +12,13 @@ A roadmap feature (F0 to F19) is Done only when every item holds. The next featu
 - [ ] **Docs**: README or `docs/` updated, an ADR for any design decision, CHANGELOG entry.
 - [ ] **Release**: tag `vX.Y.0` with generated release notes.
 - [ ] **Acceptance**: demo with sample or real data; status set to Done on the board.
+- [ ] **Code standard** (Hernan, Nov 2026; applies in full to new and modified code):
+  - Follows SOLID and the project's layering (routers → services → models); dependencies injected,
+    not hardcoded.
+  - Type-checked, linted and formatted with zero unexplained warnings.
+  - Unit tests for new logic, money math checked against reference values; coverage on changed
+    code not reduced.
+  - No magic numbers: assumptions are named constants or settings.
+  - Public functions, classes and modules have docstrings that say why.
+  - Shortfalls found in existing code are logged in `docs/refactors.md` as proposed refactors,
+    not silently rewritten.

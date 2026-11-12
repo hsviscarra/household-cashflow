@@ -271,6 +271,7 @@ def _transfers(db: Session, accounts: dict[int, str]) -> Section:
                     "rule_ok": rule_ok(classify.merchant_key(t.description_raw)),
                     "statement_file_id": t.statement_file_id,
                     "account_kind": kinds.get(t.account_id or 0),
+                    "category_id": t.category_id,
                 },
             )
         )

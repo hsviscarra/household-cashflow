@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth import PRINCIPAL_HEADER
 from app.db.session import get_session
 from app.models import Account, Transaction
-from app.services import bank_sync, inbox, invoices, people, recurring, transfers
+from app.services import bank_sync, refresh
 
 router = APIRouter(prefix="/api/bank-sync", tags=["bank sync"])
 DB = Annotated[Session, Depends(get_session)]
@@ -89,28 +89,13 @@ def run(
         raise HTTPException(429, "Synced a few minutes ago; try again in half an hour.")
     user = _user(request)
     try:
-        result = bank_sync.sync(db, user, today)
+        done = refresh.bank(db, user, today)
     except bank_sync.SyncError as e:
         raise HTTPException(e.status, str(e)) from None
-    if result.added:
-        # The same follow-ups as an approved statement: people, transfers, recurring bills.
-        people.tag_lines(db, user)
-        transfers.match(db, user)
-        invoices.link_pending(db, since=(today or date.today()) - timedelta(days=60))  # ADR-066
-        months = db.scalars(
-            select(Transaction.cash_month).where(Transaction.source == bank_sync.SOURCE).distinct()
-        )
-        for month in sorted(set(months)):
-            recurring.match(db, month, user)
-        # ADR-077: Claude categorizes what no rule knew, as after an approved statement.
-        done = inbox.autopilot(db, user)
-        return {
-            "ran": True,
-            "added": result.added,
-            "auto": {"merchants": done.merchants, "lines": done.lines},
-            **_status(db),
-        }
-    return {"ran": True, "added": result.added, **_status(db)}
+    out: dict[str, Any] = {"ran": True, "added": done.added, **_status(db)}
+    if done.added:
+        out["auto"] = {"merchants": done.merchants, "lines": done.lines}
+    return out
 
 
 @router.put("/link")
