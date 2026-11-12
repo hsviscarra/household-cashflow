@@ -191,7 +191,14 @@ def test_more_kinds_and_turning_them_off(
     ]
 
     got = client.get("/api/alerts").json()
-    assert [k["key"] for k in got["kinds"]] == ["late", "unusual", "bill", "budget", "transfer"]
+    assert [k["key"] for k in got["kinds"]] == [
+        "late",
+        "unusual",
+        "bill",
+        "budget",
+        "transfer",
+        "close",
+    ]
     assert all(k["on"] for k in got["kinds"])
     saved = client.put("/api/alerts", json={"off": ["budget", "unusual", "nonsense"]}).json()
     assert {k["key"] for k in saved["kinds"] if not k["on"]} == {"budget", "unusual"}

@@ -27,7 +27,15 @@ from app.ingestion.storage import StatementStore, get_store
 from app.ingestion.upload import MAX_BYTES, store_statement
 from app.models import StatementFile
 from app.routers.invoices import receive_xml
-from app.services import classify, digest, gastos_suggest, people, refresh, watchdog
+from app.services import (
+    classify,
+    digest,
+    gastos_suggest,
+    month_close,
+    people,
+    refresh,
+    watchdog,
+)
 
 SCRIPT_USER = "gmail script"  # who the daily check-in's changes are logged as
 router = APIRouter(prefix="/api/inbox", tags=["inbox"])
@@ -142,6 +150,7 @@ def _check_in(request: Request, db: Session, today: date | None) -> AlertsOut:
     if classify.apply_rules(db, SCRIPT_USER):
         db.commit()
     gastos_suggest.autopilot(db, (today or date.today()).year)  # once a day (ADR-081)
+    month_close.prepare(db, today)  # from the 3rd: last month's report (ADR-087)
     new = watchdog.fresh(db, today)
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     base = f"{proto}://{request.headers.get('host', request.url.netloc)}"

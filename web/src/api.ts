@@ -2010,3 +2010,21 @@ export const fetchYearlyBills = (month: string) =>
 export type AlertSettings = { kinds: { key: string; label: string; on: boolean }[]; now: string[] };
 export const fetchAlertSettings = () => send<AlertSettings>("GET", "/api/alerts");
 export const saveAlertSettings = (off: string[]) => send<AlertSettings>("PUT", "/api/alerts", { off });
+
+// ---------------- ADR-087: closing a month ----------------
+export type MonthClose = {
+  month: string;
+  ready_on: string;
+  ready: boolean;
+  closed_at: string | null;
+  closed_by: string | null;
+  missing: { kind: string; text: string; link: string }[];
+  unusual: { group: string; amount: string; average: string }[];
+  decided: { rule_id: number; pattern: string; category_path: string; lines: number; is_active: boolean }[];
+  invoices: number;
+  has_report: boolean;
+  sri_url: string;
+};
+export const fetchClose = (month: string) => send<MonthClose>("GET", `/api/close/${month}`);
+export const closeMonth = (month: string) => send<MonthClose>("POST", `/api/close/${month}`);
+export const reopenMonth = (month: string) => send<MonthClose>("DELETE", `/api/close/${month}`);

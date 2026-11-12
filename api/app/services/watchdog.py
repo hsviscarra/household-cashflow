@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AppSetting
-from app.services import budget, digest, recurring, transfers
+from app.services import budget, digest, month_close, recurring, transfers
 from app.services import status as status_service
 
 log = logging.getLogger(__name__)
@@ -91,6 +91,7 @@ KINDS = {
     "bill": "A bill is due in 3 days or late",
     "budget": "A budget reached 80% or went over",
     "transfer": "A large transfer has no other side",
+    "close": "Last month is ready to close",
 }
 OFF_KEY = "alerts-off"  # kinds a person turned off, comma-separated (all on by default)
 BILL_DAYS = 3
@@ -190,12 +191,32 @@ def _transfers(db: Session, today: date) -> list[Alert]:
     return out[:5]
 
 
+def _close(db: Session, today: date) -> list[Alert]:
+    """From the 3rd, last month is ready to close (ADR-087); said once per month."""
+    month = month_close.last_month(today)
+    if today < month_close.ready_on(month):
+        return []
+    c = month_close.view(db, month, today)
+    if c.closed_at is not None or not c.has_report:
+        return []
+    n = len(c.missing)
+    what = "Nothing is missing." if not n else f"{n} thing{'' if n == 1 else 's'} still missing."
+    return [
+        Alert(
+            f"close:{month:%Y-%m}",
+            f"{month:%B} is ready to close",
+            f"{what} Its report is written; open Close the month in the app.",
+        )
+    ]
+
+
 FINDERS = {
     "late": _late,
     "unusual": _unusual,
     "bill": _bills,
     "budget": _budget,
     "transfer": _transfers,
+    "close": _close,
 }
 
 
