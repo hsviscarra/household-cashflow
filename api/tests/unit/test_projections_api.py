@@ -168,7 +168,8 @@ def test_three_months_cash_timing_and_alerts(client: TestClient, db: Session) ->
     assert Decimal(dec["fixed"]) == 0  # rent skipped
     assert (Decimal(jan["fixed"]), Decimal(jan["purchases"])) == (Decimal(1000), Decimal(0))
     salary_nov = next(e for e in nov["items"] if e["name"] == "Salary")
-    assert salary_nov["day"] == "2026-11-15" and salary_nov["kind"] == "income"
+    # November's salary arrived on Oct 15, the month before (ADR-084); December's arrives Nov 15.
+    assert salary_nov["day"] == "2026-10-15" and salary_nov["kind"] == "income"
     assert next(e for e in nov["items"] if e["name"] == "Rent")["day"] == "2026-11-01"
     assert next(e for e in nov["items"] if e["kind"] == "purchase")["day"] == "2026-11-05"
 

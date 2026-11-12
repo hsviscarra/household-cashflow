@@ -21,9 +21,10 @@ from sqlalchemy import (
     Unicode,
     UnicodeText,
     UniqueConstraint,
+    event,
     func,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 ACCOUNT_KINDS = ("checking", "savings", "credit_card")
 OWNERS = ("Hernan", "Lauren", "Joint")
@@ -1168,3 +1169,12 @@ class Goal(Base):
     notes: Mapped[str | None] = mapped_column(Unicode(400))
     created_by: Mapped[str] = mapped_column(Unicode(320))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+@event.listens_for(Session, "before_flush")
+def _settle_months(session: Session, _context: object, _instances: object) -> None:
+    """A salary counts in the month it pays for (ADR-084): every flush sets each new or changed
+    line's cash_month. The import is here because the service imports these models."""
+    from app.services import payday
+
+    payday.settle(session)

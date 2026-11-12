@@ -6,7 +6,7 @@ export const EXPLAIN = {
   money_in: {
     title: "Money in",
     what: "Salaries, rent and any other income.",
-    how: "Income lines of the month. A salary paid on the 1st or 2nd counts in the month before.",
+    how: "Income lines of the month. A salary counts in the month it pays for: paid on the 15th or later, it is the next month's.",
     excludes: "Transfers between your own accounts and refunds.",
   },
   spent: {

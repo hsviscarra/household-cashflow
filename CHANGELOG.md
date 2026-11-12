@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.93.0] — A salary counts in the month it pays for
+
+### Changed
+- A **salary received on the 15th or later counts as income of the next month** (yours on the
+  20th, Lauren's on the last day): a month now starts with the pay that funds it instead of
+  showing no income until the 20th. A salary before the 15th counts in its own month. Dates,
+  balances and everything that isn't a salary are unchanged; past months show the income that
+  funded them, so their numbers shift. The forecast follows the same rule (ADR-084, replacing
+  the early-payroll rule of ADR-070).
+
 ## [0.92.0] — Sign in with Google
 
 ### Added
