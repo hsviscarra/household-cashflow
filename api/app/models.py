@@ -246,6 +246,9 @@ class Transaction(Timestamps, Base):
     amount: Mapped[Decimal] = mapped_column(Money)
     description_raw: Mapped[str] = mapped_column(Unicode(400))
     merchant: Mapped[str | None] = mapped_column(Unicode(200))
+    # What groups lines of one merchant (`rules.key` of the description, ADR-086): stored so
+    # grouping is a GROUP BY. Set on every flush; never typed by hand.
+    merchant_key: Mapped[str | None] = mapped_column(Unicode(200), index=True)
     pay_reference: Mapped[str | None] = mapped_column(Unicode(100))
     notes: Mapped[str | None] = mapped_column(Unicode(1000))
     type: Mapped[str] = mapped_column(Unicode(12))
@@ -1178,3 +1181,16 @@ def _settle_months(session: Session, _context: object, _instances: object) -> No
     from app.services import payday
 
     payday.settle(session)
+
+
+@event.listens_for(Session, "before_flush")
+def _settle_merchant_keys(session: Session, _context: object, _instances: object) -> None:
+    """Every new line, and every line whose description changed, gets its merchant key (ADR-086).
+    The import is here because the rule engine's users import these models."""
+    from app.services import rules
+
+    for o in (*session.new, *session.dirty):
+        if isinstance(o, Transaction) and o.description_raw is not None:
+            key = rules.key(o.description_raw)
+            if o.merchant_key != key:
+                o.merchant_key = key

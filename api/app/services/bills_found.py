@@ -61,14 +61,27 @@ def _covered(templates: list[RecurringTemplate], t: Transaction) -> bool:
     return False
 
 
+IN_BATCH = 500  # ids per IN (...) list
+
+
+def _charged(db: Session, ids: list[int]) -> dict[int, Transaction]:
+    """The lines behind the steady charges, read together instead of one query each."""
+    out: dict[int, Transaction] = {}
+    for start in range(0, len(ids), IN_BATCH):
+        for t in db.scalars(
+            select(Transaction).where(Transaction.transaction_id.in_(ids[start : start + IN_BATCH]))
+        ):
+            out[t.transaction_id] = t
+    return out
+
+
 def find(db: Session, today: date | None = None) -> list[FoundBill]:
     templates = list(db.scalars(select(RecurringTemplate).where(RecurringTemplate.is_active)))
     out = []
-    for sub in subscriptions.find(db, today):
-        if sub.cadence not in EVERY or not sub.active:
-            continue
-        lines = [db.get(Transaction, c.transaction_id) for c in sub.charges]
-        rows = [t for t in lines if t is not None]
+    subs = [s for s in subscriptions.find(db, today) if s.cadence in EVERY and s.active]
+    by_id = _charged(db, [c.transaction_id for s in subs for c in s.charges])
+    for sub in subs:
+        rows = [by_id[c.transaction_id] for c in sub.charges if c.transaction_id in by_id]
         if any(t.recurring_entry_id is not None for t in rows):
             continue
         cats = [t.category_id for t in rows if t.category_id is not None]

@@ -69,7 +69,10 @@ def normalize(text: str) -> str:
 def key(description: str) -> str:
     """What groups lines of the same merchant: uppercase, reference numbers (4+ digits) and
     store numbers and confirmation codes dropped, so "MICROSOFT*123456 MSBILL" and
-    "MICROSOFT*987654 MSBILL" are one, and so are two Zelle payments to the same person."""
+    "MICROSOFT*987654 MSBILL" are one, and so are two Zelle payments to the same person.
+
+    Stored on every line as `core.transaction.merchant_key` (ADR-086): a change here needs a
+    migration that recomputes the column."""
     text = normalize(description)
     # Confirmation and payment codes ("CONF# AB12CD34E", "ID:PAYCO1234X"): letters and digits mixed.
     text = re.sub(r"\b(?:CONF#|ID:)\s*\S+", " ", text)

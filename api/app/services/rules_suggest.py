@@ -5,7 +5,7 @@ the rule by itself (`learn`), when the description names someone or something.""
 from collections import defaultdict
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models import FROM_BANKS, MerchantRule, Transaction
@@ -13,6 +13,8 @@ from app.services import rules as rule_engine
 from app.services.classify import merchant_key
 
 MIN_TIMES = 2
+MIN_KEY = 3  # characters: a shorter key says too little to be a rule
+IN_BATCH = 500  # keys per IN (...) list
 BY_HAND = ("manual", "suggestion")
 OWNERS = ("Hernan", "Lauren", "Joint")  # whom a rule may set (ck_merchant_rule_set_person)
 
@@ -26,28 +28,50 @@ class Suggestion:
     person: str | None  # set when every line was the same person's
 
 
+def _by_hand() -> ColumnElement[bool]:
+    """Lines from a bank whose category a person chose (by hand, or accepting a suggestion)."""
+    return and_(
+        Transaction.source.in_(FROM_BANKS),
+        Transaction.category_id.is_not(None),
+        Transaction.category_source.in_(BY_HAND),
+    )
+
+
 def suggestions(db: Session, limit: int = 20) -> list[Suggestion]:
+    """Merchants categorized by hand MIN_TIMES or more, always the same way, that no active rule
+    matches. The database groups by the stored merchant key (ADR-086); only the lines of the
+    merchants that qualify are read."""
+    keys = [
+        k
+        for (k,) in db.execute(
+            select(Transaction.merchant_key)
+            .where(
+                _by_hand(), func.char_length(func.coalesce(Transaction.merchant_key, "")) >= MIN_KEY
+            )
+            .group_by(Transaction.merchant_key)
+            .having(
+                func.count() >= MIN_TIMES,
+                func.count(func.distinct(Transaction.category_id)) == 1,
+            )
+        )
+    ]
+    if not keys:
+        return []
     rules = [
         rule_engine.Rule.of(r)
         for r in db.scalars(select(MerchantRule).where(MerchantRule.is_active))
     ]
     seen: dict[str, list[Transaction]] = defaultdict(list)
-    rows = db.scalars(
-        select(Transaction).where(
-            Transaction.source.in_(FROM_BANKS),
-            Transaction.category_id.is_not(None),
-            Transaction.category_source.in_(BY_HAND),
+    for start in range(0, len(keys), IN_BATCH):
+        rows = db.scalars(
+            select(Transaction)
+            .where(_by_hand(), Transaction.merchant_key.in_(keys[start : start + IN_BATCH]))
+            .order_by(Transaction.transaction_id)
         )
-    )
-    for t in rows:
-        key = merchant_key(t.description_raw)
-        if len(key) >= 3:
-            seen[key].append(t)
+        for t in rows:
+            seen[t.merchant_key or ""].append(t)
     out = []
     for key, lines in seen.items():
-        cats = {t.category_id for t in lines}
-        if len(lines) < MIN_TIMES or len(cats) != 1:
-            continue
         if any(rule_engine.first_match(rules, t.description_raw, t.amount) for t in lines):
             continue
         people = {t.person for t in lines}
@@ -79,7 +103,7 @@ def learn(db: Session, t: Transaction, user: str) -> Learned | None:
     from app.services import classify, todo  # todo and classify import this module's users
 
     key = merchant_key(t.description_raw or "")
-    if t.category_id is None or len(key) < 3 or not todo.rule_ok(key):
+    if t.category_id is None or len(key) < MIN_KEY or not todo.rule_ok(key):
         return None
     if db.scalar(select(MerchantRule.rule_id).where(MerchantRule.pattern == key).limit(1)):
         return None  # there was a rule once: a person removed it or turned it off
@@ -89,17 +113,8 @@ def learn(db: Session, t: Transaction, user: str) -> Learned | None:
     ]
     if rule_engine.first_match(rules, t.description_raw, t.amount):
         return None
-    same = [
-        x
-        for x in db.scalars(
-            select(Transaction).where(
-                Transaction.source.in_(FROM_BANKS),
-                Transaction.category_id.is_not(None),
-                Transaction.category_source.in_(BY_HAND),
-            )
-        )
-        if merchant_key(x.description_raw or "") == key
-    ]
+    db.flush()  # this line's key and category are in the database before it's asked
+    same = list(db.scalars(select(Transaction).where(_by_hand(), Transaction.merchant_key == key)))
     if len(same) < MIN_TIMES or {x.category_id for x in same} != {t.category_id}:
         return None
     people = {x.person for x in same}

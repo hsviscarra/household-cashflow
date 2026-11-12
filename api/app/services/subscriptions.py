@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from statistics import median
+from typing import NamedTuple
 
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, aliased
@@ -68,24 +69,45 @@ class Subscription:
         return self.charges[-1].txn_date
 
 
-def _lines(db: Session, since: date) -> list[tuple[Transaction, str | None]]:
+class Line(NamedTuple):
+    """The columns of a statement line this module needs (not the whole row: ADR-086)."""
+
+    transaction_id: int
+    txn_date: date
+    amount: Decimal
+    description_raw: str
+    merchant_key: str | None
+    type: str
+    category_id: int | None
+    account_id: int | None
+
+
+def _lines(db: Session, since: date) -> list[tuple[Line, str | None]]:
     part = aliased(Transaction)
     has_parts = exists().where(part.parent_transaction_id == Transaction.transaction_id)
-    return [
-        (t, name)
-        for t, name in db.execute(
-            select(Transaction, Account.name)
-            .outerjoin(Account, Account.account_id == Transaction.account_id)
-            .where(
-                Transaction.source.in_(("statement", "manual")),
-                Transaction.type.in_(("expense", "fee_interest")),
-                Transaction.amount < 0,
-                Transaction.txn_date >= since,
-                ~has_parts,
-            )
-            .order_by(Transaction.txn_date, Transaction.transaction_id)
+    rows = db.execute(
+        select(
+            Transaction.transaction_id,
+            Transaction.txn_date,
+            Transaction.amount,
+            Transaction.description_raw,
+            Transaction.merchant_key,
+            Transaction.type,
+            Transaction.category_id,
+            Transaction.account_id,
+            Account.name,
         )
-    ]
+        .outerjoin(Account, Account.account_id == Transaction.account_id)
+        .where(
+            Transaction.source.in_(("statement", "manual")),
+            Transaction.type.in_(("expense", "fee_interest")),
+            Transaction.amount < 0,
+            Transaction.txn_date >= since,
+            ~has_parts,
+        )
+        .order_by(Transaction.txn_date, Transaction.transaction_id)
+    )
+    return [(Line(*r[:8]), r[8]) for r in rows]
 
 
 def _paths(db: Session) -> tuple[dict[int, str], set[int], set[int]]:
@@ -102,7 +124,7 @@ def _paths(db: Session) -> tuple[dict[int, str], set[int], set[int]]:
     return paths, subs, costs
 
 
-def _covered_until(db: Session, rows: list[tuple[Transaction, str | None]]) -> dict[int, date]:
+def _covered_until(db: Session, rows: list[tuple[Line, str | None]]) -> dict[int, date]:
     """Per account, the last day its approved statements cover (else its newest line)."""
     out: dict[int, date] = {}
     for st in status.approved_statements(db):
@@ -143,9 +165,10 @@ def find(db: Session, today: date | None = None) -> list[Subscription]:
     if not rows:
         return []
     covered = _covered_until(db, rows)
-    groups: dict[str, list[tuple[Transaction, str | None]]] = defaultdict(list)
+    groups: dict[str, list[tuple[Line, str | None]]] = defaultdict(list)
     for t, name in rows:
-        groups[merchant_key(t.description_raw) or t.description_raw].append((t, name))
+        key = t.merchant_key if t.merchant_key is not None else merchant_key(t.description_raw)
+        groups[key or t.description_raw].append((t, name))
 
     found = []
     for key, items in groups.items():
