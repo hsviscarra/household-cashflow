@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.96.0] — Close the month
+
+### Added
+- **Close the month** (Monthly report → Close the month): one screen with what is missing, what
+  was unusual, what the app decided on its own (with Undo) and the SRI invoice check, then a
+  Close button. From the 3rd the app writes last month's report by itself and emails once that
+  the month is ready. Closing records who and when; it locks nothing and can be reopened
+  (ADR-087).
+
 ## [0.95.0] — A faster To do
 
 ### Changed

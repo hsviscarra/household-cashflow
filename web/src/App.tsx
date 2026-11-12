@@ -19,6 +19,7 @@ import PurchasesPage from "./pages/Purchases";
 import GroceriesPage from "./pages/Groceries";
 import IvaPage from "./pages/Iva";
 import CategoryCheckPage from "./pages/CategoryCheck";
+import ClosePage from "./pages/Close";
 import BillsPage from "./pages/Bills";
 import ReportPage from "./pages/Report";
 import ReviewPage from "./pages/Review";
@@ -141,6 +142,14 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
     tabs: [
       ["/budget", "Budget"],
       ["/goals", "Goals"],
+    ],
+  },
+  {
+    home: "/report",
+    label: "Monthly report",
+    tabs: [
+      ["/report", "Report"],
+      ["/close", "Close the month"],
     ],
   },
   {
@@ -323,6 +332,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/taxes/iva": <IvaPage />,
   "/transactions/categories": <CategoryCheckPage />,
   "/report": <ReportPage />,
+  "/close": <ClosePage />,
 };
 
 export default function App() {

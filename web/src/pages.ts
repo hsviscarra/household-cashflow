@@ -162,6 +162,13 @@ export const PAGES: PageDef[] = [
     hidden: true, // a tab of Taxes (ADR-060)
   },
   {
+    path: "/close",
+    label: "Close the month",
+    group: "Taxes & reports",
+    feature: "A8",
+    summary: "What is missing, unusual or decided by the app, before the month is done.",
+  },
+  {
     path: "/report",
     label: "Monthly report",
     group: "Taxes & reports",

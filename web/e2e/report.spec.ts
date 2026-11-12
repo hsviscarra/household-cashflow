@@ -25,11 +25,27 @@ test("report: write the month's findings, then download its transactions", async
   ]);
   expect(file.suggestedFilename()).toMatch(/^cashflow-transactions-\d{4}-\d{2}\.csv$/);
   const text = await readFile(await file.path(), "utf-8");
-  expect(text.replace(/^\uFEFF/, "").split("\r\n")[0]).toContain("Txn date,Post date,Cash month,Account,Amount");
+  expect(text.replace(/^\uFEFF/, "").split("\r\n")[0]).toContain(
+    "Txn date,Post date,Cash month,Account,Amount",
+  );
 
   const [xlsx] = await Promise.all([
     page.waitForEvent("download"),
     downloads.getByRole("link", { name: "Excel of Monthly cash flow (spending view)" }).click(),
   ]);
   expect(xlsx.suggestedFilename()).toMatch(/^cashflow-monthly-cashflow-\d{4}\.xlsx$/);
+});
+
+// ADR-087: the Close screen opens from the report's tabs and shows its four parts.
+test("close the month: the exceptions on one screen", async ({ page }) => {
+  await page.goto("/report");
+  await page
+    .getByRole("navigation", { name: "Monthly report pages" })
+    .getByRole("link", { name: "Close the month" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Close \w+ \d{4}$/);
+  for (const name of ["Missing", "Unusual", "Decided by the app"])
+    await expect(page.getByRole("region", { name })).toBeVisible();
+  await expect(page.getByRole("link", { name: "SRI en línea" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Close|Reopen) \w+$/ })).toBeVisible();
 });
