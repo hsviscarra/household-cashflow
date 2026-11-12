@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Account, AppSetting, Category
+from app.models import Account, AppSetting, Category, Transaction
 from app.services import (
     bills_found,
     classify,
@@ -211,13 +211,12 @@ def _categorize(db: Session, accounts: dict[int, str], skip: set[int]) -> Sectio
     return sec
 
 
-def _who(db: Session, today: date, accounts: dict[int, str]) -> Section:
+def _who(rows: list[Transaction], accounts: dict[int, str]) -> Section:
     sec = Section(
         "who",
         "Who or what is it",
         "Transfers that don't say who: choose the person, or a category such as Salary.",
     )
-    rows = inbox.who_lines(db, today=today)
     sec.count = len(rows)
     for t in rows[:MAX_TASKS]:
         sec.tasks.append(
@@ -504,8 +503,9 @@ def _purpose(db: Session, today: date, accounts: dict[int, str]) -> Section:
 def build(db: Session, today: date | None = None) -> Todo:
     today = today or date.today()
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
-    who = _who(db, today, accounts)
-    asked = {t.transaction_id for t in inbox.who_lines(db, today=today)}
+    unnamed = inbox.who_lines(db, today=today)
+    who = _who(unnamed, accounts)
+    asked = {t.transaction_id for t in unnamed}
     sections = [
         _categorize(db, accounts, asked),
         _purpose(db, today, accounts),

@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.95.0] — A faster To do
+
+### Changed
+- **To do builds about three times faster** (0.65 s to 0.19 s on 15,000 test lines; more on the
+  live database). Each line now stores its merchant text (`core.transaction.merchant_key`,
+  migration 0052), so rule suggestions and found bills are grouped by the database instead of
+  reading every line (ADR-086).
+
 ## [0.94.0] — To do that settles things
 
 ### Fixed
