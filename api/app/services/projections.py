@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, RecurringEntry, RecurringTemplate, Transaction
 from app.models import v_spending_line as v
-from app.services import loans, networth, payday, people, recurring
+from app.services import loans, networth, payday, people, recurring, tax_projection
 
 MONTHS_AHEAD = 3
 AVERAGE_OVER = 3
@@ -360,6 +360,11 @@ def project(
         events += [e for e in _recurring_events(db, after, days, due) if e.month is not None]
     events += _purchase_events(db, today, [current, *months], paid_categories)
     events += _change_events(changes or [], today, end)
+    # The income tax each person is projected to pay with the return (ADR-088).
+    events += [
+        Event(day, name, -amount, "fixed")
+        for day, name, amount in tax_projection.payments(db, today, end)
+    ]
 
     plans = {m: MonthPlan(m) for m in months}
     for e in events:

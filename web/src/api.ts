@@ -2028,3 +2028,31 @@ export type MonthClose = {
 export const fetchClose = (month: string) => send<MonthClose>("GET", `/api/close/${month}`);
 export const closeMonth = (month: string) => send<MonthClose>("POST", `/api/close/${month}`);
 export const reopenMonth = (month: string) => send<MonthClose>("DELETE", `/api/close/${month}`);
+
+// ---------------- ADR-088: income tax projected for the year ----------------
+export type TaxRegime = "employee" | "foreign" | "independent";
+export type TaxProfile = { regime: TaxRegime; withheld: string; exempt: string; deductions: string };
+export type PersonTax = {
+  person: string;
+  year: number;
+  profile: TaxProfile;
+  received: string;
+  typical_month: string;
+  projected_income: string;
+  taxable: string;
+  tax: string;
+  expenses: string;
+  cap: string | null;
+  rebate: string;
+  room: string;
+  more_rebate: string;
+  due: string;
+  to_pay: string;
+  pay_on: string;
+  months_left: number;
+  set_aside: string;
+  notes: string[];
+};
+export const fetchTaxProjection = (year: number) => send<PersonTax[]>("GET", `/api/taxes/${year}/projection`);
+export const saveTaxProfile = (year: number, person: string, body: TaxProfile) =>
+  send<PersonTax>("PUT", `/api/taxes/${year}/projection/${person}`, body);

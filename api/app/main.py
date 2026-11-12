@@ -38,6 +38,7 @@ from app.routers import (
     spending,
     statements,
     status,
+    tax_projection,
     todo,
     transfers,
 )
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(bank_sync.router)
     app.include_router(todo.router)
     app.include_router(close.router)
+    app.include_router(tax_projection.router)
     app.include_router(reconcile.router)
 
     app.router.routes.append(mcp_route)

@@ -61,7 +61,7 @@ export default function ClosePage() {
         </label>
         <select
           id="close-month"
-          className="field h-10"
+          className="field h-10 !w-56"
           value={month}
           onChange={(e) => setParams({ month: e.target.value })}
         >
