@@ -74,10 +74,10 @@ def test_nothing_loaded(client: TestClient) -> None:
 def test_a_month_by_category_with_the_month_before(client: TestClient, db: Session) -> None:
     hernan, lauren = _cat(db, "Hernan", "Salary"), _cat(db, "Lauren", "Salary")
     market = _cat(db, "Supermarket")
-    _add(db, date(2026, 9, 15), "5000", "income", hernan)
+    _add(db, date(2026, 9, 14), "5000", "income", hernan)
     _add(db, date(2026, 9, 20), "-300", "expense", market, merchant="SUPERMAXI")
-    _add(db, date(2026, 10, 15), "5200", "income", hernan)
-    _add(db, date(2026, 10, 16), "4000", "income", lauren, person="Lauren")
+    _add(db, date(2026, 10, 14), "5200", "income", hernan)
+    _add(db, date(2026, 10, 14), "4000", "income", lauren, person="Lauren")
     _add(db, date(2026, 10, 3), "-120", "expense", market, merchant="SUPERMAXI")
     _add(db, date(2026, 10, 9), "-80", "expense", market, person="Lauren", merchant="MEGAMAXI")
     _add(db, date(2026, 10, 10), "-45", "expense", None, merchant="DEBITO")

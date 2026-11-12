@@ -200,11 +200,15 @@ def test_bofa_combined_statement_loads_both_accounts(client: TestClient, db: Ses
     assert accounts["Monthly Maintenance "] == "BofA Regular Savings"
     assert accounts["Zelle payment to TES"] == "BofA Adv Plus Banking"
     tx = db.scalars(select(Transaction).where(Transaction.type == "income")).one()
-    assert (tx.pay_reference, tx.cash_month.isoformat()) == ("August", "2026-09-01")
+    assert (tx.pay_reference, tx.cash_month.isoformat()) == (
+        "August",
+        "2026-10-01",
+    )  # paid Sep 20: October's pay (ADR-084)
 
     # Money in and out: the salary counts, transfers to savings and the card payment don't.
     monthly = {m["cash_month"]: m for m in client.get("/api/cashflow/monthly").json()}
-    assert Decimal(monthly["2026-09-01"]["income"]) == Decimal("4000")
+    assert Decimal(monthly["2026-10-01"]["income"]) == Decimal("4000")
+    assert Decimal(monthly["2026-09-01"]["income"]) == 0
     assert Decimal(monthly["2026-09-01"]["expenses"]) == Decimal("230")
     assert Decimal(monthly["2026-08-01"]["expenses"]) == Decimal("5")
 

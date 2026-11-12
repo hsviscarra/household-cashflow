@@ -44,8 +44,8 @@ def test_four_measures_and_same_days(client: TestClient, db: Session) -> None:
     _add(db, date(2026, 10, 21), "10.00", "refund", "Supermarket")
     _add(db, date(2026, 10, 25), "-20.00", "savings", "Investing")
     _add(db, date(2026, 10, 23), "-40.00", "debt_payment", "New house")
-    # A salary paid Nov 1 for October counts in October, but not in Oct 1-11.
-    _add(db, date(2026, 11, 1), "500.00", "income", "Lauren", month=date(2026, 10, 1))
+    # A salary paid Oct 31 is November's (ADR-084): there from November's first day.
+    _add(db, date(2026, 10, 31), "500.00", "income", "Lauren")
     # November so far.
     _add(db, date(2026, 11, 4), "-12.00", "expense", "Supermarket")
     db.commit()
@@ -54,7 +54,7 @@ def test_four_measures_and_same_days(client: TestClient, db: Session) -> None:
         "/api/cashflow/measures", params={"month": "2026-11-01", "today": "2026-11-11"}
     ).json()
     assert r["running"] is True and r["through"] == "2026-11-11"
-    assert Decimal(r["this"]["spent"]) == 12 and Decimal(r["this"]["money_in"]) == 0
+    assert Decimal(r["this"]["spent"]) == 12 and Decimal(r["this"]["money_in"]) == 500
     b = r["before"]
     assert (b["start"], b["end"]) == ("2026-10-01", "2026-10-11")
     assert Decimal(b["money_in"]) == 100 and Decimal(b["spent"]) == 30
@@ -64,8 +64,8 @@ def test_four_measures_and_same_days(client: TestClient, db: Session) -> None:
     ).json()
     t = oct_["this"]
     assert oct_["running"] is False
-    assert Decimal(t["money_in"]) == 600
+    assert Decimal(t["money_in"]) == 100
     assert Decimal(t["spent"]) == 70  # 30 + 50 - 10
     assert Decimal(t["set_aside"]) == 60  # investing + the house
-    assert Decimal(t["free_cash"]) == 530 and Decimal(t["left_over"]) == 470
+    assert Decimal(t["free_cash"]) == 30 and Decimal(t["left_over"]) == -30
     assert oct_["months"][-1]["month"] == "2026-10-01"

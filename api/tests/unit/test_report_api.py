@@ -76,7 +76,7 @@ def loaded(client: TestClient, db: Session) -> TestClient:
     n = 0
     for month in (7, 8, 9, 10):
         n += 1
-        _line(db, n, bank, date(2026, month, 15), "3000", salary, "income", "PAYROLL")
+        _line(db, n, bank, date(2026, month, 14), "3000", salary, "income", "PAYROLL")
         n += 1
         shop = {7: "-400", 8: "-380", 9: "-420", 10: "-410"}[month]
         shop_day = {7: 5, 8: 18, 9: 2, 10: 27}[month]  # irregular: not a subscription

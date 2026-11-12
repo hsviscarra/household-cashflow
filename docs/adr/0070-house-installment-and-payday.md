@@ -1,6 +1,6 @@
 # ADR-070: The house installment by amount, and early salaries in their month
 
-Status: accepted (0.80.0, Nov 2026)
+Status: accepted (0.80.0, Nov 2026); the early-salary rule is replaced by ADR-084 (0.93.0)
 
 ## Context
 

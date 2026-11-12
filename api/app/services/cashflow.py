@@ -143,7 +143,12 @@ def trend(
 
 def flows(db: Session, month: date | None = None, person: str | None = None) -> Flows:
     months = _months(db, person)
-    month = first(month) if month else (months[0] if months else first(date.today()))
+    if month:
+        month = first(month)
+    else:
+        # The latest month that has started: next month can already hold its salary (ADR-084).
+        started = [m for m in months if m <= first(date.today())]
+        month = started[0] if started else (months[0] if months else first(date.today()))
     prev_month = add_months(month, -1)
     now, prev = _by_category(db, month, person), _by_category(db, prev_month, person)
     out: list[Flow] = []

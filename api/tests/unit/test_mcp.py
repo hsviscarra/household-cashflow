@@ -64,7 +64,7 @@ def household(engine: Engine, db: Session, monkeypatch: pytest.MonkeyPatch) -> E
         )
 
     for month in (7, 8, 9, 10):
-        line(bank, date(2026, month, 15), "3000", cat("Hernan"), "income", "PAYROLL")
+        line(bank, date(2026, month, 14), "3000", cat("Hernan"), "income", "PAYROLL")
         line(card, date(2026, month, 5), "-400", cat("Supermarket"), "expense", "SUPERMAXI 123")
         dining = "-300" if month == 10 else "-150"
         line(card, date(2026, month, 20), dining, cat("Restaurants & Cafés"), "expense", "BISTRO")

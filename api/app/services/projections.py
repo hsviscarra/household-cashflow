@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, RecurringEntry, RecurringTemplate, Transaction
 from app.models import v_spending_line as v
-from app.services import loans, networth, people, recurring
+from app.services import loans, networth, payday, people, recurring
 
 MONTHS_AHEAD = 3
 AVERAGE_OVER = 3
@@ -46,6 +46,9 @@ class Event:
     amount: Decimal  # signed: money in positive
     kind: str  # income, fixed, purchase, variable, change (a what-if)
     account_id: int | None = None  # the bank account it moves, when known
+    # The month it counts in when that isn't the month of its day: a salary arrives the month
+    # before the one it pays for (ADR-084).
+    month: date | None = None
 
 
 @dataclass
@@ -184,6 +187,7 @@ def _recurring_events(
     due: dict[int, dict[date, Decimal]] | None = None,
 ) -> list[Event]:
     due = due or {}
+    salaries = payday.salary_categories(db)
     entries = {
         e.template_id: e
         for e in db.scalars(select(RecurringEntry).where(RecurringEntry.month == month))
@@ -216,6 +220,11 @@ def _recurring_events(
             amount = -due[t.template_id][month]
         kind = "income" if t.type in INCOME else "fixed"
         day = t.due_day or days.get(t.template_id, 1)
+        if t.category_id in salaries and amount > 0 and day >= payday.NEXT_FROM_DAY:
+            # This month's salary arrived last month, on its usual day (ADR-084).
+            when = _on(recurring.add_months(month, -1), day)
+            out.append(Event(when, t.name, amount, kind, t.account_id, month))
+            continue
         out.append(Event(_on(month, day), t.name, amount, kind, t.account_id))
     return out
 
@@ -345,12 +354,16 @@ def project(
     events = [e for e in _recurring_events(db, current, days, due) if e.day >= today]
     for m in months:
         events += _recurring_events(db, m, days, due)
+    # The salary of the month after the last one arrives inside it (ADR-084): cash, not plan.
+    after = recurring.add_months(months[-1], 1) if months else None
+    if after is not None:
+        events += [e for e in _recurring_events(db, after, days, due) if e.month is not None]
     events += _purchase_events(db, today, [current, *months], paid_categories)
     events += _change_events(changes or [], today, end)
 
     plans = {m: MonthPlan(m) for m in months}
     for e in events:
-        plan = plans.get(recurring.first(e.day))
+        plan = plans.get(e.month or recurring.first(e.day))
         if plan is None:
             continue
         plan.items.append(e)
