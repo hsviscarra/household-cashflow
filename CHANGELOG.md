@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.99.0] — Net worth: Overview and Manage
+
+### Changed
+- **Net worth is two pages.** Overview reads: totals, one line per item you own or owe, the
+  trend, investments, interest and fees. Manage edits: update values, add or pause items, loan
+  tables. A button on Overview opens Manage with only the values that are out of date (ADR-090).
+
+### Fixed
+- To do's "out-of-date values" opened an address that didn't exist; it opens Manage now.
+
 ## [0.98.0] — The month of a line, and bills fixed in place
 
 ### Added

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import {
   createHolding,
@@ -149,14 +150,18 @@ export function whatIf(
   };
 }
 
-export default function BalanceSheetSection() {
+/** Net worth in two pages (ADR-090): the overview reads (totals, what you own and owe at a glance,
+ * the trend); manage edits (values, items, loan tables). */
+export default function BalanceSheetSection({ mode = "overview" }: { mode?: "overview" | "manage" }) {
   const q = useQuery({ queryKey: ["networth"], queryFn: fetchBalanceSheet });
+  const [params] = useSearchParams();
+  const manage = mode === "manage";
   const [adding, setAdding] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: "good" | "bad" } | null>(null);
   const notify: Notify = (message, tone = "good") => setStatus({ message, tone });
   const s = q.data;
   const on = today();
-  const [onlyStale, setOnlyStale] = useState(false);
+  const [onlyStale, setOnlyStale] = useState(manage && params.get("stale") === "1");
   const allActive = s?.items.filter((i) => i.is_active) ?? [];
   const stale = allActive.filter((i) => freshness(i, on).stale);
   const active = onlyStale ? stale : allActive;
@@ -180,9 +185,9 @@ export default function BalanceSheetSection() {
     <section aria-label="Balance sheet">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="mr-auto font-display text-4xl font-bold leading-tight">
-          {s ? sheetHeadline(s) : "Debt & Net Worth"}
+          {manage ? "Manage what you own and owe" : s ? sheetHeadline(s) : "Debt & Net Worth"}
         </h1>
-        {s && stale.length > 0 && (
+        {s && stale.length > 0 && manage && (
           <button
             type="button"
             className="btn btn-secondary"
@@ -192,10 +197,16 @@ export default function BalanceSheetSection() {
             {onlyStale ? "Show everything" : `Update values (${stale.length} out of date)`}
           </button>
         )}
+        {s && stale.length > 0 && !manage && (
+          <Link className="btn btn-secondary" to="/debt/manage?stale=1">
+            Update values ({stale.length} out of date)
+          </Link>
+        )}
       </div>
       <p className="mt-2 text-lg text-muted">
-        What you own and owe today: property, vehicles, investments, bank balances and the new house’s down
-        payment; loans, credit cards and money owed to people.
+        {manage
+          ? "Update a value, add or pause an item, load a loan’s table. The totals and the trend are on Overview."
+          : "What you own and owe today: property, vehicles, investments, bank balances and the new house’s down payment; loans, credit cards and money owed to people."}
       </p>
       {q.error && (
         <p className="mt-6 rounded-2xl bg-danger-bg px-4 py-3 text-danger-ink">
@@ -215,41 +226,43 @@ export default function BalanceSheetSection() {
       </p>
       {s && (
         <>
-          <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <Tile
-              label="Net worth"
-              value={`${num(s.net_worth) < 0 ? "−" : ""}${money(Math.abs(num(s.net_worth)))}`}
-              hint={`as of ${day(s.as_of)}`}
-            />
-            <Tile
-              label="You own"
-              value={money(s.assets)}
-              hint={`property ${share(["property", "vehicle"])}% · cash ${share(["cash"])}% · investments ${share(["investment"])}%`}
-            />
-            <Tile
-              label="You owe"
-              value={money(s.liabilities)}
-              hint={
-                biggest && num(s.liabilities)
-                  ? `${biggest.name} ${Math.round((num(biggest.value) / num(s.liabilities)) * 100)}% of it`
-                  : undefined
-              }
-            />
-            <Tile
-              label="Debt payments a month"
-              value={money(monthlyDebt(s.items))}
-              hint="loans and installments"
-            />
-            {loans.length > 0 ? (
+          {!manage && (
+            <dl className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
               <Tile
-                label="Interest left on loans"
-                value={money(interestLeft)}
-                hint={lastPayoff ? `last one paid off ${monthLong(lastPayoff)}` : undefined}
+                label="Net worth"
+                value={`${num(s.net_worth) < 0 ? "−" : ""}${money(Math.abs(num(s.net_worth)))}`}
+                hint={`as of ${day(s.as_of)}`}
               />
-            ) : (
-              <Tile label="Still to pay on purchases" value={money(s.commitments)} hint="not counted yet" />
-            )}
-          </dl>
+              <Tile
+                label="You own"
+                value={money(s.assets)}
+                hint={`property ${share(["property", "vehicle"])}% · cash ${share(["cash"])}% · investments ${share(["investment"])}%`}
+              />
+              <Tile
+                label="You owe"
+                value={money(s.liabilities)}
+                hint={
+                  biggest && num(s.liabilities)
+                    ? `${biggest.name} ${Math.round((num(biggest.value) / num(s.liabilities)) * 100)}% of it`
+                    : undefined
+                }
+              />
+              <Tile
+                label="Debt payments a month"
+                value={money(monthlyDebt(s.items))}
+                hint="loans and installments"
+              />
+              {loans.length > 0 ? (
+                <Tile
+                  label="Interest left on loans"
+                  value={money(interestLeft)}
+                  hint={lastPayoff ? `last one paid off ${monthLong(lastPayoff)}` : undefined}
+                />
+              ) : (
+                <Tile label="Still to pay on purchases" value={money(s.commitments)} hint="not counted yet" />
+              )}
+            </dl>
+          )}
           {onlyStale && (
             <p className="mt-4 rounded-2xl bg-attention-bg px-4 py-3 text-attention-ink">
               Showing the {stale.length} {stale.length === 1 ? "value" : "values"} out of date: bank and card
@@ -257,12 +270,14 @@ export default function BalanceSheetSection() {
               or pause one that’s counted twice.
             </p>
           )}
-          <div className="mt-4">
-            <button className="btn btn-primary" onClick={() => setAdding(!adding)}>
-              {adding ? "Close" : "Add something you own or owe"}
-            </button>
-          </div>
-          {adding && <HoldingForm onDone={() => setAdding(false)} notify={notify} />}
+          {manage && (
+            <div className="mt-4">
+              <button className="btn btn-primary" onClick={() => setAdding(!adding)}>
+                {adding ? "Close" : "Add something you own or owe"}
+              </button>
+            </div>
+          )}
+          {manage && adding && <HoldingForm onDone={() => setAdding(false)} notify={notify} />}
 
           <div className="grid gap-x-8 xl:grid-cols-2">
             <Side
@@ -271,6 +286,7 @@ export default function BalanceSheetSection() {
               all={s.items}
               total={s.assets}
               notify={notify}
+              compact={!manage}
             />
             <div>
               <Side
@@ -279,6 +295,7 @@ export default function BalanceSheetSection() {
                 all={s.items}
                 total={s.liabilities}
                 notify={notify}
+                compact={!manage}
               />
               {num(s.commitments) > 0 && !onlyStale && (
                 <div className="mt-4 rounded-2xl bg-surface px-4 py-3 text-sm">
@@ -294,71 +311,85 @@ export default function BalanceSheetSection() {
               )}
             </div>
           </div>
-          {paused.length > 0 && !onlyStale && (
+          {manage && paused.length > 0 && !onlyStale && (
             <Side title="Paused (not counted)" items={paused} all={s.items} notify={notify} />
           )}
-
-          <h2 className="mt-10 font-display text-2xl font-bold">Net worth over time</h2>
-          <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
-            <TrendLine
-              title={`Net worth by month, ${monthLong(s.series[0].month)} to ${monthLong(s.series[s.series.length - 1].month)}`}
-              data={s.series.map((p, i) => ({
-                key: p.month,
-                value: num(p.net),
-                tick: i % 3 === 2 || i === s.series.length - 1 ? monthShort(p.month) : undefined,
-                tooltip: (
-                  <>
-                    <strong>{monthLong(p.month)}</strong>
-                    <span className="num block">Net {money(p.net)}</span>
-                    <span className="num block text-muted">
-                      Own {money(p.assets)} · owe {money(p.liabilities)}
-                    </span>
-                  </>
-                ),
-              }))}
-            />
-            <details className="mt-2 text-sm">
-              <summary className="cursor-pointer text-muted">The numbers</summary>
-              <table className="mt-2 w-full">
-                <caption className="sr-only">Assets, liabilities and net worth by month</caption>
-                <thead className="text-muted">
-                  <tr>
-                    <th scope="col" className="py-1 text-left font-normal">
-                      Month
-                    </th>
-                    <th scope="col" className="py-1 text-right font-normal">
-                      Own
-                    </th>
-                    <th scope="col" className="py-1 text-right font-normal">
-                      Owe
-                    </th>
-                    <th scope="col" className="py-1 text-right font-normal">
-                      Net
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {s.series.map((p) => (
-                    <tr key={p.month}>
-                      <th scope="row" className="py-1 text-left font-normal">
-                        {monthLong(p.month)}
-                      </th>
-                      <td className="num py-1 text-right">{money(p.assets)}</td>
-                      <td className="num py-1 text-right">{money(p.liabilities)}</td>
-                      <td className="num py-1 text-right">{money(p.net)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
-            <p className="mt-2 text-sm text-muted">
-              Each month counts the values known on its last day: give an item the date you bought it so past
-              months include it.
+          {!manage && (
+            <p className="mt-6 text-sm">
+              <Link className="font-semibold text-primary underline" to="/debt/manage">
+                Update a value, add an item or load a loan’s table
+              </Link>
             </p>
-          </div>
+          )}
+          {!manage && <Trend s={s} />}
         </>
       )}
     </section>
+  );
+}
+
+function Trend({ s }: { s: BalanceSheet }) {
+  return (
+    <>
+      <h2 className="mt-10 font-display text-2xl font-bold">Net worth over time</h2>
+      <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
+        <TrendLine
+          title={`Net worth by month, ${monthLong(s.series[0].month)} to ${monthLong(s.series[s.series.length - 1].month)}`}
+          data={s.series.map((p, i) => ({
+            key: p.month,
+            value: num(p.net),
+            tick: i % 3 === 2 || i === s.series.length - 1 ? monthShort(p.month) : undefined,
+            tooltip: (
+              <>
+                <strong>{monthLong(p.month)}</strong>
+                <span className="num block">Net {money(p.net)}</span>
+                <span className="num block text-muted">
+                  Own {money(p.assets)} · owe {money(p.liabilities)}
+                </span>
+              </>
+            ),
+          }))}
+        />
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer text-muted">The numbers</summary>
+          <table className="mt-2 w-full">
+            <caption className="sr-only">Assets, liabilities and net worth by month</caption>
+            <thead className="text-muted">
+              <tr>
+                <th scope="col" className="py-1 text-left font-normal">
+                  Month
+                </th>
+                <th scope="col" className="py-1 text-right font-normal">
+                  Own
+                </th>
+                <th scope="col" className="py-1 text-right font-normal">
+                  Owe
+                </th>
+                <th scope="col" className="py-1 text-right font-normal">
+                  Net
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {s.series.map((p) => (
+                <tr key={p.month}>
+                  <th scope="row" className="py-1 text-left font-normal">
+                    {monthLong(p.month)}
+                  </th>
+                  <td className="num py-1 text-right">{money(p.assets)}</td>
+                  <td className="num py-1 text-right">{money(p.liabilities)}</td>
+                  <td className="num py-1 text-right">{money(p.net)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+        <p className="mt-2 text-sm text-muted">
+          Each month counts the values known on its last day: give an item the date you bought it so past
+          months include it.
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -378,12 +409,14 @@ function Side({
   all,
   total,
   notify,
+  compact = false,
 }: {
   title: string;
   items: SheetItem[];
   all: SheetItem[];
   total?: string;
   notify: Notify;
+  compact?: boolean;
 }) {
   if (!items.length) return null;
   const groups = CLASSES.map((c) => ({ c, list: items.filter((i) => i.holding_class === c.id) })).filter(
@@ -400,14 +433,41 @@ function Side({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
             {c.group} · <span className="num">{money(list.reduce((sum, i) => sum + num(i.value), 0))}</span>
           </h3>
-          <ul className="mt-2 grid gap-3">
-            {list.map((i) => (
-              <ItemCard key={i.key} item={i} all={all} notify={notify} />
-            ))}
-          </ul>
+          {compact ? (
+            <ul className="mt-1 divide-y divide-line">
+              {list.map((i) => (
+                <ItemLine key={i.key} item={i} />
+              ))}
+            </ul>
+          ) : (
+            <ul className="mt-2 grid gap-3">
+              {list.map((i) => (
+                <ItemCard key={i.key} item={i} all={all} notify={notify} />
+              ))}
+            </ul>
+          )}
         </div>
       ))}
     </section>
+  );
+}
+
+/** One item on the overview: its name, value and how old the value is. No actions. */
+function ItemLine({ item }: { item: SheetItem }) {
+  const fresh = freshness(item, today());
+  return (
+    <li className="flex items-baseline justify-between gap-3 py-2" aria-label={item.name}>
+      <span className="min-w-0">
+        <span className="font-medium">{item.name}</span>
+        <span className="block text-xs text-muted">
+          {item.as_of ? day(item.as_of) : "No value yet"}
+          {fresh.stale && item.holding_class !== "personal_loan" && (
+            <span className="ml-1 text-attention-ink">· out of date</span>
+          )}
+        </span>
+      </span>
+      <span className="num shrink-0 font-semibold">{item.value != null ? money(item.value) : "—"}</span>
+    </li>
   );
 }
 

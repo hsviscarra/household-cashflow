@@ -149,12 +149,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderIt() {
+function renderIt(mode: "overview" | "manage" = "manage") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <BalanceSheetSection />
+        <BalanceSheetSection mode={mode} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -168,13 +168,9 @@ describe("balance sheet", () => {
     );
     renderIt();
     expect(
-      await screen.findByRole("heading", {
-        level: 1,
-        name: "Net worth 84,500.00: you own 126,000.00 and owe 41,500.00",
-      }),
+      await screen.findByRole("heading", { level: 1, name: "Manage what you own and owe" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Still to pay on purchases").nextSibling).toHaveTextContent("94,000.00");
-    const own = screen.getByRole("region", { name: "What you own" });
+    const own = await screen.findByRole("region", { name: "What you own" });
     expect(within(own).getByText(/Property ·/)).toHaveTextContent("100,000.00");
     const flat = within(own).getByRole("listitem", { name: "Flat" });
     expect(flat).toHaveTextContent("Paid 6,000.00 of 30,000.00 · 24,000.00 to go (24 × 1,000.00)");
@@ -188,6 +184,27 @@ describe("balance sheet", () => {
       "Paying 505.19 a month · 2 payments this year (1,010.38)",
     );
     expect(screen.getByRole("region", { name: "Paused (not counted)" })).toHaveTextContent("Old card");
+    expect(screen.queryByRole("img", { name: /^Net worth by month/ })).not.toBeInTheDocument();
+  });
+
+  it("the overview reads: totals, each item on one line, the trend, and a way to manage", async () => {
+    renderIt("overview");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Net worth 84,500.00: you own 126,000.00 and owe 41,500.00",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Still to pay on purchases").nextSibling).toHaveTextContent("94,000.00");
+    const own = screen.getByRole("region", { name: "What you own" });
+    expect(within(own).getByRole("listitem", { name: "Home" })).toHaveTextContent("100,000.00");
+    expect(within(own).queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Paused (not counted)" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add something you own or owe" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Update a value, add an item/ })).toHaveAttribute(
+      "href",
+      "/debt/manage",
+    );
     expect(screen.getByRole("img", { name: /^Net worth by month/ })).toBeInTheDocument();
   });
 
@@ -521,6 +538,19 @@ describe("ADR-032: freshness, duplicates, debt a month and what if", () => {
     expect(screen.getByText(/Showing the \d+ values? out of date/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show everything" }));
     expect(screen.queryByText(/Showing the \d+ values? out of date/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Update values/ })).toBeInTheDocument();
+  });
+
+  it("the overview sends you to manage for what's out of date", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(SHEET)))),
+    );
+    renderIt("overview");
+    expect(await screen.findByRole("link", { name: /^Update values \(\d+ out of date\)$/ })).toHaveAttribute(
+      "href",
+      "/debt/manage?stale=1",
+    );
     expect(screen.getByText("Debt payments a month")).toBeInTheDocument();
   });
 });

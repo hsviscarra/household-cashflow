@@ -8,7 +8,14 @@ test("balance sheet: the workbook's loan, a vehicle added on the page, net worth
   const owe = page.getByRole("region", { name: "What you owe" });
   await expect(owe.getByRole("listitem", { name: "BIESS" })).toContainText("30,000.55");
 
+  await expect(page.getByRole("img", { name: /^Net worth by month/ })).toBeVisible();
+  // Editing is on Manage (ADR-090).
+  await page
+    .getByRole("navigation", { name: "Net worth pages" })
+    .getByRole("link", { name: "Manage" })
+    .click();
   const own = page.getByRole("region", { name: "What you own" });
+  await expect(own).toBeVisible();
   if (!(await own.getByRole("listitem", { name: "Sample car" }).isVisible())) {
     await page.getByRole("button", { name: "Add something you own or owe" }).click();
     const form = page.getByRole("form", { name: "Add something you own or owe" });
@@ -26,5 +33,4 @@ test("balance sheet: the workbook's loan, a vehicle added on the page, net worth
   await value.getByLabel("Value").fill("11500");
   await value.getByRole("button", { name: "Save value" }).click();
   await expect(car).toContainText("11,500.00");
-  await expect(page.getByRole("img", { name: /^Net worth by month/ })).toBeVisible();
 });

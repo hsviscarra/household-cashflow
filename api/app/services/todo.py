@@ -351,7 +351,7 @@ def _values(db: Session, today: date) -> Section:
                 detail=f"Probably the same money as {twin} · {since}" if twin else since,
                 amount=i.value,
                 on=i.as_of,
-                link="/networth",
+                link="/debt/manage?stale=1",
                 data={
                     "holding_id": i.holding_id,
                     "account_id": i.account_id,
