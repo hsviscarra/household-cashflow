@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.engine import URL, Connection
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -44,12 +45,18 @@ def connect_waking(connect: Any, *args: Any, **kw: Any) -> Any:
 
 
 def make_engine(url: str | URL, **kw: Any) -> Engine:
-    """An engine that survives Azure SQL serverless auto-pause: pool_pre_ping drops dead pooled
-    connections, a longer login timeout and a few tries ride out the resume."""
+    """An engine that lets Azure SQL serverless pause and survives its resume: no pooled
+    connections on SQL Server, a longer login timeout and a few tries to ride out the resume."""
     mssql = str(url).startswith("mssql")
     if mssql:
         kw.setdefault("connect_args", {}).setdefault("timeout", LOGIN_TIMEOUT)
-    engine = create_engine(url, pool_pre_ping=True, pool_recycle=1800, **kw)
+        # No pool on SQL Server (ADR-092): a pooled connection is an open session, and Azure SQL
+        # serverless only pauses with no sessions, so a pool kept the database awake, and
+        # billing, for as long as the app was up. A connection per request costs milliseconds.
+        kw.setdefault("poolclass", NullPool)
+        engine = create_engine(url, **kw)
+    else:
+        engine = create_engine(url, pool_pre_ping=True, pool_recycle=1800, **kw)
     if mssql:
 
         @event.listens_for(engine, "do_connect")

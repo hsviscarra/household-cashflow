@@ -111,3 +111,77 @@ def test_to_do_lists_the_most_money_first(db: Session) -> None:
         Decimal("-80.00"),
         Decimal("-12.00"),
     ]
+
+
+def test_a_bill_waits_while_its_account_has_no_statement_yet(
+    client: TestClient, db: Session
+) -> None:
+    """ADR-092: past its day isn't late when the account that pays it hasn't been read that far."""
+    from app.models import ImportBatch, StatementFile, StatementFileAccount, StatementHeader
+
+    water = db.scalar(select(Category).where(Category.name == "Water"))
+    acct = db.scalars(select(Account).where(Account.sync_id.is_(None))).first()
+    assert water is not None and acct is not None
+    client.post(
+        "/api/recurring/templates",
+        json={
+            "name": "Condo",
+            "category_id": water.category_id,
+            "account_id": acct.account_id,
+            "type": "expense",
+            "amount": "80",
+            "start_month": "2026-11-01",
+            "due_day": 5,
+        },
+    )
+    client.post("/api/recurring/generate", json={"month": "2026-11-01"})
+
+    def condo() -> str:
+        bills = client.get(
+            "/api/recurring/bills", params={"month": "2026-11-01", "today": "2026-11-12"}
+        ).json()["bills"]
+        return str(next(b["status"] for b in bills if b["name"] == "Condo"))
+
+    assert condo() == "late"  # nothing known about the account: as before
+
+    def statement(n: int, end: date) -> None:
+        sf = StatementFile(
+            sha256=f"{n:064d}",
+            file_name=f"s{n}.pdf",
+            size_bytes=1,
+            page_count=1,
+            source="pichincha",
+            status="detected",
+            blob_key=f"s{n}",
+            uploaded_by="t",
+        )
+        db.add(sf)
+        db.flush()
+        db.add_all(
+            [
+                StatementFileAccount(
+                    statement_file_id=sf.statement_file_id, account_id=acct.account_id
+                ),
+                StatementHeader(
+                    statement_file_id=sf.statement_file_id,
+                    parser="pichincha",
+                    period_start=end.replace(day=1),
+                    period_end=end,
+                    totals_json="{}",
+                ),
+                ImportBatch(
+                    statement_file_id=sf.statement_file_id,
+                    status="approved",
+                    tieout_ok=True,
+                    checks_json="[]",
+                    created_by="t",
+                ),
+            ]
+        )
+        db.commit()
+
+    statement(1, date(2026, 10, 31))  # read up to Oct 31: Nov 5 can't be known yet
+    assert condo() == "waiting"
+    assert recurring.data_through(db)[acct.account_id] == date(2026, 10, 31)
+    statement(2, date(2026, 11, 8))  # the statement to Nov 8 arrived with no payment in it
+    assert condo() == "late"

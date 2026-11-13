@@ -110,7 +110,8 @@ resource db 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
     // Keep running past the free allowance (Hernan, Nov 2026): the app must not stop for weeks.
     // cost-guard.bicep emails on the way to $20 and stops the app there (ADR-076).
     freeLimitExhaustionBehavior: 'BillOverUsage'
-    autoPauseDelay: 60
+    // The shortest Azure allows (ADR-092): each time the database wakes it bills at least this long.
+    autoPauseDelay: 15
     minCapacity: json('0.5')
     maxSizeBytes: 34359738368 // 32 GB
     requestedBackupStorageRedundancy: 'Local'

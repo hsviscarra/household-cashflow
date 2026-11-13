@@ -106,15 +106,18 @@ export function useTableLayout(
   table: string,
   all: string[],
   defaults: string[] = all,
+  /** Columns that are always shown: not chosen, but they can be sorted and grouped by. */
+  fixed: string[] = [],
 ): [TableLayout, (change: Partial<TableLayout>) => void] {
   const { settings, set } = useSettings();
   const saved = asRecord(settings[`table:${table}`]);
   const known = (id: unknown): id is string => typeof id === "string" && all.includes(id);
+  const any = (id: unknown): id is string => known(id) || (typeof id === "string" && fixed.includes(id));
   const columns = (Array.isArray(saved.columns) ? saved.columns : defaults).filter(known);
   const rawSort = asRecord(saved.sort);
-  const sort: TableSort | null = known(rawSort.id)
+  const sort: TableSort | null = any(rawSort.id)
     ? { id: rawSort.id, dir: rawSort.dir === "desc" ? "desc" : "asc" }
     : null;
-  const layout: TableLayout = { columns, sort, group: known(saved.group) ? saved.group : null };
+  const layout: TableLayout = { columns, sort, group: any(saved.group) ? saved.group : null };
   return [layout, (change) => set(`table:${table}`, { ...layout, ...change })];
 }

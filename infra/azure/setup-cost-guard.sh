@@ -24,7 +24,7 @@ if [ "${1:-}" = "--restart" ]; then
   SQL=$(az sql server list -g "$RG" --query "[?starts_with(name, '${PREFIX}-sql-')].name | [0]" -o tsv)
   echo "Database $SQL/cashflow: bill past the free allowance again (ADR-046)..."
   az sql db update -g "$RG" -s "$SQL" -n cashflow \
-    --set properties.freeLimitExhaustionBehavior=BillOverUsage -o none
+    --set freeLimitExhaustionBehavior=BillOverUsage -o none
   echo "Starting $APP..."
   az containerapp start -g "$RG" -n "$APP" -o none 2>/dev/null \
     || az rest -m post --url "$(az containerapp show -g "$RG" -n "$APP" --query id -o tsv)/start?api-version=2024-03-01" -o none

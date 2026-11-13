@@ -309,7 +309,7 @@ class BillOut(BaseModel):
     expected: Decimal
     paid: Decimal | None
     lines: int
-    status: Literal["paid", "due", "late", "skipped"]
+    status: Literal["paid", "due", "late", "waiting", "skipped"]
     avg3: Decimal | None
     payments_left: int | None
     price_from: Decimal | None

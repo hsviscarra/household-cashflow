@@ -1835,7 +1835,7 @@ export const setWho = (transaction_id: number, counterparty_id: number) =>
   send<Txn>("POST", "/api/review/who", { transaction_id, counterparty_id });
 
 // ---------- Bills & subscriptions (ADR-031) ----------
-export type BillStatus = "paid" | "due" | "late" | "skipped";
+export type BillStatus = "paid" | "due" | "late" | "waiting" | "skipped";
 export type Bill = {
   template_id: number;
   entry_id: number | null; // this month's entry, when the month was generated

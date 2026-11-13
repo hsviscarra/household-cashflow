@@ -361,7 +361,9 @@ function Invoices({
       group: (r) => sriWords(r),
       cell: (r) => (
         <>
-          <span className={`pill ${r.category && r.category !== "none" ? "" : "text-muted"}`}>
+          <span
+            className={`pill whitespace-nowrap ${r.category && r.category !== "none" ? "" : "text-muted"}`}
+          >
             {sriWords(r)}
           </span>
           {guessWords(r) && <span className="mt-1 block text-xs text-muted">{guessWords(r)}</span>}

@@ -78,6 +78,7 @@ export default function DataTable<T>({
     table,
     pickable.map((c) => c.id),
     defaults,
+    columns.filter((c) => c.fixed).map((c) => c.id),
   );
   const byId = new Map(columns.map((c) => [c.id, c]));
   const shown = [

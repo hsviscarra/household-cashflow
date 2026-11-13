@@ -11,7 +11,14 @@ const ROWS: Row[] = [
   { id: 3, shop: "Cinema", who: "Lauren", amount: 20.5 },
 ];
 const COLUMNS: Column<Row>[] = [
-  { id: "shop", label: "Shop", fixed: true, sort: (r) => r.shop, cell: (r) => r.shop },
+  {
+    id: "shop",
+    label: "Shop",
+    fixed: true,
+    sort: (r) => r.shop,
+    group: (r) => r.shop[0],
+    cell: (r) => r.shop,
+  },
   { id: "who", label: "Who", sort: (r) => r.who, group: (r) => r.who, cell: (r) => r.who },
   {
     id: "amount",
@@ -31,7 +38,10 @@ beforeEach(() => {
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
       if (init?.method === "PUT")
-        saved.push({ key: decodeURIComponent(url.split("/").pop()!), value: JSON.parse(String(init.body)).value });
+        saved.push({
+          key: decodeURIComponent(url.split("/").pop()!),
+          value: JSON.parse(String(init.body)).value,
+        });
       return Promise.resolve(new Response(JSON.stringify({ user: "t", settings: {} }), { status: 200 }));
     }),
   );
@@ -107,6 +117,19 @@ describe("DataTable", () => {
       sort: { id: "amount", dir: "desc" },
       group: "who",
     });
+  });
+
+  it("sorts and groups by a column that is always shown", async () => {
+    // Found on live data: grouping by Supplier (a fixed column) was dropped when read back.
+    renderTable();
+    await screen.findByRole("table", { name: "Demo" });
+    fireEvent.change(screen.getByLabelText("Group by"), { target: { value: "shop" } });
+    await vi.waitFor(() => expect(shops()).toHaveLength(8));
+    expect(shops()[1]).toBe("B · 112.00");
+    fireEvent.click(screen.getByRole("button", { name: /^Shop/ }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("columnheader", { name: /Shop/ })).toHaveAttribute("aria-sort", "ascending"),
+    );
   });
 
   it("adds, hides and reorders columns", async () => {
