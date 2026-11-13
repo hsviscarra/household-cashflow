@@ -14,7 +14,6 @@ import { useSettings } from "../prefs";
 const RATE_FROM: Record<string, string> = {
   typed: "typed",
   table: "estimated from its table",
-  interest: "estimated from this year's interest",
 };
 const MINIMUM_FROM: Record<string, string> = {
   typed: "typed",
@@ -238,7 +237,8 @@ function Debts({ s, extra, setExtra }: { s: Savings; extra: number; setExtra: (v
   const [editing, setEditing] = useState<string | null>(null);
   const names = new Map(s.debts.map((d) => [d.key, d.name]));
   const p = s.payoff;
-  const left = s.debts.filter((d) => !d.planned);
+  const left = s.debts.filter((d) => !d.planned && d.kind !== "card");
+  const cards = s.debts.filter((d) => !d.planned && d.kind === "card");
   return (
     <section className="card" aria-labelledby="debts">
       <h2 id="debts" className="font-display text-xl font-bold">
@@ -282,6 +282,8 @@ function Debts({ s, extra, setExtra }: { s: Savings; extra: number; setExtra: (v
                             <span className="num">{(num(d.rate) * 100).toFixed(1)}%</span>
                             <span className="block text-xs text-muted">{RATE_FROM[d.rate_from ?? ""]}</span>
                           </>
+                        ) : d.kind === "card" ? (
+                          <span className="text-muted">type it if you carry a balance</span>
                         ) : (
                           <span className="text-attention-ink">not known</span>
                         )}
@@ -294,6 +296,8 @@ function Debts({ s, extra, setExtra }: { s: Savings; extra: number; setExtra: (v
                               {MINIMUM_FROM[d.minimum_from ?? ""]}
                             </span>
                           </>
+                        ) : d.kind === "card" ? (
+                          "—"
                         ) : (
                           <span className="text-attention-ink">not known</span>
                         )}
@@ -319,8 +323,13 @@ function Debts({ s, extra, setExtra }: { s: Savings; extra: number; setExtra: (v
           {left.length > 0 && (
             <p className="mt-2 text-sm text-muted">
               Not in the comparison until its rate and monthly payment are known:{" "}
-              {left.map((d) => d.name).join(", ")}. A card that charged no interest this year is paid in full
-              and costs nothing.
+              {left.map((d) => d.name).join(", ")}.
+            </p>
+          )}
+          {cards.length > 0 && (
+            <p className="mt-2 text-sm text-muted">
+              Cards are left out: a card’s balance is this month’s purchases unless you carry it. Type a
+              card’s rate (Edit) to plan it as a debt.
             </p>
           )}
           <form

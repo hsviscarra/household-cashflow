@@ -2108,7 +2108,7 @@ export type DebtLine = {
   as_of: string | null;
   rate: string | null; // a year, as a fraction
   minimum: Money | null;
-  rate_from: "typed" | "table" | "interest" | null;
+  rate_from: "typed" | "table" | null;
   minimum_from: "typed" | "table" | "payment" | "assumed" | null;
   interest_12: Money;
   planned: boolean;

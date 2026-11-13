@@ -137,8 +137,8 @@ export default function ProjectionsPage() {
           </dl>
           {rangeLine(p) && (
             <p className="mt-3 text-muted" aria-label="Likely range">
-              {rangeLine(p)} The range comes from how much your everyday spending really varied; income and
-              bills are taken as planned.
+              {rangeLine(p)} The range comes from how much your total spending really varied month to month
+              over the last two years; income and bills are taken as planned.
             </p>
           )}
 

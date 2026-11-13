@@ -56,6 +56,21 @@ installments, what-ifs, income tax) are untouched.
 - Scenarios shared between the two of you: they are per person, like saved views.
 - C4 (five to ten years) builds on this and comes with phase 5.
 
+## Corrected after the first look at real data (0.110.0, Nov 13 2026)
+
+- **Surprises are read from everything spent**, not from everyday categories.
+  `measures.spent_by_month` gives ADR-073's "spent" for the last 24 months in one query: a card
+  payment in a workbook month, its purchases in a statement month. Read from everyday
+  categories, the 20 workbook months (where everyday spending sat inside one "Card Payment"
+  amount) and the 4 statement months looked like a jump in spending, and the band came out
+  thousands too wide. The band now also carries bills that changed and one-off purchases,
+  which is what "how much spending really varied" should mean.
+- **Seasons have nothing to read yet.** The workbook kept everyday spending as card payments,
+  so no everyday group has two complete years; the page says so. They start once the
+  statements cover two calendar years. Reading a season from the workbook's card payments
+  (December, the school months) is possible and is Hernan's call: it would move the card
+  payments ahead, not the everyday average.
+
 ## Check on real data
 
 The numbers are tested against small histories with known answers. Whether the seasons found

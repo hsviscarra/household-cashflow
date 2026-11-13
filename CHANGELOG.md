@@ -14,6 +14,14 @@ the Excel workbook.
   "Think harder" uses the larger model. Each question costs a fraction of a cent to a few
   cents; the month has a limit, $10.00 until you change it on the panel (ADR-100).
 
+### Fixed
+- **The forecast's range was too wide.** It read the change from the workbook's months (card
+  payments as one amount) to the statements' (each purchase) as if spending had jumped. It now
+  compares everything spent month by month, which reads both alike (ADR-096, corrected).
+- **Cards aren't debts to pay off unless you say so.** Saving listed each card's statement
+  balance with an estimated rate and an assumed payment, as if it were carried for years. A
+  card is now left out of the comparison until you type its rate (ADR-097, corrected).
+
 ## [0.109.0] — Explore
 
 ### Added

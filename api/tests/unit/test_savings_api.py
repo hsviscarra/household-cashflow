@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Account, AppSetting, Category, Transaction
-from app.services import debt, loans, networth, savings
+from app.services import debt, loans, measures, networth, savings
 
 TODAY = "2026-10-20"
 DAY = date(2026, 10, 20)
@@ -123,6 +123,14 @@ def test_rate_goals_and_safe_to_spend(client: TestClient, db: Session) -> None:
     assert Decimal(safe["a_day"]) == Decimal("112.50")  # over 12 days
     assert client.get("/api/savings/safe-to-spend", params={"today": TODAY}).json() == safe
 
+    # ADR-096: the months' spending in one query is the same as month by month.
+    months = [date(2026, 9, 1), date(2026, 10, 1), date(2026, 8, 1)]
+    assert measures.spent_by_month(db, months) == {
+        date(2026, 9, 1): measures.window(db, date(2026, 9, 1)).spent,
+        date(2026, 10, 1): measures.window(db, date(2026, 10, 1)).spent,
+    }
+    assert measures.spent_by_month(db, months)[date(2026, 10, 1)] == Decimal(1399)
+
 
 def test_debts_their_terms_and_the_two_orders(client: TestClient, db: Session) -> None:
     car = _holding(client, "Car loan", "loan", "5000")
@@ -133,10 +141,14 @@ def test_debts_their_terms_and_the_two_orders(client: TestClient, db: Session) -
     out = _get(client)
     by_key = {d["key"]: d for d in out["debts"]}
     assert set(by_key) == {car, family, card}
-    # Nothing is known about the loans yet; the card's payment is assumed at 3% of the balance.
+    # Nothing is known about the loans yet. A card isn't planned at all until its rate is
+    # typed: its balance may just be this month's purchases.
     assert by_key[car]["planned"] is False and by_key[car]["rate"] is None
-    assert (by_key[card]["kind"], by_key[card]["minimum_from"]) == ("card", "assumed")
-    assert Decimal(by_key[card]["minimum"]) == Decimal("60.00") and by_key[card]["rate"] is None
+    assert (by_key[card]["kind"], by_key[card]["minimum"], by_key[card]["rate"]) == (
+        "card",
+        None,
+        None,
+    )
     assert out["payoff"] is None
 
     def put(key: str, **body: Any) -> int:
@@ -148,6 +160,11 @@ def test_debts_their_terms_and_the_two_orders(client: TestClient, db: Session) -
     assert put(family, rate="0.06", minimum="50") == 204
     assert put("holding-999", rate="0.1", minimum="10") == 404
     assert put(car, rate="3") == 422 and put(car, minimum="-1") == 422
+    # With its rate typed, the card is carried: its payment is assumed at 3% until typed too.
+    assert put(card, rate="0.18") == 204
+    typed = {d["key"]: d for d in _get(client)["debts"]}[card]
+    assert (typed["minimum"], typed["minimum_from"], typed["planned"]) == ("60.00", "assumed", True)
+    assert put(card) == 204
 
     out = _get(client, extra="200")
     by_key = {d["key"]: d for d in out["debts"]}
@@ -210,22 +227,16 @@ def test_a_loans_terms_come_from_its_table_or_its_payment() -> None:
     assert savings._loan_terms(_item()) == (None, None, None)
 
 
-def test_a_cards_rate_is_estimated_from_the_interest_it_charged(
+def test_a_card_shows_what_it_cost_but_is_not_planned_until_its_rate_is_typed(
     db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     card = _item(
         key="account-7", name="Visa", holding_class="card", account_id=7, value=Decimal(2000)
     )
-    paid_in_full = _item(key="account-8", name="Amex", holding_class="card", account_id=8)
     cost = debt.AccountCost(7, "Visa", "credit_card", interest=Decimal(250), last_12=Decimal(310))
-    monkeypatch.setattr(networth, "accounts", lambda *_: [card, paid_in_full, _item(value=None)])
+    monkeypatch.setattr(networth, "accounts", lambda *_: [card, _item(value=None)])
     monkeypatch.setattr(networth, "holdings", lambda *_: [])
     monkeypatch.setattr(debt, "cost", lambda *_: debt.DebtCost(2026, DAY, [], [cost], [2026]))
-    visa, amex = savings.debts(db, DAY)
-    # 250 of interest in ten months is 300 a year, on 2,000: 15%.
-    assert (visa.rate, visa.rate_from, visa.interest_12) == (Decimal("0.1500"), "interest", 310)
-    assert (visa.minimum, visa.minimum_from, visa.planned) == (Decimal("60.00"), "assumed", True)
-    # No interest charged: nothing to say about its rate, so it isn't in the comparison.
-    assert amex.rate is None and not amex.planned
-    plans = savings.payoff_plans([visa, amex], Decimal(0))
-    assert plans is not None and plans.avalanche.order == ["account-7"]
+    [visa] = savings.debts(db, DAY)
+    assert (visa.rate, visa.minimum, visa.planned, visa.interest_12) == (None, None, False, 310)
+    assert savings.payoff_plans([visa], Decimal(0)) is None

@@ -160,7 +160,7 @@ class DebtLine:
     as_of: date | None
     rate: Decimal | None  # a year, as a fraction
     minimum: Decimal | None
-    rate_from: str | None  # typed, table (the amortization table), interest (charged lately)
+    rate_from: str | None  # typed, or table (the amortization table)
     minimum_from: str | None  # typed, table, payment (the monthly payment), assumed
     interest_12: Decimal = ZERO  # interest and fees in the last 12 months (cards)
 
@@ -229,7 +229,7 @@ def _loan_terms(item: networth.Item) -> tuple[Decimal | None, Decimal | None, st
 
 def debts(db: Session, today: date) -> list[DebtLine]:
     """What is owed: cards with a balance and loans, with the rate and the monthly payment
-    where they can be known (typed wins)."""
+    where they can be known (typed wins). Cards have neither until their rate is typed."""
     costs = {a.account_id: a for a in debt.cost(db, today.year, today).accounts}
     out = []
     for item in networth.accounts(db, today) + networth.holdings(db, today):
@@ -240,19 +240,15 @@ def debts(db: Session, today: date) -> list[DebtLine]:
             kind = "card"
             cost = costs.get(item.account_id) if item.account_id is not None else None
             interest = cost.last_12 if cost else ZERO
-            # This year's interest, as a year's worth, against today's balance: an estimate
-            # until the card's real rate is typed.
-            charged = cost.interest if cost else ZERO
-            rate = (
-                (charged * payoff.MONTHS_IN_YEAR / today.month / item.value).quantize(RATE)
-                if charged > 0
-                else None
-            )
-            rate_from = "interest" if rate is not None else None
-            minimum: Decimal | None = max(
-                CARD_MINIMUM_FLOOR, (item.value * CARD_MINIMUM_SHARE).quantize(CENT)
-            )
-            minimum_from: str | None = "assumed"
+            # A card's balance is this month's purchases unless it is carried, and the app
+            # can't tell which: a card is planned only once its rate is typed. Its payment is
+            # then assumed until that is typed too.
+            rate, rate_from = None, None
+            minimum: Decimal | None = None
+            minimum_from: str | None = None
+            if typed_rate is not None:
+                minimum = max(CARD_MINIMUM_FLOOR, (item.value * CARD_MINIMUM_SHARE).quantize(CENT))
+                minimum_from = "assumed"
         else:
             kind, interest = "loan", ZERO
             rate, minimum, minimum_from = _loan_terms(item)

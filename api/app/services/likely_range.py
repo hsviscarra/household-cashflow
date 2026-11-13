@@ -1,15 +1,18 @@
 """The likely range of the forecast (ADR-096, plan item C1): a band around the expected cash,
 built from how much spending really varied.
 
-For each of the last months (up to 24), the surprise is what was spent, with what its season
+For each of the last months (up to 24), the surprise is everything that was spent (ADR-073's
+"spent", which reads the workbook's months and the statements' alike), with what its season
 explains taken out, minus the average of those months. The forecast is then replayed many
 times; each replay draws, for every month ahead, one past month's surprise whole, so groups that
 ran high in the same month stay together. The band is where the middle 80% of the replays end up
 (10th to 90th percentile), and the chance of dropping under the floor is the share of replays
 that do.
 
-It covers spending only: income and bills are taken as planned. The replays use a fixed seed, so
-the same data always gives the same band. Decimal throughout; nothing here reads the database.
+The forecast takes income and bills as planned; the band says how far total spending has
+strayed from its average before, bills that changed and one-off purchases included. The replays
+use a fixed seed, so the same data always gives the same band. Decimal throughout; nothing here
+reads the database.
 """
 
 import random
