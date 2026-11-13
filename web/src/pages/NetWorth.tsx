@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import {
   createHolding,
+  fetchBalanceSheetOver,
   deleteHolding,
   deleteHoldingValue,
   fetchBalanceSheet,
@@ -19,8 +20,10 @@ import {
   type SheetItem,
 } from "../api";
 import { categoryOptions } from "../categories";
+import ChartTools from "../components/ChartTools";
 import { TrendLine } from "../components/charts";
 import { localToday, money, monthLong, monthShort, num } from "../money";
+import { asRecord, useSettings } from "../prefs";
 
 type Notify = (message: string, tone?: "good" | "bad") => void;
 
@@ -328,10 +331,47 @@ export default function BalanceSheetSection({ mode = "overview" }: { mode?: "ove
   );
 }
 
-function Trend({ s }: { s: BalanceSheet }) {
+const TREND_PERIODS = { "12": "12 months", "24": "24 months", "36": "36 months" };
+type TrendPeriod = keyof typeof TREND_PERIODS;
+
+/** The trend with its own period (ADR-101): the sheet the page already has covers 24 months; any
+ * other period is asked for. */
+function Trend({ s: sheet }: { s: BalanceSheet }) {
+  const { settings, set } = useSettings();
+  const saved = String(asRecord(settings["chart:networth"]).period);
+  const period: TrendPeriod = saved in TREND_PERIODS ? (saved as TrendPeriod) : "24";
+  const other = useQuery({
+    queryKey: ["networth", "trend", period],
+    queryFn: () => fetchBalanceSheetOver(Number(period)),
+    enabled: period !== "24",
+  });
+  const s = period === "24" ? sheet : (other.data ?? sheet);
   return (
     <>
-      <h2 className="mt-10 font-display text-2xl font-bold">Net worth over time</h2>
+      <div className="mt-10 flex flex-wrap items-end justify-between gap-3">
+        <h2 className="font-display text-2xl font-bold">Net worth over time</h2>
+        <ChartTools
+          name="Net worth"
+          period={{
+            value: period,
+            options: TREND_PERIODS,
+            onChange: (p) => set("chart:networth", { period: p }),
+          }}
+          csv={{
+            file: "net-worth.csv",
+            rows: () => [
+              ["Month", "Own", "Owe", "Net"],
+              ...s.series.map((p) => [
+                p.month.slice(0, 7),
+                num(p.assets).toFixed(2),
+                num(p.liabilities).toFixed(2),
+                num(p.net).toFixed(2),
+              ]),
+            ],
+          }}
+          explain={`Explain how our net worth changed over the last ${period} months and what moved it most.`}
+        />
+      </div>
       <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
         <TrendLine
           title={`Net worth by month, ${monthLong(s.series[0].month)} to ${monthLong(s.series[s.series.length - 1].month)}`}

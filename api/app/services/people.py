@@ -48,12 +48,15 @@ KEEP = ("manual", "suggestion", "split", "excel")
 
 
 class PeopleError(Exception):
+    """A change to a person that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
 
 
 def patterns(person: Counterparty) -> list[str]:
+    """The texts that identify a person's transfers, upper case."""
     return [p.strip().upper() for p in (person.patterns or "").split(";") if p.strip()]
 
 
@@ -115,6 +118,7 @@ def tag_lines(db: Session, user: str, person: Counterparty | None = None) -> int
 
 
 def create_person(db: Session, fields: dict[str, object], user: str) -> Counterparty:
+    """Add a person, optionally with a balance of their own on the balance sheet."""
     name = str(fields.get("name") or "").strip()
     if not name:
         raise PeopleError("Give the person a name.")
@@ -129,6 +133,7 @@ def create_person(db: Session, fields: dict[str, object], user: str) -> Counterp
 
 
 def update_person(db: Session, person: Counterparty, fields: dict[str, object], user: str) -> None:
+    """Change a person's details; names stay unique."""
     if "name" in fields:
         name = str(fields["name"] or "").strip()
         if not name:
@@ -146,7 +151,7 @@ def update_person(db: Session, person: Counterparty, fields: dict[str, object], 
     tag_lines(db, user, person)
 
 
-def _set(db: Session, person: Counterparty, fields: dict[str, object]) -> None:
+def _set(db: Session, person: Counterparty, fields: dict[str, object]) -> None:  # noqa: C901 - baseline, docs/refactors.md #15
     if "patterns" in fields:
         texts = [t.strip() for t in str(fields["patterns"] or "").split(";") if t.strip()]
         if any(len(t) < 4 for t in texts):
@@ -191,12 +196,15 @@ def delete_person(db: Session, person: Counterparty) -> None:
 
 @dataclass
 class Totals:
+    """What a person received and paid over a period."""
+
     lines: int
     received: Decimal
     paid: Decimal
 
 
 def totals(db: Session) -> dict[int, Totals]:
+    """For each person: how many lines, how much received and how much sent."""
     rows = db.execute(
         select(
             Transaction.counterparty_id,
@@ -233,6 +241,7 @@ def balance_lines(db: Session, holding_id: int, after: date | None, until: date)
 
 
 def linked_holdings(db: Session) -> set[int]:
+    """The balance-sheet items that are a person's balance."""
     return set(
         db.scalars(select(Counterparty.holding_id).where(Counterparty.holding_id.is_not(None)))
     )
@@ -335,7 +344,7 @@ def match_all(db: Session, user: str) -> int:
     return found
 
 
-def add_note(db: Session, fields: dict[str, object], user: str) -> tuple[TransferNote, bool]:
+def add_note(db: Session, fields: dict[str, object], user: str) -> tuple[TransferNote, bool]:  # noqa: C901 - baseline, docs/refactors.md #15
     """Save a note (once per bank reference) and match it. Returns (note, created)."""
     reference = fields.get("reference")
     if reference:
@@ -422,6 +431,8 @@ def open_notes(db: Session, older_than: date) -> list[TransferNote]:
 # ---------------------------------------------------------------- notes from the banks' emails
 @dataclass
 class EmailResult:
+    """What sending a person's summary did."""
+
     status: str  # noted, matched, duplicate, skipped
     message: str
     note_id: int | None = None

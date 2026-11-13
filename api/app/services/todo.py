@@ -139,6 +139,8 @@ def _dismissed(db: Session) -> set[str]:
 
 @dataclass
 class Task:
+    """One thing to do, with its amount, date and link."""
+
     key: str  # unique and stable, e.g. "cat:NETFLIX", "who:123"
     kind: str
     title: str
@@ -151,6 +153,8 @@ class Task:
 
 @dataclass
 class Section:
+    """A kind of task, with its tasks."""
+
     key: str
     title: str
     hint: str
@@ -160,11 +164,14 @@ class Section:
 
 @dataclass
 class Todo:
+    """Everything to do today."""
+
     today: date
     sections: list[Section]
 
     @property
     def total(self) -> int:
+        """How many things there are to do."""
         return sum(s.count for s in self.sections)
 
 
@@ -507,6 +514,7 @@ def _purpose(db: Session, today: date, accounts: dict[int, str]) -> Section:
 
 
 def build(db: Session, today: date | None = None) -> Todo:
+    """Everything that needs a decision, by section, ordered by the money at stake."""
     today = today or date.today()
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
     unnamed = inbox.who_lines(db, today=today)

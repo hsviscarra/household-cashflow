@@ -37,6 +37,7 @@ def _q(x: Decimal) -> Decimal:
 
 
 def key_of(merchant: str) -> str:
+    """A merchant's key for grouping; the merchant itself when it has none."""
     return classify.merchant_key(merchant) or merchant
 
 
@@ -73,6 +74,8 @@ def _lines(
 
 @dataclass
 class MerchantRow:
+    """A merchant's spending, visits and average ticket."""
+
     merchant: str
     group_id: int
     group_name: str
@@ -127,6 +130,8 @@ def merchants(
 
 @dataclass
 class ProductRow:
+    """A product's times bought, quantity, amount and unit price."""
+
     product_key: str
     description: str
     product_group: str | None
@@ -235,6 +240,8 @@ def products(
 
 @dataclass
 class Idea:
+    """A saving worth a look, with where to see it."""
+
     key: str
     title: str
     detail: str
@@ -247,7 +254,7 @@ def _money(x: Decimal) -> str:
     return f"${_q(x):,.2f}"
 
 
-def ideas(db: Session, month: date, person: str | None = None) -> list[Idea]:
+def ideas(db: Session, month: date, person: str | None = None) -> list[Idea]:  # noqa: C901 - baseline, docs/refactors.md #15
     """Patterns in a month's lines worth a look, biggest first: fees and interest, delivery
     apps, small frequent charges, merchants new this month, groups well above their usual, and
     products another store sold for less."""

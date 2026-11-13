@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { DEFAULT_AHEAD, fetchAhead, type Ahead, type AheadChoices } from "../api";
+import ChartTools from "../components/ChartTools";
 import { Legend, StackedColumns } from "../components/charts";
 import { money, num } from "../money";
 import { asRecord, useSettings } from "../prefs";
@@ -110,7 +111,42 @@ export default function NetWorthAheadPage() {
                 .map((l) => l.name)
                 .join(", ")}.`}
           </p>
-          <div className="mt-4 rounded-2xl bg-surface p-4 md:p-6">
+          <div className="mt-4 flex justify-end">
+            <ChartTools
+              name="Years ahead"
+              csv={{
+                file: "net-worth-years-ahead.csv",
+                rows: () => [
+                  [
+                    "Year",
+                    "Kept",
+                    "Cash",
+                    "Investments",
+                    "Property",
+                    "Vehicles",
+                    "Owed",
+                    "Net worth",
+                    "Low",
+                    "High",
+                  ],
+                  ...a.years.map((y) => [
+                    y.year,
+                    y.kept,
+                    y.cash,
+                    y.investments,
+                    y.property,
+                    y.vehicles,
+                    (num(y.loans) + num(y.other_debts)).toFixed(2),
+                    y.net,
+                    y.net_low,
+                    y.net_high,
+                  ]),
+                ],
+              }}
+              explain={`Explain the net worth projection for the next ${c.years} years: what grows it most and which assumption matters most.`}
+            />
+          </div>
+          <div className="mt-2 rounded-2xl bg-surface p-4 md:p-6">
             <StackedColumns
               title={`What you own by year, and net worth as a line, ${a.years[0].year} to ${a.years[a.years.length - 1].year}`}
               data={a.years.map((y) => ({

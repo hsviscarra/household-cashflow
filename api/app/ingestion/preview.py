@@ -30,6 +30,7 @@ from app.services import people
 
 
 def category_paths(db: Session) -> dict[int, str]:
+    """Each category's full name: "Group / Category"."""
     cats = {c.category_id: c for c in db.scalars(select(Category))}
     out: dict[int, str] = {}
     for cid, c in cats.items():
@@ -39,6 +40,7 @@ def category_paths(db: Session) -> dict[int, str]:
 
 
 def latest_batches(db: Session) -> dict[int, BatchRef]:
+    """Each statement's latest batch (a rejected one never hides an earlier one)."""
     out: dict[int, BatchRef] = {}
     for b in db.scalars(select(ImportBatch).order_by(ImportBatch.batch_id)):
         if b.status == "rejected" and b.statement_file_id in out:
@@ -50,6 +52,7 @@ def latest_batches(db: Session) -> dict[int, BatchRef]:
 
 
 def batch_out(db: Session, batch: ImportBatch) -> BatchOut:
+    """A batch as the Import page shows it: checks, totals, lines, rejects and proposals."""
     sf = db.get(StatementFile, batch.statement_file_id)
     header = db.get(StatementHeader, batch.statement_file_id)
     assert sf is not None and header is not None

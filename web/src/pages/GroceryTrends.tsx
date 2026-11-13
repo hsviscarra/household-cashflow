@@ -1,3 +1,4 @@
+import ChartTools from "../components/ChartTools";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -122,9 +123,28 @@ function Body({ t, month, onMonth }: { t: GroceryTrends; month: string; onMonth:
     <>
       <Kpis t={t} month={month} />
       <section aria-labelledby="by-month" className="card space-y-4 p-5">
-        <h2 id="by-month" className="font-display text-xl font-bold">
-          Month by month, by aisle
-        </h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 id="by-month" className="font-display text-xl font-bold">
+            Month by month, by aisle
+          </h2>
+          <ChartTools
+            name="Groceries"
+            csv={{
+              file: "groceries-by-aisle.csv",
+              rows: () => [
+                ["Month", "Spent", "Invoiced", "Trips", ...t.aisles],
+                ...t.months.map((m) => [
+                  m.month.slice(0, 7),
+                  num(m.spent).toFixed(2),
+                  num(m.invoiced).toFixed(2),
+                  m.trips,
+                  ...t.aisles.map((a) => num(m.aisles[a]).toFixed(2)),
+                ]),
+              ],
+            }}
+            explain={`Explain our grocery spending over the last ${t.months.length} months: which aisles grew or shrank and anything unusual.`}
+          />
+        </div>
         <StackedColumns data={data} title="Grocery spending by aisle each month" onSelect={onMonth} />
         <div className="flex flex-wrap items-center gap-4">
           <Legend

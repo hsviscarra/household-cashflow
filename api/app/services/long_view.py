@@ -20,6 +20,7 @@ from decimal import Decimal
 
 # Assumptions (ADR-098): defaults, all of them choices on the page.
 YEARS = (5, 10)
+RATE_RANGE = (Decimal("-0.5"), Decimal("0.5"))  # a yearly rate the page accepts: -50% to 50%
 DEFAULT_RETURNS = (Decimal("0.02"), Decimal("0.05"), Decimal("0.08"))  # low, expected, high
 DEFAULT_PROPERTY = Decimal(0)  # a year: houses hold their value in today's money
 DEFAULT_VEHICLE = Decimal("-0.10")  # a year: a car loses a tenth
@@ -34,6 +35,8 @@ MONTHS_IN_YEAR = 12
 
 @dataclass(frozen=True)
 class Assumptions:
+    """The choices a projection is made with; every one is on the page."""
+
     years: int = 5
     returns: tuple[Decimal, Decimal, Decimal] = DEFAULT_RETURNS
     property_growth: Decimal = DEFAULT_PROPERTY
@@ -71,6 +74,8 @@ class Start:
 
 @dataclass
 class Year:
+    """Where things stand at the end of one year, by kind of asset and debt."""
+
     year: int
     end: date
     cash: Decimal
@@ -84,6 +89,7 @@ class Year:
     milestones: list[str] = field(default_factory=list)
 
     def net(self, case: str) -> Decimal:
+        """Net worth at the year's end with investments at the low, expected or high return."""
         owned = (
             self.cash + self.investments[case] + self.property + self.vehicles + self.other_assets
         )

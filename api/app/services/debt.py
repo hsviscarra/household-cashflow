@@ -20,6 +20,8 @@ SHEET = "Cash Flow sheet"
 
 @dataclass
 class AccountCost:
+    """An account's interest and fees for a year and the last twelve months, with its balance."""
+
     account_id: int | None
     name: str
     kind: str | None
@@ -33,11 +35,14 @@ class AccountCost:
 
     @property
     def total(self) -> Decimal:
+        """Interest and fees together, for the year."""
         return self.interest + self.fees
 
 
 @dataclass
 class DebtCost:
+    """A year's cost of debt, by account."""
+
     year: int
     through: date
     months: list[date]
@@ -46,19 +51,24 @@ class DebtCost:
 
     @property
     def interest(self) -> Decimal:
+        """Interest across every account, for the year."""
         return sum((a.interest for a in self.accounts), ZERO)
 
     @property
     def fees(self) -> Decimal:
+        """Fees across every account, for the year."""
         return sum((a.fees for a in self.accounts), ZERO)
 
 
 def years(db: Session) -> list[int]:
+    """The years that have interest or fees, newest first."""
     found = {m.year for m in db.scalars(select(v.c.cash_month).distinct())}
     return sorted(found, reverse=True)
 
 
 def cost(db: Session, year: int | None = None, today: date | None = None) -> DebtCost:
+    """Interest and fees by account for a year and the last twelve months, with each card's
+    latest statement balance."""
     today = today or date.today()
     available = years(db)
     year = year or (available[0] if available else today.year)
@@ -110,6 +120,7 @@ def cost(db: Session, year: int | None = None, today: date | None = None) -> Deb
 
 
 def by_month_totals(d: DebtCost) -> dict[date, Decimal]:
+    """Interest and fees of every account together, by month."""
     out: dict[date, Decimal] = defaultdict(Decimal)
     for a in d.accounts:
         for m, amount in a.by_month.items():

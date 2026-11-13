@@ -85,7 +85,8 @@ def _section(desc: str, op: str | None) -> str:
     return "charge"  # SOLCA, RET IVA, early payoffs and other N/D / N/C lines
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Banco Pichincha statement: the card, or the bank account when the pages are one."""
     text = "\n".join(pages)
     if pichincha_account.is_account_statement(text):  # the bank account, not the card (F19)
         return pichincha_account.parse(pages)

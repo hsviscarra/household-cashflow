@@ -5,6 +5,24 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.111.0] — The leftovers, and the code standard checked by CI
+
+### Added
+- **Explain** beside each chart: writes a question about that chart into Ask Claude and opens
+  it; you send it (ADR-101).
+- **Period and Download CSV on more charts**: Home's cash flow (6, 12 or 24 months), Net
+  worth's trend (12, 24 or 36), Groceries, Forecast, Saving and Years ahead (ADR-101).
+- **A filter bar on the tables** of Deductions, By category, Groceries' products and
+  Purchases' invoices: by any grouped column, an amount range and a date range (ADR-101).
+- **Seasons from the workbook's years.** Until each group has two years of its own, the
+  forecast follows one season read from everything spent since 2021 (ADR-101).
+
+### Changed
+- **The code standard is checked by CI** (ADR-102): every public function and class has a
+  docstring, no blind error handling, limits on function and file size. The bank sync retries
+  a failed request before giving up. Existing long functions and files are a written baseline
+  (`docs/refactors.md` #15, #16) that only shrinks. Nothing changes in what the app shows.
+
 ## [0.110.0] — Ask Claude inside the app
 
 ### Added

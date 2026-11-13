@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AskUsage } from "../api";
+import { askAbout } from "../ask";
 import AskClaude, { starters, usageLine } from "./AskClaude";
 
 const USAGE: AskUsage = {
@@ -112,5 +113,13 @@ describe("Ask Claude", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ask Claude" }));
     expect(await screen.findByText(/isn’t set up for this app yet/)).toBeInTheDocument();
     expect(screen.getByLabelText("Your question")).toBeDisabled();
+  });
+
+  it("opens with the question an Explain button wrote in, without sending it", async () => {
+    renderAt("/debt");
+    act(() => askAbout("Explain how our net worth changed."));
+    const panel = await screen.findByRole("dialog", { name: "Ask Claude" });
+    expect(within(panel).getByLabelText("Your question")).toHaveValue("Explain how our net worth changed.");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 });

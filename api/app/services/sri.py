@@ -41,6 +41,8 @@ class SriError(Exception):
 
 @dataclass
 class Keys:
+    """Access keys by state: new, already stored, and not invoices."""
+
     new: list[str] = field(default_factory=list)  # invoices not in the app yet
     stored: int = 0  # invoices already in the app
     other: int = 0  # other documents (guías de remisión, liquidaciones): not read
@@ -82,6 +84,8 @@ def _local(el: Element) -> None:
 
 @dataclass
 class Answer:
+    """The SRI's answer for an access key: its state and the XML when authorized."""
+
     state: str  # AUTORIZADO, NO AUTORIZADO, EN PROCESAMIENTO, or NONE (the SRI has no such key)
     xml: bytes | None  # the whole authorization answer, which the invoice reader understands
     reason: str = ""  # the SRI's own words when it refuses ("ERROR EN LA ESTRUCTURA…")
@@ -131,4 +135,5 @@ def ask(key: str) -> bytes:
 
 
 def fetch(key: str) -> Answer:
+    """An invoice's XML from the SRI by its access key."""
     return read_answer(ask(key))

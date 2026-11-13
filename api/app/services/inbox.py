@@ -36,6 +36,8 @@ TRANSFER_TEXT = re.compile(
 
 
 class InboxError(Exception):
+    """An Inbox action that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -43,6 +45,8 @@ class InboxError(Exception):
 
 @dataclass
 class Autopilot:
+    """What the automatic categorization did after a load."""
+
     asked: int = 0
     suggested: int = 0
     merchants: int = 0
@@ -72,6 +76,8 @@ def autopilot(db: Session, user: str) -> Autopilot:
 # ---------------------------------------------------------------- recently accepted on their own
 @dataclass
 class AutoRule:
+    """A rule made on its own from a confident suggestion."""
+
     rule_id: int
     pattern: str
     category_id: int
@@ -170,6 +176,8 @@ def undo_auto(db: Session, rule_id: int, user: str) -> int:
 # ---------------------------------------------------------------- many at once
 @dataclass
 class Many:
+    """What categorizing several merchants did."""
+
     merchants: int = 0
     lines: int = 0
     also_by_rule: int = 0
@@ -238,6 +246,7 @@ def who_lines(
 
 
 def set_who(db: Session, transaction_id: int, counterparty_id: int, user: str) -> Transaction:
+    """Link a transfer line to a person, logging the change."""
     row = db.get(Transaction, transaction_id)
     if row is None:
         raise InboxError(f"Line {transaction_id} not found.", 404)

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import goals
 
@@ -19,6 +19,8 @@ Today = Annotated[date | None, Query(description="For tests; default today")]
 
 
 class GoalIn(BaseModel):
+    """A new saving goal."""
+
     name: str = Field(min_length=1, max_length=100)
     target_amount: Decimal = Field(gt=0, le=100_000_000)
     target_date: date | None = None
@@ -30,6 +32,8 @@ class GoalIn(BaseModel):
 
 
 class GoalPatch(BaseModel):
+    """The fields of a goal to change."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     target_amount: Decimal | None = Field(default=None, gt=0, le=100_000_000)
     target_date: date | None = None
@@ -41,6 +45,8 @@ class GoalPatch(BaseModel):
 
 
 class GoalOut(BaseModel):
+    """A goal with its progress and pace."""
+
     goal_id: int
     name: str
     target_amount: Decimal
@@ -62,6 +68,8 @@ class GoalOut(BaseModel):
 
 
 class PlaceOut(BaseModel):
+    """Somewhere a goal's money can be kept."""
+
     key: str
     name: str
     value: Decimal | None
@@ -69,16 +77,15 @@ class PlaceOut(BaseModel):
 
 
 class GoalsOut(BaseModel):
+    """Every goal and the places to keep them."""
+
     goals: list[GoalOut]
     places: list[PlaceOut]
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 @router.get("", response_model=GoalsOut)
 def list_goals(db: DB, today: Today = None) -> GoalsOut:
+    """Every saving goal with its pace, and the places a goal's money can be kept."""
     day = today or date.today()
     return GoalsOut(
         goals=[GoalOut(**asdict(g)) for g in goals.all_goals(db, day)],
@@ -92,8 +99,9 @@ def _one(db: Session, goal_id: int, today: date | None) -> GoalOut:
 
 @router.post("", response_model=GoalOut, status_code=201)
 def create_goal(body: GoalIn, db: DB, request: Request, today: Today = None) -> GoalOut:
+    """Add a saving goal."""
     try:
-        g = goals.create(db, body.model_dump(), _user(request), today)
+        g = goals.create(db, body.model_dump(), current_user(request), today)
     except goals.GoalError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return _one(db, g.goal_id, today)
@@ -111,6 +119,7 @@ def update_goal(goal_id: int, body: GoalPatch, db: DB, today: Today = None) -> G
 
 @router.delete("/{goal_id}", status_code=204)
 def delete_goal(goal_id: int, db: DB) -> None:
+    """Remove a saving goal."""
     try:
         goals.delete(db, goal_id)
     except goals.GoalError as exc:

@@ -26,12 +26,13 @@ import Info from "../components/Info";
 import KpiCard from "../components/KpiCard";
 import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
 import { PersonNote } from "../components/Personalize";
+import ChartTools from "../components/ChartTools";
 import PinnedViews from "../components/PinnedViews";
 import SafeToSpend from "../components/SafeToSpend";
 import type { ExplainKey } from "../explain";
 import { VIEWS_KEY, savedViews } from "../explore";
 import { addMonths, localToday, money, monthLong, monthShort, num, pct } from "../money";
-import { personParam, usePerson, useSettings } from "../prefs";
+import { asRecord, personParam, usePerson, useSettings } from "../prefs";
 import { rows } from "./CashFlow";
 import { paceLine } from "./Goals";
 
@@ -45,7 +46,7 @@ export const WIDGETS: Record<string, string> = {
   safe: "Safe to spend",
   money: "Your money now",
   networth: "Net worth",
-  cashflow: "Cash flow, 12 months",
+  cashflow: "Cash flow by month",
   investments: "Investments",
   budget: "Budget: planned vs actual",
   goals: "Goals",
@@ -572,7 +573,22 @@ function NetWorth() {
   );
 }
 
-function CashFlow12({ m }: { m: MonthMeasures }) {
+const FLOW_PERIODS = { "6": "6 months", "12": "12 months", "24": "24 months" };
+type FlowPeriod = keyof typeof FLOW_PERIODS;
+
+/** Money in, spent and set aside by month, over a period the person chooses (ADR-101). The page's
+ * measures cover 12 months; any other period is asked for. */
+function CashFlow12({ m: twelve }: { m: MonthMeasures }) {
+  const { settings, set } = useSettings();
+  const [person] = usePerson();
+  const saved = String(asRecord(settings["chart:home-cashflow"]).period);
+  const period: FlowPeriod = saved in FLOW_PERIODS ? (saved as FlowPeriod) : "12";
+  const other = useQuery({
+    queryKey: ["cashflow", "measures", twelve.month, person, period],
+    queryFn: () => fetchMeasures(twelve.month, personParam(person), Number(period)),
+    enabled: period !== "12",
+  });
+  const m = period === "12" ? twelve : (other.data ?? twelve);
   const data = m.months.map((p) => {
     const partial = p.end !== monthEnd(p.month);
     return {
@@ -602,9 +618,33 @@ function CashFlow12({ m }: { m: MonthMeasures }) {
   return (
     <Card
       id="cashflow12"
-      title="Cash flow, 12 months"
+      title={`Cash flow, ${period} months`}
       link={[`/cashflow?month=${m.month.slice(0, 7)}`, "Cash flow"]}
     >
+      <div className="mb-2">
+        <ChartTools
+          name="Cash flow"
+          period={{
+            value: period,
+            options: FLOW_PERIODS,
+            onChange: (p) => set("chart:home-cashflow", { period: p }),
+          }}
+          csv={{
+            file: "cash-flow.csv",
+            rows: () => [
+              ["Month", "Money in", "Spent", "Set aside", "Left over"],
+              ...m.months.map((p) => [
+                p.month.slice(0, 7),
+                num(p.money_in).toFixed(2),
+                num(p.spent).toFixed(2),
+                num(p.set_aside).toFixed(2),
+                num(p.left_over).toFixed(2),
+              ]),
+            ],
+          }}
+          explain={`Explain our cash flow over the last ${period} months: what came in, what was spent and set aside, and which months stand out.`}
+        />
+      </div>
       <StackedColumns
         data={data}
         title="Money in, spent and set aside by month"

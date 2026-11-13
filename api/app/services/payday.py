@@ -30,14 +30,18 @@ class MonthError(Exception):
 
 
 def first(d: date) -> date:
+    """The first day of a date's month."""
     return d.replace(day=1)
 
 
 def next_month(d: date) -> date:
+    """The first day of the month after a date's."""
     return date(d.year + (d.month == 12), d.month % 12 + 1, 1)
 
 
 def month_for(txn_date: date, salary: bool) -> date:
+    """The month a line counts in: a salary received on or after NEXT_FROM_DAY pays for the next
+    month (ADR-084); everything else counts in its own."""
     if salary and txn_date.day >= NEXT_FROM_DAY:
         return next_month(txn_date)
     return first(txn_date)
@@ -50,6 +54,7 @@ def cash_month(txn_date: date, description: str, amount: Decimal) -> date:
 
 
 def salary_categories(db: Session) -> set[int]:
+    """The categories under the Salary group."""
     group = aliased(Category)
     return set(
         db.scalars(
@@ -81,6 +86,7 @@ def settle(db: Session) -> None:
 
 
 def months_apart(a: date, b: date) -> int:
+    """How many months lie between two dates' months."""
     return abs((a.year - b.year) * 12 + a.month - b.month)
 
 

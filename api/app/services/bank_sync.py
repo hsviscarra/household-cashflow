@@ -24,6 +24,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app import outside
 from app.config import get_settings
 from app.models import (
     Account,
@@ -50,6 +51,8 @@ Fetch = Callable[[str, dict[str, str]], dict[str, Any]]
 
 
 class SyncError(Exception):
+    """The bank sync can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 409) -> None:
         super().__init__(message)
         self.status = status
@@ -57,6 +60,9 @@ class SyncError(Exception):
 
 @dataclass
 class SyncResult:
+    """What a sync did: lines added, already here or covered by a statement, and accounts not
+    linked."""
+
     added: int = 0
     already: int = 0
     covered: int = 0  # dated inside a statement already loaded
@@ -66,6 +72,7 @@ class SyncResult:
 
 
 def configured() -> bool:
+    """Whether a SimpleFIN access URL is set."""
     return bool(get_settings().simplefin_access_url)
 
 
@@ -108,6 +115,7 @@ def _day(epoch: object) -> date | None:
 
 
 def natural_key(sync_account: str, sync_txn: str) -> str:
+    """A synced line's identity: the bank's account and transaction ids, hashed."""
     return "sf:" + hashlib.sha256(f"{sync_account}|{sync_txn}".encode()).hexdigest()[:61]
 
 
@@ -126,6 +134,7 @@ def statement_end(db: Session, account_id: int) -> date | None:
 
 
 def last_run(db: Session) -> LoadLog | None:
+    """The latest sync's log entry, or None when it never ran."""
     return db.scalars(
         select(LoadLog).where(LoadLog.source == SOURCE).order_by(LoadLog.load_id.desc()).limit(1)
     ).first()
@@ -155,16 +164,18 @@ def due(db: Session, now: datetime | None = None) -> bool:
 def sync(
     db: Session, user: str, today: date | None = None, fetch: Fetch | None = None
 ) -> SyncResult:
+    """Fetch the linked accounts' posted lines from SimpleFIN, add the new ones with a category
+    from the rules, and record balances; `fetch` replaces the network call in tests."""
     access = get_settings().simplefin_access_url
     if not access:
         raise SyncError("Bank sync isn't set up; run infra/azure/setup-simplefin.sh.")
     today = today or date.today()
     url, headers = _request(access, today - LOOKBACK)
+    get = fetch or _http_get
     try:
-        data = (fetch or _http_get)(url, headers)
-    except SyncError:
-        raise
-    except Exception as e:  # network or HTTP error: never echo the URL
+        # The real call is tried again on a blip; an injected one (tests) is called once.
+        data = get(url, headers) if fetch else outside.retry(lambda: get(url, headers))
+    except outside.NETWORK_ERRORS as e:  # never echo the URL: it carries the credentials
         raise SyncError(f"SimpleFIN didn't answer ({type(e).__name__}).", 502) from None
 
     result = SyncResult(errors=[str(x)[:200] for x in data.get("errors") or []])

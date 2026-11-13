@@ -53,6 +53,7 @@ LABELS = {
 
 
 def is_card_statement(text: str) -> bool:
+    """Whether the text is Produbanco's Visa card statement, not the savings account's."""
     return "TARJETA No.:" in text and "Resumen de movimientos" in text
 
 
@@ -79,7 +80,8 @@ def _section(op: str, desc: str) -> str:
     return "purchase"
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Produbanco Visa statement's pages: period, lines and checks."""
     text = "\n".join(pages)
     p = PERIOD.search(text)
     if not p:

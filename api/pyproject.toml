@@ -1,6 +1,6 @@
 [project]
 name = "cashflow-api"
-version = "0.110.0"
+version = "0.111.0"
 description = "Household cash flow API: statement ingestion, categorization and analysis"
 requires-python = ">=3.12"
 dependencies = [
@@ -39,7 +39,26 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+# Beyond the basics, the rules that hold the project's code standard (docs/definition-of-done.md):
+# BLE/S110 no blind or silent excepts; C90 and PLR0915 small functions; D1 a docstring on
+# every public module, class and function.
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "BLE", "S110", "C90", "PLR0915", "D1"]
+ignore = [
+    "D105", # magic methods say what they are
+    "D107", # __init__ is described by its class
+]
+
+[tool.ruff.lint.per-file-ignores]
+# A test's name says what it checks; fixtures and long scenario tests are fine as they are.
+"tests/**" = ["D1", "C901", "PLR0915", "BLE001"]
+# Alembic's upgrade/downgrade are described by the migration's own header.
+"migrations/**" = ["D1", "C901", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-statements = 50
 
 [tool.mypy]
 python_version = "3.12"

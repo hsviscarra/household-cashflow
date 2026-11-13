@@ -40,6 +40,8 @@ def _already(sf: StatementFile) -> str:
 
 @dataclass
 class Resolution:
+    """The accounts a statement was matched to, and how sure the match is."""
+
     accounts: list[Account]
     match: str | None
 
@@ -83,6 +85,7 @@ def resolve_accounts(db: Session, found: Detection) -> Resolution:
 
 
 def to_out(sf: StatementFile, batch: BatchRef | None = None) -> StatementOut:
+    """A stored statement as the API returns it, with its latest batch."""
     return StatementOut(
         statement_file_id=sf.statement_file_id,
         file_name=sf.file_name,
@@ -106,6 +109,8 @@ def to_out(sf: StatementFile, batch: BatchRef | None = None) -> StatementOut:
 def store_statement(
     db: Session, store: StatementStore, data: bytes, file_name: str, user: str
 ) -> UploadResultOut:
+    """Check, detect and store one uploaded PDF; a file already stored (same hash) is a
+    duplicate."""
     name = (file_name or "statement.pdf")[:260]
     if len(data) > MAX_BYTES:
         return UploadResultOut(file_name=name, outcome="rejected", message="Larger than 25 MB.")

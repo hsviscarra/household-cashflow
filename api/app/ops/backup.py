@@ -43,12 +43,16 @@ WAIT_SECONDS = 240
 
 
 class BackupError(Exception):
+    """The backup or the drill can't go on; the message says why."""
+
     pass
 
 
 # ---------------------------------------------------------------- connections
 @dataclass
 class Target:
+    """A database to connect to: server, name and how to sign in."""
+
     server: str
     database: str
     auth: str = "sql"  # sql, or msi (managed identity)
@@ -59,6 +63,9 @@ class Target:
 
     @classmethod
     def from_env(cls, prefix: str, env: Mapping[str, str] = os.environ) -> "Target":
+        """A database to connect to, from PREFIX_SERVER, PREFIX_DATABASE and the rest in the
+        environment."""
+
         def get(name: str) -> str | None:
             return env.get(f"{prefix}_{name}") or None
 
@@ -170,13 +177,16 @@ def wait_ready(target: Target, seconds: int = WAIT_SECONDS) -> None:
             with _connect(target, "master") as conn:
                 conn.execute("SELECT 1").fetchone()
                 return
-        except Exception as exc:  # pyodbc raises several kinds while the server starts
+        # pyodbc (imported only where the job runs) raises several kinds while the server starts.
+        except Exception as exc:
             if time.monotonic() > deadline:
                 raise BackupError(f"The scratch SQL Server didn't answer: {exc}") from exc
             time.sleep(5)
 
 
 def drop_database(target: Target) -> None:
+    """Drop the drill's scratch database; refuses any database whose name doesn't end in
+    'restore'."""
     if not target.database.lower().endswith("restore"):
         raise BackupError("The drill only replaces a database whose name ends in 'restore'.")
     with _connect(target, "master", autocommit=True) as conn:
@@ -192,20 +202,40 @@ def shutdown(target: Target) -> None:
     try:
         with _connect(target, "master", autocommit=True) as conn:
             conn.execute("SHUTDOWN WITH NOWAIT")
-    except Exception:  # the connection drops as the server stops
+    # pyodbc (imported only where the job runs) raises its own Error as the server stops and
+    # drops the connection; that is the expected end of this call, not a failure.
+    except Exception:  # noqa: BLE001, S110 - see above: the dropped connection is the success
         pass
 
 
 # ---------------------------------------------------------------- storage
 class BackupStore(Protocol):
-    def upload(self, key: str, path: Path) -> None: ...
-    def download(self, key: str, path: Path) -> None: ...
-    def put_json(self, key: str, data: dict[str, Any]) -> None: ...
-    def get_json(self, key: str) -> dict[str, Any]: ...
-    def keys(self, prefix: str) -> list[str]: ...
+    """Where backups and their manifests are kept."""
+
+    def upload(self, key: str, path: Path) -> None:
+        """Store the file at `path` under `key`."""
+        ...
+
+    def download(self, key: str, path: Path) -> None:
+        """Write what is stored under `key` to `path`."""
+        ...
+
+    def put_json(self, key: str, data: dict[str, Any]) -> None:
+        """Store a JSON document under `key`."""
+        ...
+
+    def get_json(self, key: str) -> dict[str, Any]:
+        """The JSON document stored under `key`."""
+        ...
+
+    def keys(self, prefix: str) -> list[str]:
+        """Every key that starts with `prefix`, in order."""
+        ...
 
 
 class LocalBackupStore:
+    """Backups in a local folder (local runs and tests)."""
+
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
 
@@ -216,23 +246,28 @@ class LocalBackupStore:
         return path
 
     def upload(self, key: str, path: Path) -> None:
+        """Copy the file into the backups folder."""
         dest = self._path(key)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(path.read_bytes())
 
     def download(self, key: str, path: Path) -> None:
+        """Copy the stored file to `path`."""
         path.write_bytes(self._path(key).read_bytes())
 
     def put_json(self, key: str, data: dict[str, Any]) -> None:
+        """Write the document as a JSON file."""
         dest = self._path(key)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(json.dumps(data, indent=2))
 
     def get_json(self, key: str) -> dict[str, Any]:
+        """Read the JSON file stored under `key`."""
         out: dict[str, Any] = json.loads(self._path(key).read_text())
         return out
 
     def keys(self, prefix: str) -> list[str]:
+        """The files under `prefix`, in order."""
         base = self._path(prefix.rstrip("/") + "/x").parent
         if not base.is_dir():
             return []
@@ -240,6 +275,8 @@ class LocalBackupStore:
 
 
 class BlobBackupStore:  # pragma: no cover - exercised in Azure, not in CI
+    """Backups in an Azure Blob container, signed in with the managed identity."""
+
     def __init__(self, account_url: str, container: str, client_id: str | None = None) -> None:
         from azure.identity import DefaultAzureCredential
         from azure.storage.blob import BlobServiceClient
@@ -250,14 +287,17 @@ class BlobBackupStore:  # pragma: no cover - exercised in Azure, not in CI
         )
 
     def upload(self, key: str, path: Path) -> None:
+        """Upload the file to the container, replacing any blob of that name."""
         with path.open("rb") as f:
             self.container.upload_blob(key, f, overwrite=True, max_concurrency=4)
 
     def download(self, key: str, path: Path) -> None:
+        """Download the blob to `path`."""
         with path.open("wb") as f:
             self.container.download_blob(key, max_concurrency=4).readinto(f)
 
     def put_json(self, key: str, data: dict[str, Any]) -> None:
+        """Upload the document as a JSON blob."""
         from azure.storage.blob import ContentSettings
 
         self.container.upload_blob(
@@ -268,14 +308,17 @@ class BlobBackupStore:  # pragma: no cover - exercised in Azure, not in CI
         )
 
     def get_json(self, key: str) -> dict[str, Any]:
+        """Download and read the JSON blob."""
         out: dict[str, Any] = json.loads(self.container.download_blob(key).readall())
         return out
 
     def keys(self, prefix: str) -> list[str]:
+        """The blobs whose names start with `prefix`, in order."""
         return sorted(b.name for b in self.container.list_blobs(name_starts_with=prefix))
 
 
 def store_from_env(env: Mapping[str, str] = os.environ) -> BackupStore:
+    """Blob storage when BACKUP_ACCOUNT_URL is set, else a local folder."""
     if env.get("BACKUP_ACCOUNT_URL"):  # pragma: no cover - Azure
         return BlobBackupStore(
             env["BACKUP_ACCOUNT_URL"],
@@ -301,6 +344,8 @@ def _now() -> datetime:
 
 
 def export(source: Target, store: BackupStore) -> dict[str, Any]:
+    """Export the database to a .bacpac, store it with a manifest (row counts, migration, totals)
+    and return the manifest."""
     started = _now()
     key = f"{DB_PREFIX}{source.database}-{started:%Y%m%d-%H%M%S}.bacpac"
     with tempfile.TemporaryDirectory() as tmp:
@@ -332,16 +377,20 @@ def export(source: Target, store: BackupStore) -> dict[str, Any]:
 
 
 def latest_backup(store: BackupStore) -> dict[str, Any] | None:
+    """The newest backup's manifest, or None when there is no backup."""
     manifests = [k for k in store.keys(DB_PREFIX) if k.endswith(".json")]
     return store.get_json(manifests[-1]) if manifests else None
 
 
 def latest_drill(store: BackupStore) -> dict[str, Any] | None:
+    """The newest restore drill's result, or None."""
     drills = [k for k in store.keys(DRILL_PREFIX) if k.endswith(".json")]
     return store.get_json(drills[-1]) if drills else None
 
 
 def compare(expected: dict[str, Any], got: dict[str, Any]) -> list[str]:
+    """What differs between what a backup said it held and what the restore holds; empty when
+    equal."""
     problems = []
     if expected.get("migration") != got.get("migration"):
         problems.append(f"Migration {got.get('migration')} instead of {expected.get('migration')}.")
@@ -389,7 +438,7 @@ def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict
         result["ok"] = not result["problems"]
     except BackupError as exc:
         result["problems"] = [str(exc)]
-    except Exception as exc:  # anything else (a SQL error, storage): record why, then fail
+    except Exception as exc:  # noqa: BLE001 - a drill must always leave a result behind
         # The job's console isn't kept, so the result is where the reason has to be.
         result["problems"] = [f"{type(exc).__name__}: {str(exc)[:500]}"]
     finally:
@@ -401,6 +450,7 @@ def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict
 
 
 def main(argv: list[str] | None = None, env: Mapping[str, str] = os.environ) -> int:
+    """The job's entry point: `export` or `drill`; returns the exit code."""
     args = sys.argv[1:] if argv is None else argv
     if args not in (["export"], ["drill"]):
         print("usage: python -m app.ops.backup export|drill", file=sys.stderr)

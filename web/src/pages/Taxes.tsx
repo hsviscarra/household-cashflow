@@ -282,6 +282,7 @@ function Invoices({
       id: "date",
       label: "Date",
       sort: (r) => r.issue_date,
+      date: (r) => r.issue_date,
       group: (r) => monthLong(`${r.issue_date.slice(0, 7)}-01`),
       cell: (r) => <span className="num whitespace-nowrap">{day(r.issue_date)}</span>,
     },
@@ -425,6 +426,7 @@ function Invoices({
           <div className="mt-2">
             <DataTable
               table="gastos-invoices"
+              filter
               caption={`Invoices of ${year}`}
               columns={columns}
               rows={rows}

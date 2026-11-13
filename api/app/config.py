@@ -1,3 +1,5 @@
+"""Runtime settings, read once from the environment."""
+
 from decimal import Decimal
 from functools import lru_cache
 
@@ -62,9 +64,11 @@ class Settings(BaseSettings):
 
     @property
     def allowed_email_set(self) -> frozenset[str]:
+        """The emails allowed to sign in, lower case; empty means no allow-list (local runs)."""
         return frozenset(e.strip().lower() for e in self.allowed_emails.split(",") if e.strip())
 
 
 @lru_cache
 def get_settings() -> Settings:
+    """The app's settings, read once from the environment."""
     return Settings()

@@ -33,6 +33,8 @@ EXCHANGE = ("Transfers", "Exchange through people")
 
 
 class TransferError(Exception):
+    """A transfer change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -95,6 +97,8 @@ def _log(db: Session, row: Transaction, column: str, old: object, new: object, u
 
 @dataclass
 class MatchResult:
+    """What matching did: pairs linked and card payments settled."""
+
     pairs: int
     settled: int = 0  # settled on their own, where a person said the other side is (ADR-080)
 
@@ -191,6 +195,8 @@ def unlink(db: Session, group: int, user: str) -> int:
 
 @dataclass
 class Leg:
+    """One side of a transfer."""
+
     transaction_id: int
     txn_date: date
     amount: object
@@ -310,6 +316,8 @@ def _settle_learned(db: Session, user: str) -> int:
 
 @dataclass
 class Candidate:
+    """A line that could be a transfer's other side."""
+
     transaction_id: int
     txn_date: date
     amount: object
@@ -321,6 +329,8 @@ class Candidate:
 
 @dataclass
 class Unsettled:
+    """A transfer with no other side yet."""
+
     transaction_id: int
     txn_date: date
     amount: object

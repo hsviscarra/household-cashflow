@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 
 import { askClaude, fetchAskUsage, setAskCap, type AskUsage } from "../api";
 import { num } from "../money";
+import { onAsk } from "../ask";
 import { PAGES } from "../pages";
 
 // Ask Claude inside the app (ADR-100, plan item D1): a panel on every page. The question goes
@@ -44,6 +45,15 @@ export default function AskClaude() {
   useEffect(() => {
     if (open) box.current?.focus();
   }, [open]);
+  // An "Explain" button anywhere writes its question in and opens the panel (ADR-101).
+  useEffect(
+    () =>
+      onAsk((question) => {
+        setTyped(question);
+        setOpen(true);
+      }),
+    [],
+  );
 
   const send = useMutation({
     mutationFn: (question: string) =>

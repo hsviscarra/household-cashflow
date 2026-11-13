@@ -45,6 +45,7 @@ def kept_a_year(db: Session, today: date) -> Decimal:
 
 
 def start(db: Session, today: date, years: int) -> long_view.Start:
+    """What the household has today, by kind, and each loan's path over `years` years."""
     by_class: dict[str, Decimal] = {}
     paths = []
     other_assets = other_debts = ZERO
@@ -86,6 +87,7 @@ def milestones(db: Session, s: long_view.Start, today: date) -> list[tuple[date,
 def ahead(
     db: Session, today: date, a: long_view.Assumptions
 ) -> tuple[long_view.Start, list[long_view.Year]]:
+    """What it starts from and the years ahead, with the known milestones in their year."""
     s = start(db, today, a.years + 1)
     years = long_view.project(s, a, today)
     long_view.place(years, milestones(db, s, today))

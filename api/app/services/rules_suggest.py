@@ -21,6 +21,8 @@ OWNERS = ("Hernan", "Lauren", "Joint")  # whom a rule may set (ck_merchant_rule_
 
 @dataclass
 class Suggestion:
+    """A rule worth making: a pattern categorized the same way several times."""
+
     pattern: str
     category_id: int
     times: int
@@ -90,6 +92,8 @@ def suggestions(db: Session, limit: int = 20) -> list[Suggestion]:
 
 @dataclass
 class Learned:
+    """A rule saved from a suggestion and the lines it took."""
+
     rule_id: int
     pattern: str
     lines: int  # other lines the new rule categorized

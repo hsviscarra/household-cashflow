@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import tax_projection
 
@@ -30,6 +30,8 @@ class TaxProfile(BaseModel):
 
 
 class PersonTaxOut(BaseModel):
+    """A person's projected income tax for a year."""
+
     person: str
     year: int
     profile: TaxProfile
@@ -49,10 +51,6 @@ class PersonTaxOut(BaseModel):
     months_left: int
     set_aside: Decimal
     notes: list[str]
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()[:200]
 
 
 def _out(t: tax_projection.PersonTax) -> PersonTaxOut:
@@ -87,7 +85,7 @@ def set_profile(
             person,
             year,
             tax_projection.Profile(body.regime, body.withheld, body.exempt, body.deductions),
-            _user(request),
+            current_user(request),
         )
         return _out(tax_projection.person_tax(db, person, year, today))
     except tax_projection.TaxError as exc:

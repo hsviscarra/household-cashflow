@@ -64,6 +64,8 @@ WORKBOOK = "excel_history"  # core.transaction.source of the Cash Flow workbook'
 
 
 class TaxError(Exception):
+    """A tax change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -71,6 +73,8 @@ class TaxError(Exception):
 
 @dataclass
 class Profile:
+    """A person's tax choices for a year: regime, withheld, exempt income and deductions."""
+
     regime: str
     withheld: Decimal = ZERO  # by the employer over the whole year
     exempt: Decimal = ZERO  # income that isn't taxed (décimos)
@@ -79,6 +83,8 @@ class Profile:
 
 @dataclass
 class PersonTax:
+    """A person's projected income tax for a year."""
+
     person: str
     year: int
     profile: Profile
@@ -117,6 +123,7 @@ def _key(person: str, year: int) -> str:
 
 
 def profile(db: Session, person: str, year: int) -> Profile:
+    """A person's tax profile for a year: regime, tax withheld, exempt income, deductions."""
     row = db.get(AppSetting, _key(person, year))
     default = Profile(DEFAULT_REGIME.get(person, "employee"))
     if row is None:
@@ -135,6 +142,7 @@ def profile(db: Session, person: str, year: int) -> Profile:
 
 
 def set_profile(db: Session, person: str, year: int, p: Profile, user: str) -> Profile:
+    """Keep a person's tax profile for a year after checking it."""
     if person not in gastos.PEOPLE:
         raise TaxError(f"Person must be one of {', '.join(gastos.PEOPLE)}.")
     if p.regime not in REGIMES:
@@ -233,6 +241,8 @@ def _notes(p: Profile, typical: Decimal) -> list[str]:
 
 
 def person_tax(db: Session, person: str, year: int, today: date | None = None) -> PersonTax:
+    """A person's projected income tax for a year: income so far and projected, the tax on it,
+    what was withheld and what is left to pay."""
     today = today or date.today()
     p = profile(db, person, year)
     by_month = _by_month(db, person, year)
@@ -271,6 +281,7 @@ def person_tax(db: Session, person: str, year: int, today: date | None = None) -
 
 
 def projection(db: Session, year: int, today: date | None = None) -> list[PersonTax]:
+    """Each person's projected income tax for a year."""
     return [person_tax(db, person, year, today) for person in gastos.PEOPLE]
 
 

@@ -11,11 +11,20 @@ from app.config import get_settings
 
 
 class StatementStore(Protocol):
-    def put(self, key: str, data: bytes) -> None: ...
-    def get(self, key: str) -> bytes: ...
+    """Where statement PDFs are kept."""
+
+    def put(self, key: str, data: bytes) -> None:
+        """Store `data` under `key`."""
+        ...
+
+    def get(self, key: str) -> bytes:
+        """The bytes stored under `key`; raises when there are none."""
+        ...
 
 
 class LocalStore:
+    """Statements in a local folder (a Docker volume locally)."""
+
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
 
@@ -26,15 +35,19 @@ class LocalStore:
         return path
 
     def put(self, key: str, data: bytes) -> None:
+        """Write the bytes to a file under the statements folder."""
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
     def get(self, key: str) -> bytes:
+        """Read the file stored under `key`."""
         return self._path(key).read_bytes()
 
 
 class BlobStore:  # pragma: no cover - exercised in Azure, not in CI
+    """Statements in a private Azure Blob container, signed in with the managed identity."""
+
     def __init__(self, account_url: str, container: str) -> None:
         from azure.identity import DefaultAzureCredential
         from azure.storage.blob import BlobServiceClient
@@ -43,6 +56,7 @@ class BlobStore:  # pragma: no cover - exercised in Azure, not in CI
         self.container = service.get_container_client(container)
 
     def put(self, key: str, data: bytes) -> None:
+        """Upload the bytes as a PDF blob."""
         from azure.storage.blob import ContentSettings
 
         self.container.upload_blob(
@@ -53,6 +67,7 @@ class BlobStore:  # pragma: no cover - exercised in Azure, not in CI
         )
 
     def get(self, key: str) -> bytes:
+        """Download the blob's bytes."""
         return bytes(self.container.download_blob(key).readall())
 
 

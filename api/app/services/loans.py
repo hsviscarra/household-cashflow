@@ -56,6 +56,8 @@ LENDER_WORDS = ("IESS", "BIESS")
 
 
 class LoanError(Exception):
+    """A loan change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -63,6 +65,8 @@ class LoanError(Exception):
 
 @dataclass
 class Row:
+    """One installment of an amortization table."""
+
     number: int
     period: date
     principal: Decimal
@@ -74,11 +78,14 @@ class Row:
 
     @property
     def paid(self) -> bool:
+        """Whether the lender's table marks the installment as paid."""
         return self.state in PAID
 
 
 @dataclass
 class Table:
+    """An amortization table as read, with what stops it from being saved."""
+
     rows: list[Row]
     approved: Decimal | None
     term: int | None
@@ -92,7 +99,9 @@ def _money(text: str) -> Decimal:
         raise ValueError(text) from exc
 
 
-def read_table(data: bytes) -> Table:
+def read_table(data: bytes) -> Table:  # noqa: C901 - baseline, docs/refactors.md #15
+    """Read a lender's amortization table (PDF) into installments, with any problems found
+    (a missing number, balances that don't follow); LoanError when it isn't such a table."""
     try:
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             text = "\n".join((page.extract_text() or "") for page in pdf.pages)
@@ -164,6 +173,8 @@ def _month_end(month: date) -> date:
 
 @dataclass
 class ImportResult:
+    """What saving a table stored."""
+
     installments: int
     paid: int
     due: int
@@ -172,6 +183,7 @@ class ImportResult:
 
 
 def import_table(db: Session, holding_id: int, data: bytes, user: str) -> ImportResult:
+    """Replace a loan's installments and table balances with a new table's, in one go."""
     h = _loan(db, holding_id)
     table = read_table(data)
     if table.problems:
@@ -285,6 +297,7 @@ def asks(db: Session, today: date) -> list[tuple[Holding, LoanInstallment]]:
 
 # ---------------------------------------------------------------- reading
 def installments(db: Session, holding_id: int) -> list[LoanInstallment]:
+    """A loan's installments in order."""
     return list(
         db.scalars(
             select(LoanInstallment)
@@ -296,6 +309,8 @@ def installments(db: Session, holding_id: int) -> list[LoanInstallment]:
 
 @dataclass
 class Schedule:
+    """A loan's table in short: paid, left, the next installment and the payoff date."""
+
     installments: int
     paid: int
     left: int
@@ -309,6 +324,8 @@ class Schedule:
 
 
 def schedule(db: Session, holding_id: int, today: date) -> Schedule | None:
+    """A loan's table in summary: paid, left, the next installment, payoff and interest; None
+    without a table."""
     rows = installments(db, holding_id)
     if not rows:
         return None
@@ -344,6 +361,8 @@ def due_by_month(db: Session) -> dict[int, dict[date, Decimal]]:
 
 @dataclass
 class Payment:
+    """An installment with the statement line that paid it."""
+
     number: int
     period: date
     total: Decimal

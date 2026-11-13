@@ -39,15 +39,20 @@ ASSET_CLASSES = ("property", "vehicle", "investment", "cash", "purchase")
 CARRIED_BACK = ("property", "vehicle")  # their first value also counts before it (ADR-063)
 LIABILITY_CLASSES = ("loan", "personal_loan", "card")
 MANUAL = "manual"
+TREND_MONTHS = 24  # months of net worth shown until the person chooses
+MAX_TREND_MONTHS = 36  # each month is valued on its own, so the trend is kept short
 
 
 class NetWorthError(Exception):
+    """A balance-sheet change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
 
 
 def side_of(holding_class: str, side: str | None = None) -> str:
+    """Whether a kind of item is owned or owed; "other" needs to be told."""
     if holding_class in ASSET_CLASSES:
         return "asset"
     if holding_class in LIABILITY_CLASSES:
@@ -59,6 +64,8 @@ def side_of(holding_class: str, side: str | None = None) -> str:
 
 @dataclass
 class Value:
+    """A value typed or loaded for an asset or debt on a day."""
+
     snapshot_id: int | None
     as_of: date
     amount: Decimal
@@ -68,6 +75,8 @@ class Value:
 
 @dataclass
 class Purchase:
+    """A purchase in progress: paid, remaining and its installments."""
+
     target: Decimal
     paid: Decimal
     remaining: Decimal
@@ -80,6 +89,8 @@ class Purchase:
 
 @dataclass
 class Loan:
+    """A loan's payments this year and its table in short."""
+
     monthly_payment: Decimal | None
     paid_this_year: Decimal
     payments_this_year: int
@@ -88,6 +99,8 @@ class Loan:
 
 @dataclass
 class Item:
+    """One asset or debt with its latest value."""
+
     key: str
     name: str
     side: str
@@ -109,26 +122,34 @@ class Item:
 
 @dataclass
 class Point:
+    """A month's assets and liabilities."""
+
     month: date
     assets: Decimal
     liabilities: Decimal
 
     @property
     def net(self) -> Decimal:
+        """Assets less liabilities."""
         return self.assets - self.liabilities
 
 
 @dataclass
 class BalanceSheet:
+    """What is owned and owed on a day, with the trend."""
+
     as_of: date
     items: list[Item]
     series: list[Point]
 
     def total(self, side: str) -> Decimal:
+        """Everything active on one side: "asset" or "liability"."""
         return sum((i.value or ZERO for i in self.items if i.side == side and i.is_active), ZERO)
 
     @property
     def commitments(self) -> Decimal:
+        """What purchases in progress still need: the rest of each down payment and what is due at
+        delivery. Shown, not counted."""
         out = ZERO
         for i in self.items:
             if i.purchase and i.is_active:
@@ -172,6 +193,8 @@ def synced_balances(db: Session, accounts: dict[int, Account]) -> dict[int, tupl
 
 
 def accounts(db: Session, as_of: date) -> list[Item]:
+    """Bank accounts and cards as balance-sheet items: each one's latest statement (or synced)
+    balance on or before the day."""
     accounts = {a.account_id: a for a in db.scalars(select(Account))}
     latest: dict[int, tuple[date, Decimal | None, str]] = {}
     history: dict[int, list[Value]] = defaultdict(list)
@@ -245,6 +268,8 @@ def _loan(db: Session, h: Holding, as_of: date) -> Loan:
 
 
 def holdings(db: Session, as_of: date) -> list[Item]:
+    """Everything else owned or owed as items: each one's latest value on or before the day,
+    with a purchase's progress or a loan's payments."""
     snaps: dict[int, list[BalanceSnapshot]] = defaultdict(list)
     for s in db.scalars(
         select(BalanceSnapshot)
@@ -318,7 +343,8 @@ def holdings(db: Session, as_of: date) -> list[Item]:
     return out
 
 
-def sheet(db: Session, as_of: date | None = None, months: int = 24) -> BalanceSheet:
+def sheet(db: Session, as_of: date | None = None, months: int = TREND_MONTHS) -> BalanceSheet:
+    """The balance sheet on a day and net worth for each of the last `months` months."""
     as_of = as_of or date.today()
     items = accounts(db, as_of) + holdings(db, as_of)
     series = []
@@ -373,6 +399,7 @@ def _guess(name: str, kind: str) -> str:
 
 
 def get_holding(db: Session, holding_id: int) -> Holding:
+    """The item, or NetWorthError 404."""
     h = db.get(Holding, holding_id)
     if h is None:
         raise NetWorthError(f"Item {holding_id} not found.", 404)
@@ -380,6 +407,7 @@ def get_holding(db: Session, holding_id: int) -> Holding:
 
 
 def create_holding(db: Session, fields: dict[str, object]) -> Holding:
+    """Add an item, with a first value when one is given; names are unique."""
     name = str(fields.get("name") or "").strip()
     if not name:
         raise NetWorthError("Give it a name.")
@@ -422,6 +450,7 @@ EDITABLE = (
 
 
 def update_holding(db: Session, holding_id: int, changes: dict[str, object]) -> Holding:
+    """Change an item's details."""
     h = get_holding(db, holding_id)
     if "name" in changes:
         name = str(changes["name"] or "").strip()
@@ -471,6 +500,7 @@ def _paid_as_debt(db: Session, h: Holding) -> None:
 
 
 def delete_holding(db: Session, holding_id: int) -> None:
+    """Remove an item and its recorded values."""
     h = get_holding(db, holding_id)
     for s in db.scalars(select(BalanceSnapshot).where(BalanceSnapshot.holding_id == holding_id)):
         db.delete(s)
@@ -504,6 +534,7 @@ def set_value(
 
 
 def delete_value(db: Session, snapshot_id: int) -> None:
+    """Remove one recorded value; NetWorthError 404 when it isn't an item's value."""
     s = db.get(BalanceSnapshot, snapshot_id)
     if s is None or s.holding_id is None:
         raise NetWorthError(f"Value {snapshot_id} not found.", 404)
@@ -512,4 +543,5 @@ def delete_value(db: Session, snapshot_id: int) -> None:
 
 
 def template_names(db: Session) -> dict[int, str]:
+    """Each recurring item's name, by id."""
     return {t.template_id: t.name for t in db.scalars(select(RecurringTemplate))}

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useState } from "react";
 
-import DataTable, { found, grouped, sorted, type Column } from "./DataTable";
+import DataTable, { filtered, found, grouped, sorted, type Column } from "./DataTable";
 
 type Row = { id: number; shop: string; who: string; amount: number };
 const ROWS: Row[] = [
@@ -195,5 +195,33 @@ describe("DataTable", () => {
       within(screen.getByText("2 ticked").closest("div")!).getByRole("button", { name: "Clear" }),
     );
     expect(screen.queryByText(/ticked/)).not.toBeInTheDocument();
+  });
+
+  it("filters by a value, an amount range and dates (ADR-101)", async () => {
+    const dated: Column<Row>[] = [
+      ...COLUMNS,
+      { id: "day", label: "Day", date: (r) => `2026-10-0${r.id}`, cell: () => "" },
+    ];
+    const shops = (f: Parameters<typeof filtered>[2]) => filtered(ROWS, dated, f).map((r) => r.shop);
+    expect(shops({})).toEqual(["Bakery", "Garage", "Cinema"]);
+    expect(shops({ column: "who", value: "Lauren" })).toEqual(["Bakery", "Cinema"]);
+    expect(shops({ column: "who" })).toHaveLength(3); // a column without a value keeps everything
+    expect(shops({ min: 15, max: 100 })).toEqual(["Cinema"]);
+    expect(shops({ from: "2026-10-02", to: "2026-10-02" })).toEqual(["Garage"]);
+    expect(shops({ column: "who", value: "Lauren", min: 15 })).toEqual(["Cinema"]);
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <DataTable table="t" caption="Rows" columns={dated} rows={ROWS} rowKey={(r) => r.id} filter />
+      </QueryClientProvider>,
+    );
+    const bar = screen.getByRole("group", { name: "Filter" });
+    fireEvent.change(within(bar).getByLabelText("Only where"), { target: { value: "who" } });
+    fireEvent.change(within(bar).getByLabelText("Who is"), { target: { value: "Lauren" } });
+    expect(within(bar).getByRole("status")).toHaveTextContent("2 of 3 rows");
+    fireEvent.change(within(bar).getByLabelText("Amount from"), { target: { value: "15" } });
+    expect(within(bar).getByRole("status")).toHaveTextContent("1 of 3 rows");
+    expect(screen.getByRole("table")).toHaveTextContent("Cinema");
+    expect(screen.getByRole("table")).not.toHaveTextContent("Bakery");
   });
 });

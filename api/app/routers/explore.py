@@ -17,6 +17,8 @@ DB = Annotated[Session, Depends(get_session)]
 
 
 class ExploreOut(BaseModel):
+    """A view's table with its totals."""
+
     measure: str
     rows_by: str
     cols_by: str | None
@@ -43,6 +45,7 @@ def get_explore(
     account_id: int | None = None,
     country: Annotated[str | None, Query(min_length=2, max_length=2)] = None,
 ) -> ExploreOut:
+    """Spending by two dimensions and a measure over a period of months (ADR-099)."""
     spec = explore.Spec(
         measure, rows, cols or None, start, end, person, group_id, category_id, account_id, country
     )

@@ -31,19 +31,24 @@ SPENT = ("expense", "fee_interest", "refund")
 
 @dataclass
 class Measures:
+    """Money in, spent and set aside over a period (ADR-073)."""
+
     money_in: Decimal = ZERO
     spent: Decimal = ZERO
     set_aside: Decimal = ZERO
 
     @property
     def free_cash(self) -> Decimal:
+        """Money in less spent: what was there to set aside."""
         return self.money_in - self.spent
 
     @property
     def left_over(self) -> Decimal:
+        """Free cash less what was set aside: what stayed in the bank accounts."""
         return self.free_cash - self.set_aside
 
     def out(self) -> dict[str, Decimal]:
+        """The measures and the two derived from them, by name."""
         return {
             "money_in": self.money_in,
             "spent": self.spent,
@@ -55,6 +60,8 @@ class Measures:
 
 @dataclass
 class Period:
+    """A period's measures."""
+
     month: date
     start: date
     end: date
@@ -63,6 +70,8 @@ class Period:
 
 @dataclass
 class Month:
+    """A month's measures: so far, the month before and the months around it."""
+
     month: date
     through: date  # the last day counted: today in a running month, else the month's end
     running: bool
@@ -72,6 +81,7 @@ class Month:
 
 
 def month_end(m: date) -> date:
+    """The last day of a month."""
     return m.replace(day=monthrange(m.year, m.month)[1])
 
 
@@ -124,6 +134,8 @@ def spent_by_month(db: Session, months: list[date]) -> dict[date, Decimal]:
 
 
 def month(db: Session, m: date, today: date, person: str | None = None, months: int = 12) -> Month:
+    """A month's measures with a fair comparison (the same days of the month before while it
+    runs) and the last `months` months."""
     m = first(m)
     end = month_end(m)
     running = m <= today <= end

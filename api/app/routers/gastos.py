@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Res
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import gastos
 
@@ -26,6 +26,8 @@ GpCategory = Literal[
 
 
 class CategoryTotalOut(BaseModel):
+    """A kind of deductible expense: invoices and amount."""
+
     category: str
     label: str
     invoices: int
@@ -33,6 +35,8 @@ class CategoryTotalOut(BaseModel):
 
 
 class PersonSummaryOut(BaseModel):
+    """A person's deductible expenses against their cap, and the rebate."""
+
     person: str
     cargas: int
     catastrophic: bool
@@ -46,6 +50,8 @@ class PersonSummaryOut(BaseModel):
 
 
 class GastosSummaryOut(BaseModel):
+    """A year's deductible expenses for everyone."""
+
     year: int
     canasta: Decimal | None
     rate: Decimal
@@ -56,6 +62,8 @@ class GastosSummaryOut(BaseModel):
 
 
 class GastosInvoiceOut(BaseModel):
+    """An invoice as a deductible expense: whose, what kind and how much counts."""
+
     invoice_id: int
     issue_date: date
     issuer_ruc: str
@@ -84,22 +92,23 @@ class GastosChoiceIn(BaseModel):
 
 
 class GpProfileIn(BaseModel):
+    """A person's dependants and catastrophic-illness status."""
+
     cargas: int = Field(ge=0, le=20)
     catastrophic: bool = False
 
 
 class GpProfileOut(GpProfileIn):
+    """A person's profile for a year with the cap it gives."""
+
     person: str
     year: int
     cap: Decimal | None
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 @router.get("/gastos/{year}", response_model=GastosSummaryOut)
 def summary(year: Year, db: DB) -> GastosSummaryOut:
+    """A year's deductible personal expenses by person and kind, against the cap."""
     s = gastos.summary(db, year)
     return GastosSummaryOut(**asdict(s), labels=gastos.LABELS)
 
@@ -127,12 +136,13 @@ def invoices(
 
 @router.put("/invoices/{invoice_id}/gastos", response_model=GastosInvoiceOut)
 def choose(invoice_id: int, body: GastosChoiceIn, db: DB, request: Request) -> GastosInvoiceOut:
+    """Set whether and how an invoice counts as a deductible expense, and for whom."""
     sent = body.model_fields_set
     try:
         inv = gastos.choose(
             db,
             invoice_id,
-            _user(request),
+            current_user(request),
             set_person="person" in sent,
             person=body.person,
             set_category="category" in sent,
@@ -149,6 +159,8 @@ def choose(invoice_id: int, body: GastosChoiceIn, db: DB, request: Request) -> G
 
 @router.put("/gastos/{year}/profile/{person}", response_model=GpProfileOut)
 def set_profile(year: Year, person: Person, body: GpProfileIn, db: DB) -> GpProfileOut:
+    """Keep a person's dependants and catastrophic-illness status for a tax year: they set
+    the cap."""
     p = gastos.set_profile(db, person, year, body.cargas, body.catastrophic)
     return GpProfileOut(
         person=p.person,

@@ -64,11 +64,14 @@ _READING = threading.Lock()
 
 
 def busy() -> bool:
+    """Whether a scanned statement is being read right now (one at a time)."""
     return _READING.locked()
 
 
 @dataclass(frozen=True)
 class Word:
+    """A word the OCR read, with where it sits on the page."""
+
     line: tuple[int, int, int]
     left: int
     top: int
@@ -78,6 +81,7 @@ class Word:
 
 
 def available() -> bool:
+    """Whether the OCR program is installed."""
     return shutil.which("tesseract") is not None
 
 

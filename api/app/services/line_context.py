@@ -25,6 +25,8 @@ PURPOSE_KEY = "card-purpose:"
 
 @dataclass
 class Other:
+    """Another line that may be this one's pair or its repeat."""
+
     transaction_id: int
     txn_date: date
     amount: Decimal
@@ -36,6 +38,8 @@ class Other:
 
 @dataclass
 class InvoiceBrief:
+    """An invoice near a line, in short, and whether it is linked to it."""
+
     invoice_id: int
     issuer_name: str
     issue_date: date
@@ -46,6 +50,8 @@ class InvoiceBrief:
 
 @dataclass
 class RuleBrief:
+    """The rule that categorized a line."""
+
     rule_id: int
     pattern: str
     match_type: str
@@ -56,6 +62,8 @@ class RuleBrief:
 
 @dataclass
 class Purpose:
+    """What an account is for, and what is usual and unusual on it."""
+
     account_name: str
     for_whom: str
     usual: list[str]
@@ -64,6 +72,8 @@ class Purpose:
 
 @dataclass
 class Context:
+    """Everything known about a line that helps to categorize it."""
+
     transaction_id: int
     category_source: str | None
     rule: RuleBrief | None
@@ -123,6 +133,8 @@ def unusual_lines(db: Session, since: date) -> list[tuple[Transaction, str]]:
 
 
 def build(db: Session, t: Transaction) -> Context:
+    """What the app knows about a line: same-amount lines, invoices near it, its transfer side
+    and what its card is usually used for."""
     paths = _paths(db)
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
 

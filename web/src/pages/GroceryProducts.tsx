@@ -325,6 +325,7 @@ function ProductTable({ rows }: { rows: GroceryProduct[] }) {
     <div className="mt-3">
       <DataTable
         table="grocery-products"
+        filter
         caption="Every product bought in the period"
         columns={columns}
         rows={rows}

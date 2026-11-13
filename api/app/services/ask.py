@@ -31,6 +31,7 @@ MAX_TURNS = 6  # times Claude may ask for tools before it has to answer
 MAX_TOKENS = 1200  # of each of Claude's turns
 MAX_TOOL_CHARS = 20_000  # of one tool's result sent back; longer is cut, and says so
 MAX_QUESTION = 1000
+MAX_CAP = Decimal(1000)  # the highest monthly limit the panel accepts, in USD
 TIMEOUT_SECONDS = 60
 # USD per million tokens (input, output), from the Claude API pricing page on Nov 13 2026.
 # A model that isn't listed is charged at the dearest, so the cap errs on the safe side.
@@ -59,6 +60,8 @@ How to answer:
 
 
 class AskError(Exception):
+    """A question that can't be answered; `status` is the HTTP status to give."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -66,6 +69,8 @@ class AskError(Exception):
 
 @dataclass(frozen=True)
 class Tool:
+    """A reading tool as Claude sees it (name, description, arguments) and the function to run."""
+
     name: str
     description: str
     schema: dict[str, Any]
@@ -84,13 +89,19 @@ class Turn:
 
 
 class Caller(Protocol):
+    """What sends one turn to Claude. The real one calls the API; tests script the turns."""
+
     def __call__(
         self, model: str, system: str, tools: list[Tool], messages: list[dict[str, Any]]
-    ) -> Turn: ...
+    ) -> Turn:
+        """Send the conversation so far and return Claude's turn."""
+        ...
 
 
 @dataclass
 class Usage:
+    """What a month of questions has cost so far, against its limit."""
+
     month: date
     spent: Decimal
     questions: int
@@ -98,11 +109,14 @@ class Usage:
 
     @property
     def left(self) -> Decimal:
+        """What is left of the month's limit, never under zero."""
         return max(ZERO, self.cap - self.spent)
 
 
 @dataclass
 class Answer:
+    """Claude's answer, what the question cost and the month's total after it."""
+
     text: str
     cost: Decimal
     tools_used: list[str]
@@ -110,6 +124,7 @@ class Answer:
 
 
 def available() -> bool:
+    """Whether there is an API key to ask with."""
     return bool(get_settings().anthropic_api_key)
 
 
@@ -124,6 +139,7 @@ def read_tools() -> list[Tool]:
 
 
 def cost_of(model: str, input_tokens: int, output_tokens: int) -> Decimal:
+    """What a call costs in USD, from its tokens and the model's price in `PRICES`."""
     dearest = max(PRICES.values())
     per_in, per_out = PRICES.get(model, dearest)
     return (input_tokens * per_in + output_tokens * per_out) / MILLION
@@ -131,6 +147,7 @@ def cost_of(model: str, input_tokens: int, output_tokens: int) -> Decimal:
 
 # ---------------- the month's total and its cap ----------------
 def cap(db: Session) -> Decimal:
+    """The month's limit in USD: what was set on the panel, else the configured default."""
     row = db.get(AppSetting, CAP_KEY)
     if row is None:
         return get_settings().ask_monthly_cap
@@ -141,6 +158,7 @@ def cap(db: Session) -> Decimal:
 
 
 def set_cap(db: Session, amount: Decimal, user: str) -> Decimal:
+    """Keep a new monthly limit (0 turns asking off)."""
     if amount < 0:
         raise AskError("The monthly limit can't be negative.")
     row = db.get(AppSetting, CAP_KEY)
@@ -153,6 +171,7 @@ def set_cap(db: Session, amount: Decimal, user: str) -> Decimal:
 
 
 def usage(db: Session, today: date) -> Usage:
+    """What the month of `today` has spent and how many questions it took."""
     month = today.replace(day=1)
     row = db.get(AppSetting, USAGE_KEY + month.isoformat()[:7])
     spent, questions = ZERO, 0
@@ -197,6 +216,7 @@ def call_claude(model: str, system: str, tools: list[Tool], messages: list[dict[
                 {"name": t.name, "description": t.description, "input_schema": t.schema}
                 for t in tools
             ],
+            # Plain dicts in the API's message shape; the SDK types them as TypedDicts.
             messages=messages,  # type: ignore[arg-type]
         )
     except anthropic.APIError as exc:
@@ -241,6 +261,8 @@ def run_tool(tools: dict[str, Tool], name: str, arguments: dict[str, Any]) -> tu
 
 
 def system_prompt(today: date, page: str | None, month: str | None) -> str:
+    """What Claude is told before the question: the date, the page, the tools' notes and
+    how to answer."""
     where = ""
     if page:
         where = f"They are on the page {page}" + (f", looking at {month}." if month else ".")
@@ -262,53 +284,77 @@ def ask(
     """Answer one question. `deep` uses the larger model (the monthly report's) for analysis."""
     today = today or date.today()
     question = question.strip()
-    if not question or len(question) > MAX_QUESTION:
-        raise AskError(f"A question has between 1 and {MAX_QUESTION} characters.")
-    if not available() and call is None:
-        raise AskError("Claude isn't set up for this app (no API key).", 503)
-    before = usage(db, today)
-    if before.cap <= 0:
-        raise AskError("Asking Claude is turned off (the monthly limit is 0).", 429)
-    if before.spent >= before.cap:
-        raise AskError(
-            f"This month's limit for Claude (${before.cap:,.2f}) is used up. "
-            "It starts again next month, or raise the limit.",
-            429,
-        )
+    before = _allowed(db, question, today, scripted=call is not None)
     settings = get_settings()
     model = settings.anthropic_report_model if deep else settings.anthropic_model
     offered = tools if tools is not None else read_tools()
-    by_name = {t.name: t for t in offered}
-    send = call or call_claude
-    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
-    system = system_prompt(today, page, month)
-    cost, used, text = ZERO, [], ""
+    talk = _Talk(model, system_prompt(today, page, month), offered, call or call_claude)
     try:
-        for _ in range(MAX_TURNS):
-            turn = send(model, system, offered, messages)
-            cost += cost_of(model, turn.input_tokens, turn.output_tokens)
-            text = turn.text
-            if not turn.wants:
-                break
-            messages.append({"role": "assistant", "content": turn.content})
-            results = []
-            for tool_id, name, arguments in turn.wants:
-                result, failed = run_tool(by_name, name, arguments)
-                used.append(name)
-                results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_id,
-                        "content": result,
-                        "is_error": failed,
-                    }
-                )
-            messages.append({"role": "user", "content": results})
-        else:
-            text = (
-                text or "That took more lookups than one question allows. Ask something narrower."
-            )
+        text = talk.answer(question)
     finally:
         # Whatever happened, what was used is counted.
-        after = _record(db, today, cost, user) if cost > 0 else before
-    return Answer(text.strip() or "Claude had no answer.", cost.quantize(USD), used, after)
+        after = _record(db, today, talk.cost, user) if talk.cost > 0 else before
+    return Answer(
+        text.strip() or "Claude had no answer.", talk.cost.quantize(USD), talk.used, after
+    )
+
+
+def _allowed(db: Session, question: str, today: date, *, scripted: bool) -> Usage:
+    """The month's usage when the question may be sent; AskError says why when it may not."""
+    if not question or len(question) > MAX_QUESTION:
+        raise AskError(f"A question has between 1 and {MAX_QUESTION} characters.")
+    if not available() and not scripted:
+        raise AskError("Claude isn't set up for this app (no API key).", 503)
+    now = usage(db, today)
+    if now.cap <= 0:
+        raise AskError("Asking Claude is turned off (the monthly limit is 0).", 429)
+    if now.spent >= now.cap:
+        raise AskError(
+            f"This month's limit for Claude (${now.cap:,.2f}) is used up. "
+            "It starts again next month, or raise the limit.",
+            429,
+        )
+    return now
+
+
+@dataclass
+class _Talk:
+    """One question's conversation: Claude's turns, the tools run for it, and what it cost."""
+
+    model: str
+    system: str
+    tools: list[Tool]
+    send: Caller
+    cost: Decimal = ZERO
+    used: list[str] = field(default_factory=list)
+
+    def answer(self, question: str) -> str:
+        """Send the question and run the tools Claude asks for until it answers, at most
+        MAX_TURNS times."""
+        by_name = {t.name: t for t in self.tools}
+        messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+        text = ""
+        for _ in range(MAX_TURNS):
+            turn = self.send(self.model, self.system, self.tools, messages)
+            self.cost += cost_of(self.model, turn.input_tokens, turn.output_tokens)
+            text = turn.text
+            if not turn.wants:
+                return text
+            messages.append({"role": "assistant", "content": turn.content})
+            messages.append({"role": "user", "content": self._results(by_name, turn)})
+        return text or "That took more lookups than one question allows. Ask something narrower."
+
+    def _results(self, by_name: dict[str, Tool], turn: Turn) -> list[dict[str, Any]]:
+        out = []
+        for tool_id, name, arguments in turn.wants:
+            result, failed = run_tool(by_name, name, arguments)
+            self.used.append(name)
+            out.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": result,
+                    "is_error": failed,
+                }
+            )
+        return out

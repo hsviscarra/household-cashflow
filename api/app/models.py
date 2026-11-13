@@ -98,10 +98,14 @@ def _in(column: str, values: tuple[str, ...]) -> str:
 
 
 class Base(DeclarativeBase):
+    """The base of every table model."""
+
     metadata = MetaData(naming_convention=NAMING)
 
 
 class Timestamps:
+    """When a row was created and last changed."""
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -109,6 +113,8 @@ class Timestamps:
 
 
 class Account(Timestamps, Base):
+    """A bank account or card (core.account); only its last four digits are kept."""
+
     __tablename__ = "account"
     __table_args__ = (
         CheckConstraint(_in("kind", ACCOUNT_KINDS), name="kind"),
@@ -136,6 +142,8 @@ class Account(Timestamps, Base):
 
 
 class Category(Timestamps, Base):
+    """A group or a category under one (core.category)."""
+
     __tablename__ = "category"
     __table_args__ = (
         CheckConstraint(_in("kind", CATEGORY_KINDS), name="kind"),
@@ -159,6 +167,8 @@ class Category(Timestamps, Base):
 
 
 class MerchantRule(Timestamps, Base):
+    """A rule that gives a merchant's lines a category (core.merchant_rule)."""
+
     __tablename__ = "merchant_rule"
     __table_args__ = (
         CheckConstraint(_in("match_type", MATCH_TYPES), name="match_type"),
@@ -715,6 +725,8 @@ class MonthlyReport(Base):
 
 
 class LoadLog(Base):
+    """One load into the app: what, by whom, how many rows (audit.load_log)."""
+
     __tablename__ = "load_log"
     __table_args__ = ({"schema": "audit"},)
 
@@ -868,6 +880,8 @@ class ImportBatch(Base):
 
 
 class StgTransaction(Base):
+    """A normalized line of an upload, waiting for approval (stg.stg_transaction)."""
+
     __tablename__ = "stg_transaction"
     __table_args__ = ({"schema": "stg"},)
 

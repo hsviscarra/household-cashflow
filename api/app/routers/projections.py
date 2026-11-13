@@ -40,6 +40,7 @@ def get_projections(
     include_held: Annotated[bool, Query(description="Count money held for others")] = False,
     seasons: Annotated[bool, Query(description="Everyday spending follows the seasons")] = True,
 ) -> ProjectionOut:
+    """The cash forecast for 1, 3 or 12 months with its likely range (ADR-013, ADR-033, ADR-096)."""
     if horizon not in projections.HORIZONS or average_over not in projections.AVERAGES:
         raise HTTPException(422, "Horizon is 1, 3 or 12 months; the average 3, 6 or 12.")
     p = projections.project(
@@ -138,4 +139,5 @@ def _out(p: projections.Projection) -> ProjectionOut:
         chance_under_floor=p.chance_under_floor,
         seasons=p.seasons,
         seasonal_groups=p.seasonal_groups,
+        seasons_from=p.seasons_from,
     )

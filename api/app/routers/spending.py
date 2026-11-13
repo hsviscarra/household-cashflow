@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.schemas import (
     SpendCategoryOut,
@@ -34,6 +34,8 @@ Person = Annotated[Literal["Hernan", "Lauren", "Joint"] | None, Query()]
 
 @router.get("", response_model=SpendingOut)
 def get_spending(db: DB, month: Month = None, person: Person = None) -> SpendingOut:
+    """A month's spending by group and category with comparisons, merchants and the 12-month
+    trend."""
     s = spending.analyze(db, month, person)
     return SpendingOut(
         month=s.month,
@@ -94,6 +96,8 @@ def get_lines(
     country: str | None = None,
     fixed: bool | None = None,
 ) -> list[SpendLineOut]:
+    """The spending lines of a month, narrowed by group, category, merchant, person, country or
+    kind."""
     found = spending.lines(
         db,
         month,
@@ -111,6 +115,8 @@ def get_lines(
 
 
 class MerchantRowOut(BaseModel):
+    """A merchant over a period: amount, visits and average ticket."""
+
     merchant: str
     group_id: int
     group_name: str
@@ -121,6 +127,8 @@ class MerchantRowOut(BaseModel):
 
 
 class ProductRowOut(BaseModel):
+    """A product over a period: times bought, quantity and unit price."""
+
     product_key: str
     description: str
     product_group: str | None
@@ -137,6 +145,8 @@ class ProductRowOut(BaseModel):
 
 
 class IdeaOut(BaseModel):
+    """A pattern in the month's lines worth a look, with what it cost."""
+
     key: str
     title: str
     detail: str
@@ -200,6 +210,8 @@ def label_groceries(db: DB, start: date, months: int = 1) -> dict[str, int]:
 
 
 class LabelsIn(BaseModel):
+    """A product's aisle, type and brand."""
+
     product_key: str = Field(min_length=1, max_length=300)
     product_group: str | None = None
     product_type: str | None = Field(default=None, max_length=60)
@@ -210,7 +222,7 @@ class LabelsIn(BaseModel):
 def put_grocery_labels(body: LabelsIn, db: DB, request: Request) -> dict[str, int]:
     """A person's aisle, type or brand for a product, kept for every purchase of it."""
     changes = body.model_dump(exclude_unset=True, exclude={"product_key"})
-    user = request.headers.get(PRINCIPAL_HEADER) or "local"
+    user = current_user(request)
     try:
         return {"lines": product_labels.set_labels(db, body.product_key, changes, user)}
     except product_labels.SuggestError as exc:

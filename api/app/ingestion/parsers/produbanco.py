@@ -56,7 +56,7 @@ def _period_date(day: str, mon: str, year: str) -> date:
 MAX_STEPS = 20_000  # the search below; a statement has a few dozen lines
 
 
-def _chain(
+def _chain(  # noqa: C901 - baseline, docs/refactors.md #15
     found: list[tuple[Line, str, Decimal]], opening: Decimal
 ) -> list[tuple[int, int]] | None:
     """An order of all lines in which each one's balance is the previous balance plus its amount,
@@ -101,7 +101,8 @@ def _chain(
     return None
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901 - baseline, docs/refactors.md #15
+    """Read a Produbanco statement: the savings account, or the Visa card when the pages are one."""
     text = "\n".join(pages)
     if produbanco_card.is_card_statement(text):  # the Visa card, not the savings account
         return produbanco_card.parse(pages)

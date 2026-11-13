@@ -12,6 +12,7 @@ import {
   type Projection,
   type ProjectionMonth,
 } from "../api";
+import ChartTools from "../components/ChartTools";
 import { CashLines, type CashSeries } from "../components/flowcharts";
 import Scenarios from "../components/Scenarios";
 import { localToday, money, monthLong, monthShort, num } from "../money";
@@ -228,7 +229,25 @@ export default function ProjectionsPage() {
           </div>
           <Scenarios opts={opts} changes={changes} setChanges={setChanges} />
 
-          <h2 className="mt-10 font-display text-2xl font-bold">Cash day by day</h2>
+          <div className="mt-10 flex flex-wrap items-end justify-between gap-3">
+            <h2 className="font-display text-2xl font-bold">Cash day by day</h2>
+            <ChartTools
+              name="Forecast"
+              csv={{
+                file: "forecast.csv",
+                rows: () => [
+                  ["Day", "Cash", "Likely low", "Likely high"],
+                  ...p.daily.map((d, i) => [
+                    d.day,
+                    d.balance,
+                    p.band?.[i]?.low ?? "",
+                    p.band?.[i]?.high ?? "",
+                  ]),
+                ],
+              }}
+              explain={`Explain the cash forecast for the next ${n} months: when cash is lowest, what drives it, and how sure the range is.`}
+            />
+          </div>
           <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
             <CashLines
               title={`Projected cash from ${day(p.daily[0].day)} to ${day(p.daily[p.daily.length - 1].day)}`}
@@ -473,9 +492,11 @@ function Assumptions({
             <strong>Seasons</strong>:{" "}
             {!opts.seasons
               ? "every month ahead gets the same average"
-              : p.seasonal_groups
-                ? `${p.seasonal_groups} ${p.seasonal_groups === 1 ? "group follows" : "groups follow"} their own year (school, December, yearly payments); on cards, paid the month after`
-                : "no group shows a pattern yet (it takes two complete years of history)"}
+              : p.seasons_from === "all"
+                ? "all your spending together follows its year (December, the school months), read from past years; no single group has two years of detail yet"
+                : p.seasonal_groups
+                  ? `${p.seasonal_groups} ${p.seasonal_groups === 1 ? "group follows" : "groups follow"} their own year (school, December, yearly payments); on cards, paid the month after`
+                  : "no group shows a pattern yet (it takes two complete years of history)"}
           </dt>
           <dd>
             <label className="flex items-center gap-2">

@@ -39,6 +39,7 @@ DASH = "\u2013"
 
 
 def month_end(month: date) -> date:
+    """The last day of a month."""
     return recurring.add_months(month, 1) - DAY
 
 
@@ -53,6 +54,8 @@ def _days(start: date, end: date) -> str:
 
 @dataclass
 class Item:
+    """Something a month still needs."""
+
     kind: str  # statement, import, uncategorized, transfer, recurring, balance, note
     text: str
     link: str
@@ -61,12 +64,15 @@ class Item:
 
 @dataclass
 class Coverage:
+    """How many of a month's days an account's statements cover."""
+
     account_id: int
     covered_days: int
     days: int
 
     @property
     def state(self) -> str:
+        """Whether the month's days are fully, partly or not covered by data."""
         if self.covered_days >= self.days:
             return "full"
         return "partial" if self.covered_days else "none"
@@ -74,6 +80,8 @@ class Coverage:
 
 @dataclass
 class MonthStatus:
+    """A month's source, what it needs and its coverage."""
+
     month: date
     source: str  # excel or statements
     items: list[Item] = field(default_factory=list)
@@ -81,11 +89,14 @@ class MonthStatus:
 
     @property
     def complete(self) -> bool:
+        """Whether nothing is left to do for the month."""
         return not self.items
 
 
 @dataclass
 class Load:
+    """A load: when, from what and by whom."""
+
     loaded_at: datetime
     source: str
     file_name: str | None
@@ -95,6 +106,8 @@ class Load:
 
 @dataclass
 class TimelineStatement:
+    """A statement on an account's timeline."""
+
     file_id: int
     file_name: str
     start: date
@@ -105,6 +118,8 @@ class TimelineStatement:
 
 @dataclass
 class Gap:
+    """A period an account has no statement for."""
+
     start: date
     end: date
     # Set when the gap is the current cycle, whose statement the bank hasn't issued yet.
@@ -117,6 +132,8 @@ class Gap:
 
 @dataclass
 class AccountTimeline:
+    """An account's statements and gaps."""
+
     account_id: int
     name: str
     closed_on: date | None
@@ -141,6 +158,8 @@ class Source:
 
 @dataclass
 class Status:
+    """The state of the data: accounts, months, loads and the timeline."""
+
     today: date
     excel_through: date | None
     accounts: list[Account]
@@ -156,6 +175,7 @@ EMAIL_LAG = 7  # days after a statement closes by which its email has usually ar
 
 
 def how_it_arrives(a: Account) -> str:
+    """How an account's data gets in: bank sync, email or upload."""
     if a.sync_id:
         return "bank_sync"
     text = f"{a.institution} {a.name}".upper()
@@ -273,6 +293,7 @@ class _Stmt:
 
 
 def approved_statements(db: Session) -> list[_Stmt]:
+    """Every approved statement with its account, period and balances."""
     approved = set(
         db.scalars(select(ImportBatch.statement_file_id).where(ImportBatch.status == "approved"))
     )
@@ -564,7 +585,7 @@ def _gaps(periods: list[tuple[date, date]], start: date, end: date) -> list[tupl
     return gaps
 
 
-def month_status(db: Session, today: date | None = None, with_loads: bool = True) -> Status:
+def month_status(db: Session, today: date | None = None, with_loads: bool = True) -> Status:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
     """with_loads=False skips the load history (audit.load_log), which the read-only MCP login
     can't read."""
     today = today or date.today()
@@ -839,6 +860,7 @@ def _balance_breaks(
 
 
 def loads(db: Session, limit: int = 30) -> list[Load]:
+    """The latest loads (statements, history, syncs) with what each did."""
     names = {f.sha256: f.file_name for f in db.scalars(select(StatementFile))}
     out = []
     for log in db.scalars(select(LoadLog).order_by(LoadLog.load_id.desc()).limit(limit)):

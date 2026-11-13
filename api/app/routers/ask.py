@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import ask
 
@@ -18,6 +18,8 @@ Today = Annotated[date | None, Query(description="For tests; default today")]
 
 
 class QuestionIn(BaseModel):
+    """A question, with the page it was asked from."""
+
     question: str = Field(min_length=1, max_length=ask.MAX_QUESTION)
     page: str | None = Field(default=None, max_length=100, pattern=r"^/[A-Za-z0-9/_-]*$")
     month: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
@@ -25,6 +27,8 @@ class QuestionIn(BaseModel):
 
 
 class UsageOut(BaseModel):
+    """The month's usage and limit."""
+
     available: bool
     month: date
     spent: Decimal
@@ -34,6 +38,8 @@ class UsageOut(BaseModel):
 
 
 class AnswerOut(BaseModel):
+    """The answer, its cost and the usage after it."""
+
     answer: str
     cost: Decimal
     tools_used: list[str]
@@ -41,11 +47,9 @@ class AnswerOut(BaseModel):
 
 
 class CapIn(BaseModel):
-    cap: Decimal = Field(ge=0, le=1000, max_digits=7, decimal_places=2)
+    """A new monthly limit in USD."""
 
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()[:200]
+    cap: Decimal = Field(ge=0, le=ask.MAX_CAP, max_digits=7, decimal_places=2)
 
 
 def _usage(u: ask.Usage) -> UsageOut:
@@ -61,22 +65,25 @@ def _usage(u: ask.Usage) -> UsageOut:
 
 @router.get("/usage", response_model=UsageOut)
 def get_usage(db: DB, today: Today = None) -> UsageOut:
+    """What this month's questions have cost, and the limit."""
     return _usage(ask.usage(db, today or date.today()))
 
 
 @router.put("/cap", response_model=UsageOut)
 def set_cap(body: CapIn, db: DB, request: Request, today: Today = None) -> UsageOut:
-    ask.set_cap(db, body.cap, _user(request))
+    """Change the monthly limit; 0 turns asking off."""
+    ask.set_cap(db, body.cap, current_user(request))
     return _usage(ask.usage(db, today or date.today()))
 
 
 @router.post("", response_model=AnswerOut)
 def post_question(body: QuestionIn, db: DB, request: Request, today: Today = None) -> AnswerOut:
+    """Ask one question. 503 without an API key, 429 at the monthly limit."""
     try:
         a = ask.ask(
             db,
             body.question,
-            _user(request),
+            current_user(request),
             today=today,
             page=body.page,
             month=body.month,

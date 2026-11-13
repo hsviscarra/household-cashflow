@@ -24,17 +24,21 @@ SPENDING = ("expense", "fee_interest", "refund")
 
 
 class SourceError(Exception):
+    """The comparison can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
 
 
 def statements_from(db: Session) -> date | None:
+    """The first month whose statements count in place of the workbook; None when not set."""
     s = db.get(AppSetting, KEY)
     return date.fromisoformat(s.setting_value) if s else None
 
 
 def workbook_months(db: Session) -> list[date]:
+    """The months the workbook has rows for."""
     return sorted(
         db.scalars(
             select(Transaction.cash_month).where(Transaction.source == "excel_history").distinct()
@@ -82,17 +86,22 @@ def set_statements_from(db: Session, month: date | None, user: str) -> date | No
 # ---------------------------------------------------------------- workbook vs statements
 @dataclass
 class GroupGap:
+    """A group's spending in the workbook and in the statements."""
+
     group: str
     workbook: Decimal = ZERO
     statements: Decimal = ZERO
 
     @property
     def difference(self) -> Decimal:
+        """Statements less workbook for the group."""
         return self.statements - self.workbook
 
 
 @dataclass
 class MonthCheck:
+    """A month in the workbook against the same month in the statements."""
+
     month: date
     workbook_income: Decimal = ZERO
     statements_income: Decimal = ZERO
@@ -102,7 +111,7 @@ class MonthCheck:
     groups: list[GroupGap] = field(default_factory=list)
 
 
-def check(db: Session) -> list[MonthCheck]:
+def check(db: Session) -> list[MonthCheck]:  # noqa: C901 - baseline, docs/refactors.md #15
     """For each month that has workbook rows and counts statements: income and spending from
     each source, and spending per group, biggest gap first. Spending as on the Spending page
     (expenses, fees and interest, less refunds); transfers left out; split lines through their

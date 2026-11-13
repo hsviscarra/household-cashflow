@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.models import UserSetting
 
@@ -22,22 +22,22 @@ MAX_VALUE = 20_000  # characters of JSON; columns and a few dozen saved views fi
 MAX_KEYS = 100
 
 
-def current_user(request: Request) -> str:
-    """The sign-in email Container Apps passes on; "local" when the app runs without sign-in."""
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 class SettingsOut(BaseModel):
+    """The signed-in person and their settings."""
+
     user: str
     settings: dict[str, Any]
 
 
 class SettingIn(BaseModel):
+    """A setting's value: any JSON."""
+
     value: Any
 
 
 @router.get("", response_model=SettingsOut)
 def get_settings(db: DB, request: Request) -> SettingsOut:
+    """The signed-in person's saved settings (layouts, views, choices)."""
     user = current_user(request)
     rows = db.scalars(select(UserSetting).where(UserSetting.user_email == user))
     return SettingsOut(user=user, settings={r.key: json.loads(r.value_json) for r in rows})
@@ -45,6 +45,7 @@ def get_settings(db: DB, request: Request) -> SettingsOut:
 
 @router.put("/{key}", response_model=SettingsOut)
 def put_setting(db: DB, request: Request, key: Key, body: SettingIn) -> SettingsOut:
+    """Keep one setting for the signed-in person; the value is any JSON up to a size limit."""
     user = current_user(request)
     text = json.dumps(body.value, separators=(",", ":"), ensure_ascii=False)
     if len(text) > MAX_VALUE:
@@ -63,6 +64,7 @@ def put_setting(db: DB, request: Request, key: Key, body: SettingIn) -> Settings
 
 @router.delete("/{key}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_setting(db: DB, request: Request, key: Key) -> Response:
+    """Forget one of the person's settings."""
     row = db.get(UserSetting, (current_user(request), key))
     if row is not None:
         db.delete(row)

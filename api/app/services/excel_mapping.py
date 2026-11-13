@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Mapping:
+    """What a workbook row means: its type, category, person and country."""
+
     type: str  # income, expense, savings, debt_payment, fee_interest
     category: str  # "Group" or "Group/Subcategory", as seeded
     person: str | None = None
@@ -19,6 +21,7 @@ class Mapping:
 
 
 def norm(text: object) -> str:
+    """A label without accents, case or extra spaces, for matching."""
     if not text:
         return ""
     plain = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode()

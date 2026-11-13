@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.schemas import PortfolioOut, PortfolioReadOut, PositionOut
 from app.services import ibkr
@@ -16,10 +16,6 @@ from app.services import ibkr
 router = APIRouter(prefix="/api/investments/ibkr", tags=["investments"])
 DB = Annotated[Session, Depends(get_session)]
 MAX_BYTES = 10 * 1024 * 1024
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
 
 
 def _run(fn: Callable[[], ibkr.Imported]) -> PortfolioReadOut:
@@ -65,5 +61,5 @@ async def upload(file: UploadFile, request: Request, db: DB) -> PortfolioReadOut
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "The file is larger than 10 MB.")
-    user = _user(request)
+    user = current_user(request)
     return _run(lambda: ibkr.store(db, ibkr.parse(data), user))

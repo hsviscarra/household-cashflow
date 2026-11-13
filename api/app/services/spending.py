@@ -25,6 +25,8 @@ ZERO = Decimal(0)
 
 @dataclass
 class Compare:
+    """An amount with the month before and the same month last year."""
+
     amount: Decimal = ZERO
     prev: Decimal = ZERO  # last month
     last_year: Decimal = ZERO  # same month a year before
@@ -33,12 +35,16 @@ class Compare:
 
 @dataclass
 class CategoryRow(Compare):
+    """A category's spending."""
+
     category_id: int = 0
     name: str = ""
 
 
 @dataclass
 class GroupRow(Compare):
+    """A group's spending, with its categories."""
+
     group_id: int = 0
     name: str = ""
     color: str | None = None
@@ -47,6 +53,8 @@ class GroupRow(Compare):
 
 @dataclass
 class Slice:
+    """A share of the month's spending, by person or by country."""
+
     key: str
     amount: Decimal
     transactions: int
@@ -54,6 +62,8 @@ class Slice:
 
 @dataclass
 class Merchant:
+    """A merchant's spending in the month."""
+
     merchant: str
     group_name: str
     amount: Decimal
@@ -62,6 +72,8 @@ class Merchant:
 
 @dataclass
 class Spending:
+    """A month's spending as the page shows it."""
+
     month: date
     months: list[date]  # every month with spending, newest first
     source: str  # excel, statements or none
@@ -75,6 +87,7 @@ class Spending:
 
 
 def months(db: Session) -> list[date]:
+    """The months that have spending, newest first."""
     return list(db.scalars(select(v.c.cash_month).distinct().order_by(v.c.cash_month.desc())))
 
 
@@ -113,6 +126,8 @@ def _label(column: str, key: object) -> str:
 
 
 def analyze(db: Session, month: date | None = None, person: str | None = None) -> Spending:
+    """A month's spending: totals against the month and the year before, groups and categories,
+    who, where, fixed or variable, merchants and the trend."""
     available = months(db)
     month = first(month) if month else (available[0] if available else first(date.today()))
     prev_month, year_ago = add_months(month, -1), add_months(month, -12)
@@ -202,6 +217,7 @@ def top_merchants(
 def trend(
     db: Session, month: date, count: int = TREND_MONTHS, person: str | None = None
 ) -> list[tuple[date, Decimal]]:
+    """Spending for each of the `count` months up to `month`."""
     start = add_months(month, -(count - 1))
     totals: dict[date, Decimal] = defaultdict(Decimal)
     q = (
@@ -221,6 +237,8 @@ REST = "Everything else"
 
 @dataclass
 class Series:
+    """One line or bar series of the spending chart."""
+
     key: str
     label: str
     color: str | None  # the group's color when the split is by group
@@ -229,6 +247,8 @@ class Series:
 
 @dataclass
 class SeriesSet:
+    """The spending chart's months and series."""
+
     months: list[date]
     by: str
     series: list[Series]
@@ -277,6 +297,8 @@ def series(
 
 @dataclass
 class Line:
+    """A line behind a spending amount."""
+
     transaction_id: int
     txn_date: date
     merchant: str

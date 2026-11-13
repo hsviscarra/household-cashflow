@@ -48,18 +48,23 @@ class _Review:
 
 
 class HistoryError(Exception):
+    """The workbook can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int) -> None:
         super().__init__(message)
         self.status = status
 
 
 def sha256(data: bytes) -> str:
+    """A file's SHA-256, as hex."""
     return hashlib.sha256(data).hexdigest()
 
 
 def preview(
     db: Session, parsed: ParsedWorkbook, file_name: str, file_sha256: str
 ) -> HistoryPreviewOut:
+    """What loading the parsed workbook would do: months, totals by year, checks and what
+    changes."""
     actual = parsed.actual_rows
     months = sorted({r.cell.month for r in actual if r.cell.month})
 
@@ -171,6 +176,7 @@ def _category_ids(db: Session) -> dict[str, _Cat]:
 def load(
     db: Session, parsed: ParsedWorkbook, file_name: str, file_sha256: str, user: str
 ) -> HistoryLoadOut:
+    """Load the workbook's rows as history in one transaction; every row must map to a category."""
     if parsed.unmapped:
         labels = sorted({c.label for c in parsed.unmapped})
         raise HistoryError(f"Rows without a category mapping: {', '.join(labels)}.", 422)

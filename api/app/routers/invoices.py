@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.models import PRODUCT_GROUPS, Account, Category, Invoice, Transaction
 from app.schemas import (
@@ -32,10 +32,6 @@ DB = Annotated[Session, Depends(get_session)]
 MAX_FILES = 100
 SRI_BATCH = 10
 ZERO = Decimal(0)
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
 
 
 def _month(text: str) -> date:
@@ -118,21 +114,27 @@ async def upload(files: list[UploadFile], request: Request, db: DB) -> list[Invo
     out = []
     for f in files:
         data = await f.read(invoices.MAX_BYTES + 1)
-        out.append(receive_xml(db, data, f.filename or "", _user(request)))
+        out.append(receive_xml(db, data, f.filename or "", current_user(request)))
     return out
 
 
 class SriTextIn(BaseModel):
+    """The SRI's list of received documents, as text."""
+
     text: str = Field(max_length=5_000_000)
 
 
 class SriKeysOut(BaseModel):
+    """The access keys found: new ones, how many are stored and how many aren't invoices."""
+
     new: list[str]
     stored: int
     other: int
 
 
 class SriFetchIn(BaseModel):
+    """Access keys to get from the SRI."""
+
     keys: list[str] = Field(min_length=1, max_length=SRI_BATCH)
 
 
@@ -177,7 +179,7 @@ def sri_fetch(body: SriFetchIn, request: Request, db: DB) -> list[InvoiceUploadO
                 )
             )
             continue
-        out.append(receive_xml(db, answer.xml, key, _user(request)))
+        out.append(receive_xml(db, answer.xml, key, current_user(request)))
     return out
 
 
@@ -277,9 +279,11 @@ def set_group(body: ProductGroupIn, request: Request, db: DB) -> ProductGroupOut
     sent = body.model_fields_set
     try:
         if "category_id" in sent:
-            n = invoices.confirm_category(db, body.product_key, body.category_id, _user(request))
+            n = invoices.confirm_category(
+                db, body.product_key, body.category_id, current_user(request)
+            )
         elif body.product_group:
-            n = invoices.confirm(db, body.product_key, body.product_group, _user(request))
+            n = invoices.confirm(db, body.product_key, body.product_group, current_user(request))
         else:
             raise HTTPException(422, "Send product_group or category_id.")
     except invoices.InvoiceError as exc:

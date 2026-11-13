@@ -58,17 +58,22 @@ SYSTEM = (
 
 
 class SuggestError(Exception):
+    """Suggestions can't be made; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 502) -> None:
         super().__init__(message)
         self.status = status
 
 
 def available() -> bool:
+    """Whether there is an API key to ask Claude with."""
     return bool(get_settings().anthropic_api_key)
 
 
 @dataclass
 class Asked:
+    """A merchant Claude is asked about, with example lines."""
+
     merchant_key: str
     lines: list[dict[str, Any]]
     context: dict[str, Any] | None = None  # what the app knows about these lines (ADR-077)
@@ -76,6 +81,8 @@ class Asked:
 
 @dataclass
 class Answer:
+    """Claude's category for a merchant, with its confidence and reason."""
+
     merchant_key: str
     category_path: str
     confidence: Decimal

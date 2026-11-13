@@ -50,6 +50,7 @@ LOOKS_LIKE_LINE = re.compile(rf" {AMT} {AMT} {AMT}$")
 
 
 def is_account_statement(text: str) -> bool:
+    """Whether the text is Pichincha's bank account statement, not its card's."""
     return "CHEQUES / DEBITOS" in fold_accents(text).upper()
 
 
@@ -70,7 +71,8 @@ def _section(desc: str) -> str:
     return "movement"
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Banco Pichincha account statement's pages: cut dates, balances, lines and checks."""
     text = fold_accents("\n".join(pages)).upper()
     last, this = LAST_CUT.search(text), THIS_CUT.search(text)
     if not this:

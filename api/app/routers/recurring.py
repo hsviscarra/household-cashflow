@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.models import Account, Category, RecurringTemplate, Transaction
@@ -39,10 +39,6 @@ from app.services import bills_found, recurring
 
 router = APIRouter(prefix="/api/recurring", tags=["recurring"])
 DB = Annotated[Session, Depends(get_session)]
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
 
 
 def _run[T](fn: Callable[[], T]) -> T:
@@ -94,6 +90,7 @@ def _lines_out(db: Session, rows: list[Transaction]) -> list[TransactionOut]:
 # ---------------------------------------------------------------- templates
 @router.get("/templates", response_model=list[TemplateOut])
 def list_templates(db: DB) -> list[TemplateOut]:
+    """Every recurring item (bill or income), in its order."""
     rows = db.scalars(
         select(RecurringTemplate).order_by(RecurringTemplate.sort_order, RecurringTemplate.name)
     ).all()  # in full before _template_out queries (one open result per connection)
@@ -102,6 +99,7 @@ def list_templates(db: DB) -> list[TemplateOut]:
 
 @router.post("/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
 def create_template(body: TemplateIn, db: DB, request: Request) -> TemplateOut:
+    """Add a recurring item."""
     t = _run(
         lambda: recurring.create_template(
             db,
@@ -118,7 +116,7 @@ def create_template(body: TemplateIn, db: DB, request: Request) -> TemplateOut:
             notes=body.notes,
             every_months=body.every_months,
             due_day=body.due_day,
-            user=_user(request),
+            user=current_user(request),
         )
     )
     db.commit()
@@ -127,14 +125,16 @@ def create_template(body: TemplateIn, db: DB, request: Request) -> TemplateOut:
 
 @router.patch("/templates/{template_id}", response_model=TemplateOut)
 def update_template(template_id: int, body: TemplatePatch, db: DB, request: Request) -> TemplateOut:
+    """Change a recurring item; the change is logged."""
     changes = body.model_dump(exclude_unset=True)
-    _run(lambda: recurring.update_template(db, template_id, changes, _user(request)))
+    _run(lambda: recurring.update_template(db, template_id, changes, current_user(request)))
     return _template_out(db, recurring.get_template(db, template_id))
 
 
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_template(template_id: int, db: DB, request: Request) -> Response:
-    _run(lambda: recurring.delete_template(db, template_id, _user(request)))
+    """Remove a recurring item and its months."""
+    _run(lambda: recurring.delete_template(db, template_id, current_user(request)))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -142,15 +142,16 @@ def delete_template(template_id: int, db: DB, request: Request) -> Response:
 def stop_template(template_id: int, body: MonthIn, db: DB, request: Request) -> CountOut:
     """The item doesn't apply from this month on: it ends the month before and its planned,
     unpaid entries from this month are removed (ADR-089)."""
-    n = _run(lambda: recurring.stop(db, template_id, body.month, _user(request)))
+    n = _run(lambda: recurring.stop(db, template_id, body.month, current_user(request)))
     return CountOut(count=n)
 
 
 @router.post("/templates/{template_id}/amount", response_model=CountOut)
 def change_amount(template_id: int, body: ChangeAmountIn, db: DB, request: Request) -> CountOut:
+    """Change a recurring item's amount from a month on; says how many months changed."""
     n = _run(
         lambda: recurring.change_amount(
-            db, template_id, body.from_month, body.amount, _user(request)
+            db, template_id, body.from_month, body.amount, current_user(request)
         )
     )
     return CountOut(count=n)
@@ -159,14 +160,21 @@ def change_amount(template_id: int, body: ChangeAmountIn, db: DB, request: Reque
 # ---------------------------------------------------------------- months
 @router.post("/generate", response_model=CountOut)
 def generate(body: MonthIn, db: DB, request: Request) -> CountOut:
-    return CountOut(count=recurring.generate(db, body.month, _user(request)))
+    """Create a month's entries from the recurring items; says how many were made."""
+    return CountOut(count=recurring.generate(db, body.month, current_user(request)))
 
 
 @router.post("/copy", response_model=CountOut)
 def copy(body: CopyIn, db: DB, request: Request) -> CountOut:
+    """Copy one month's entries to a range of months."""
     n = _run(
         lambda: recurring.copy(
-            db, body.from_month, body.to_start, body.to_end, _user(request), body.template_ids
+            db,
+            body.from_month,
+            body.to_start,
+            body.to_end,
+            current_user(request),
+            body.template_ids,
         )
     )
     return CountOut(count=n)
@@ -174,11 +182,13 @@ def copy(body: CopyIn, db: DB, request: Request) -> CountOut:
 
 @router.post("/match", response_model=CountOut)
 def match(db: DB, request: Request) -> CountOut:
-    return CountOut(count=recurring.match_all(db, _user(request)))
+    """Match open entries to bank and card lines; says how many matched."""
+    return CountOut(count=recurring.match_all(db, current_user(request)))
 
 
 @router.get("/grid", response_model=GridOut)
 def grid(db: DB, year: Annotated[int, Query(ge=2019, le=2100)]) -> GridOut:
+    """A year of recurring items by month: planned, paid, skipped."""
     g = recurring.grid(db, year)
     paths = category_paths(db)
     return GridOut(
@@ -224,16 +234,18 @@ def _entry_out(db: Session, entry_id: int) -> EntryOut:
 
 @router.get("/entries/{entry_id}", response_model=EntryOut)
 def get_entry(entry_id: int, db: DB) -> EntryOut:
+    """One month of one recurring item, with the lines that paid it."""
     return _run(lambda: _entry_out(db, entry_id))
 
 
 @router.patch("/entries/{entry_id}", response_model=EntryOut)
 def edit_entry(entry_id: int, body: EntryPatch, db: DB, request: Request) -> EntryOut:
+    """Change one month of a recurring item: its amount, status or note."""
     _run(
         lambda: recurring.edit_entry(
             db,
             entry_id,
-            _user(request),
+            current_user(request),
             amount=body.amount,
             reset=body.reset,
             status=body.status,
@@ -245,25 +257,29 @@ def edit_entry(entry_id: int, body: EntryPatch, db: DB, request: Request) -> Ent
 
 @router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_entry(entry_id: int, db: DB, request: Request) -> Response:
-    _run(lambda: recurring.delete_entry(db, entry_id, _user(request)))
+    """Remove one month of a recurring item."""
+    _run(lambda: recurring.delete_entry(db, entry_id, current_user(request)))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/entries/{entry_id}/lines", response_model=EntryOut)
 def link_line(entry_id: int, body: LinkIn, db: DB, request: Request) -> EntryOut:
-    _run(lambda: recurring.link_line(db, entry_id, body.transaction_id, _user(request)))
+    """Say that a bank or card line paid this entry."""
+    _run(lambda: recurring.link_line(db, entry_id, body.transaction_id, current_user(request)))
     return _entry_out(db, entry_id)
 
 
 @router.delete("/lines/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 def unlink_line(transaction_id: int, db: DB, request: Request) -> Response:
-    _run(lambda: recurring.unlink_line(db, transaction_id, _user(request)))
+    """Undo a line's link to the entry it paid."""
+    _run(lambda: recurring.unlink_line(db, transaction_id, current_user(request)))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------- from the workbook
 @router.get("/excel-rows", response_model=list[ExcelRowOut])
 def excel_rows(db: DB, year: Annotated[int, Query(ge=2019, le=2100)]) -> list[ExcelRowOut]:
+    """The workbook's rows for a year that could become recurring items."""
     out = []
     for r in recurring.excel_rows(db, year):
         latest = r.values[max(r.values)]
@@ -287,14 +303,17 @@ def excel_rows(db: DB, year: Annotated[int, Query(ge=2019, le=2100)]) -> list[Ex
 
 @router.post("/from-excel", response_model=FromExcelOut)
 def from_excel(body: FromExcelIn, db: DB, request: Request) -> FromExcelOut:
+    """Create recurring items from the workbook's rows, with their months and paying lines."""
     made, entries, linked = _run(
-        lambda: recurring.create_from_excel(db, body.year, body.names, _user(request))
+        lambda: recurring.create_from_excel(db, body.year, body.names, current_user(request))
     )
     return FromExcelOut(templates=made, entries=entries, linked=linked)
 
 
 # ---------------------------------------------------------------- bills (ADR-031)
 class BillOut(BaseModel):
+    """A bill in a month: due, paid, late or waiting for its statement."""
+
     template_id: int
     entry_id: int | None
     name: str
@@ -318,12 +337,16 @@ class BillOut(BaseModel):
 
 
 class BillsOut(BaseModel):
+    """A month's bills."""
+
     month: date
     today: date
     bills: list[BillOut]
 
 
 class FoundBillOut(BaseModel):
+    """A recurring charge found in the lines that isn't a bill yet."""
+
     merchant: str
     every_months: int
     amount: Decimal

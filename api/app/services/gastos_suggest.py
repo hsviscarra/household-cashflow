@@ -47,6 +47,8 @@ SYSTEM = (
 
 @dataclass
 class Asked:
+    """An issuer Claude is asked about, with what it sells."""
+
     ruc: str
     name: str
     products: list[str]
@@ -54,6 +56,8 @@ class Asked:
 
 @dataclass
 class Answer:
+    """Claude's deductible-expense kind for an issuer, with its confidence."""
+
     ruc: str
     category: str
     confidence: Decimal
@@ -61,6 +65,8 @@ class Answer:
 
 @dataclass
 class Done:
+    """How many issuers were asked about and how many answers were kept."""
+
     asked: int = 0
     saved: int = 0
 

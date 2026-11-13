@@ -136,7 +136,8 @@ def _person(name: str) -> str | None:
     return None  # the account owner
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Pacificard statement's pages: period, lines and checks."""
     text = "\n".join(pages)
     p = PERIOD.search(text)
     end = _period_date(p.group(2)) if p else None

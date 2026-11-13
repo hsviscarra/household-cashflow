@@ -53,7 +53,8 @@ def _year_for(day_month: str, start: date, end: date) -> date:
     raise ValueError(f"{day_month} is outside the billing cycle")
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Capital One statement's pages: cycle, balances, lines by cardholder and checks."""
     text = "\n".join(pages)
     m = PERIOD.search(text)
     if not m:

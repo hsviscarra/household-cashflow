@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.models import SaleInvoice
 from app.services import iva
@@ -18,10 +18,6 @@ from app.services import iva
 router = APIRouter(prefix="/api/taxes/iva", tags=["taxes"])
 DB = Annotated[Session, Depends(get_session)]
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
 
 
 def _month(text: str) -> date:
@@ -61,6 +57,8 @@ def get_excel(db: DB, month: str, person: str | None = None) -> Response:
 
 
 class IssuerIn(BaseModel):
+    """How an issuer's purchases count for IVA."""
+
     issuer_ruc: str = Field(min_length=10, max_length=13)
     iva_use: str
 
@@ -69,13 +67,15 @@ class IssuerIn(BaseModel):
 def put_issuer(body: IssuerIn, db: DB, request: Request) -> Response:
     """How this issuer's invoices count: business (IVA credit), personal or none."""
     try:
-        iva.set_issuer(db, body.issuer_ruc, body.iva_use, _user(request))
+        iva.set_issuer(db, body.issuer_ruc, body.iva_use, current_user(request))
     except iva.IvaError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return Response(status_code=204)
 
 
 class OpeningIn(BaseModel):
+    """A person's opening IVA credit."""
+
     person: str = Field(min_length=1, max_length=20)
     month: str
     purchase_credit: Decimal = Decimal(0)
@@ -92,7 +92,7 @@ def put_opening(body: OpeningIn, db: DB, request: Request) -> Response:
             _month(body.month),
             body.purchase_credit,
             body.retention_credit,
-            _user(request),
+            current_user(request),
         )
     except iva.IvaError as exc:
         raise HTTPException(exc.status, str(exc)) from exc

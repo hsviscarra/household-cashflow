@@ -49,6 +49,8 @@ class ExploreError(ValueError):
 
 @dataclass(frozen=True)
 class Spec:
+    """A view as asked for: the measure, the two dimensions, the months and the filter."""
+
     measure: str
     rows: str
     cols: str | None
@@ -73,14 +75,18 @@ class Record:
 
 @dataclass
 class Cell:
+    """A sum and a count kept together, so any measure can be read from it."""
+
     amount: Decimal = ZERO
     lines: int = 0
 
     def add(self, amount: Decimal, lines: int) -> None:
+        """Add a sum and its count."""
         self.amount += amount
         self.lines += lines
 
     def value(self, measure: str) -> Decimal:
+        """The cell in the chosen measure: the amount, the number of lines or the average line."""
         if measure == "lines":
             return Decimal(self.lines)
         if measure == "average":
@@ -90,6 +96,8 @@ class Cell:
 
 @dataclass
 class Pivot:
+    """The finished table: row and column names, the cells and every total."""
+
     rows: list[str]
     cols: list[str]
     cells: list[list[Decimal]]
@@ -100,6 +108,7 @@ class Pivot:
 
 
 def check(spec: Spec) -> None:
+    """Refuse a view that can't be built, saying why (ExploreError)."""
     if spec.measure not in MEASURES:
         raise ExploreError(f"Measure is one of: {', '.join(MEASURES)}.")
     if spec.rows not in DIMENSIONS or (spec.cols is not None and spec.cols not in DIMENSIONS):
@@ -141,6 +150,7 @@ def label(dimension: str, value: object) -> str:
 
 
 def records(db: Session, spec: Spec) -> list[Record]:
+    """The spending lines of the period, grouped by the database into one record per cell."""
     row = _column(spec.rows)
     grouped = [row] if spec.cols is None else [row, _column(spec.cols)]
     # Two dimensions on the same column (month and year): group once, read twice.
@@ -183,6 +193,8 @@ def _ordered(names: dict[str, Cell], dimension: str | None, limit: int) -> tuple
 
 
 def pivot(found: list[Record], spec: Spec) -> Pivot:
+    """Lay the records out as a table: order the rows and columns, fold what doesn't fit
+    into one last row, and total everything in the chosen measure."""
     by_row: dict[str, Cell] = defaultdict(Cell)
     by_col: dict[str, Cell] = defaultdict(Cell)
     grid: dict[tuple[str, str], Cell] = defaultdict(Cell)
@@ -220,5 +232,6 @@ def pivot(found: list[Record], spec: Spec) -> Pivot:
 
 
 def build(db: Session, spec: Spec) -> Pivot:
+    """Check the view, ask the database and lay out the table."""
     check(spec)
     return pivot(records(db, spec), spec)

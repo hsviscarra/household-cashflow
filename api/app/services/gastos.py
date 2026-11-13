@@ -89,6 +89,8 @@ PHARMACY = {"Health & Pharmacy"}
 
 
 class GastosError(Exception):
+    """A deductible-expense change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -106,6 +108,8 @@ def cap(year: int, cargas: int, catastrophic: bool) -> Decimal | None:
 
 @dataclass
 class Row:
+    """An invoice as a deductible expense."""
+
     invoice_id: int
     issue_date: date
     issuer_ruc: str
@@ -171,7 +175,8 @@ def _by_products(db: Session, ids: list[int]) -> dict[int, str]:
     return out
 
 
-def rows(db: Session, year: int) -> list[Row]:
+def rows(db: Session, year: int) -> list[Row]:  # noqa: C901 - baseline, docs/refactors.md #15
+    """A year's invoices as deductible-expense rows: whose, what kind, how much counts and why."""
     invoices = list(
         db.scalars(
             select(Invoice)
@@ -247,6 +252,8 @@ def rows(db: Session, year: int) -> list[Row]:
 
 @dataclass
 class CategoryTotal:
+    """A kind of deductible expense: invoices and amount."""
+
     category: str
     label: str
     invoices: int
@@ -255,6 +262,8 @@ class CategoryTotal:
 
 @dataclass
 class PersonSummary:
+    """A person's deductible expenses against their cap."""
+
     person: str
     cargas: int
     catastrophic: bool
@@ -269,6 +278,8 @@ class PersonSummary:
 
 @dataclass
 class Summary:
+    """A year's deductible expenses for everyone."""
+
     year: int
     canasta: Decimal | None
     rate: Decimal
@@ -278,12 +289,15 @@ class Summary:
 
 
 def profile(db: Session, person: str, year: int) -> GpProfile:
+    """A person's dependants and catastrophic-illness status for a year (none saved: the
+    defaults)."""
     return db.get(GpProfile, (person, year)) or GpProfile(
         person=person, year=year, cargas=0, catastrophic=False
     )
 
 
 def summary(db: Session, year: int) -> Summary:
+    """A year's deductible expenses by person and kind against the cap, and the rebate they earn."""
     all_rows = rows(db, year)
     out = Summary(year, CANASTA.get(year), RATE)
     for r in all_rows:
@@ -319,7 +333,7 @@ def summary(db: Session, year: int) -> Summary:
     return out
 
 
-def choose(
+def choose(  # noqa: C901 - baseline, docs/refactors.md #15
     db: Session,
     invoice_id: int,
     user: str,
@@ -413,6 +427,7 @@ def _same_person(db: Session, inv: Invoice, person: str) -> None:
 
 
 def set_profile(db: Session, person: str, year: int, cargas: int, catastrophic: bool) -> GpProfile:
+    """Keep a person's dependants and catastrophic-illness status for a year."""
     if person not in PEOPLE:
         raise GastosError(f"Person must be one of {', '.join(PEOPLE)}.")
     prof = db.get(GpProfile, (person, year))
@@ -426,6 +441,8 @@ def set_profile(db: Session, person: str, year: int, cargas: int, catastrophic: 
 
 @dataclass
 class IssuerLine:
+    """An issuer's invoices of one kind, together."""
+
     issuer_ruc: str
     issuer_name: str
     category: str

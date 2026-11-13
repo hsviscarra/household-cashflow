@@ -144,7 +144,7 @@ def label(db: Session, start: date, months: int = 1) -> int:
     return len(by_key)
 
 
-def set_labels(db: Session, key: str, changes: dict[str, str | None], user: str) -> int:
+def set_labels(db: Session, key: str, changes: dict[str, str | None], user: str) -> int:  # noqa: C901 - baseline, docs/refactors.md #15
     """A person's aisle, type or brand for a product: kept as its rule and set on every line with
     it. Returns how many lines changed."""
     group = changes.get("product_group")
@@ -180,6 +180,8 @@ def set_labels(db: Session, key: str, changes: dict[str, str | None], user: str)
 
 @dataclass
 class Product:
+    """A product from the invoices with its group, type and brand."""
+
     product_key: str
     description: str
     product_group: str | None
@@ -195,6 +197,8 @@ class Product:
 
 @dataclass
 class Total:
+    """An amount for a group, type or brand."""
+
     name: str
     amount: Decimal
     products: int
@@ -202,6 +206,8 @@ class Total:
 
 @dataclass
 class ProductList:
+    """The products bought over some months, with totals by group, type and brand."""
+
     start: date
     months: int
     total: Decimal

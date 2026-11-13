@@ -60,6 +60,8 @@ NOT_A_GROUP = {"Uncategorized"}
 
 
 class ReportError(Exception):
+    """The monthly report can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -280,6 +282,8 @@ def _status(db: Session, month: date, today: date) -> dict[str, Any]:
 
 
 def facts(db: Session, month: date, today: date) -> dict[str, Any]:
+    """Everything a month's report is written from, as plain data: status, cash flow, spending,
+    subscriptions, debt cost, forecast."""
     month = first(month)
     return {
         "month": month.isoformat()[:7],
@@ -314,6 +318,8 @@ def for_claude(f: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------- findings
 @dataclass
 class Finding:
+    """One thing the report points out."""
+
     title: str
     text: str
     tone: str
@@ -335,7 +341,7 @@ def _above(change: Decimal) -> str:
     return f"{_pct(change)} above"
 
 
-def rule_findings(f: dict[str, Any]) -> list[Finding]:
+def rule_findings(f: dict[str, Any]) -> list[Finding]:  # noqa: C901 - baseline, docs/refactors.md #15
     """Findings written from the facts by fixed rules, most important first."""
     out: list[Finding] = []
     label = date.fromisoformat(f["month"] + "-01").strftime("%B")
@@ -490,6 +496,7 @@ def _schema() -> dict[str, Any]:
 
 
 def parse_findings(text: str) -> list[Finding]:
+    """Claude's findings from its reply; ValueError when the reply isn't the JSON asked for."""
     start = text.find("{")
     if start < 0:
         raise ValueError("no JSON in the reply")
@@ -543,6 +550,8 @@ def call_claude(f: dict[str, Any]) -> list[Finding]:
 # ---------------------------------------------------------------- saved reports
 @dataclass
 class Report:
+    """A month's report: the facts and what was written from them."""
+
     month: date
     written_by: str
     model: str | None
@@ -566,6 +575,7 @@ def _load(r: MonthlyReport) -> Report:
 
 
 def get(db: Session, month: date) -> Report | None:
+    """A month's saved report, or None."""
     r = db.scalar(select(MonthlyReport).where(MonthlyReport.month == first(month)))
     return _load(r) if r is not None else None
 

@@ -26,6 +26,8 @@ from app.models import (
 
 
 class CategoryError(Exception):
+    """A category change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -33,6 +35,8 @@ class CategoryError(Exception):
 
 @dataclass
 class Uses:
+    """What still points at a category."""
+
     lines: int = 0
     rules: int = 0
     bills: int = 0
@@ -41,6 +45,7 @@ class Uses:
 
     @property
     def total(self) -> int:
+        """Everything that still points at the category."""
         return self.lines + self.rules + self.bills + self.budgets + self.other
 
 
@@ -53,6 +58,7 @@ def _count(db: Session, model: type, category_id: int) -> int:
 
 
 def uses(db: Session, category_id: int) -> Uses:
+    """What uses a category: lines, rules, bills, budgets and the rest. Nothing means it can go."""
     return Uses(
         lines=_count(db, Transaction, category_id),
         rules=_count(db, MerchantRule, category_id),

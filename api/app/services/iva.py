@@ -42,6 +42,8 @@ RATE = Decimal("0.15")
 
 
 class IvaError(Exception):
+    """An IVA change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -79,6 +81,8 @@ def _number(info_t: Element | None) -> str:
 
 @dataclass
 class ParsedSale:
+    """A sale invoice as read from its XML."""
+
     access_key: str
     person: str
     number: str
@@ -125,6 +129,8 @@ def own_sale(xml: bytes) -> ParsedSale | None:
 
 @dataclass
 class ParsedWithholding:
+    """A withholding receipt as read from its XML."""
+
     access_key: str
     person: str
     issuer_ruc: str
@@ -187,6 +193,7 @@ def withholding(xml: bytes) -> ParsedWithholding | None:
 
 
 def store_sale(db: Session, p: ParsedSale, user: str) -> tuple[SaleInvoice, bool]:
+    """Store a sale invoice once (by access key); says whether it was already there."""
     found = db.scalar(select(SaleInvoice).where(SaleInvoice.access_key == p.access_key))
     if found is not None:
         return found, True
@@ -197,6 +204,7 @@ def store_sale(db: Session, p: ParsedSale, user: str) -> tuple[SaleInvoice, bool
 
 
 def store_withholding(db: Session, p: ParsedWithholding, user: str) -> tuple[Withholding, bool]:
+    """Store a withholding receipt once; says whether it was already there."""
     found = db.scalar(select(Withholding).where(Withholding.access_key == p.access_key))
     if found is not None:
         return found, True
@@ -208,6 +216,8 @@ def store_withholding(db: Session, p: ParsedWithholding, user: str) -> tuple[Wit
 
 @dataclass
 class ParsedNote:
+    """A credit or debit note as read from its XML."""
+
     access_key: str
     kind: str  # credit or debit
     direction: str  # issued or received
@@ -276,6 +286,7 @@ def note(xml: bytes) -> ParsedNote | None:
 
 
 def store_note(db: Session, p: ParsedNote, user: str) -> tuple[TaxNote, bool]:
+    """Store a credit or debit note once; says whether it was already there."""
     found = db.scalar(select(TaxNote).where(TaxNote.access_key == p.access_key))
     if found is not None:
         return found, True
@@ -286,6 +297,7 @@ def store_note(db: Session, p: ParsedNote, user: str) -> tuple[TaxNote, bool]:
 
 
 def known_keys(db: Session, keys: list[str]) -> set[str]:
+    """Which of these access keys are already stored, as any kind of document."""
     have: set[str] = set()
     for i in range(0, len(keys), 1000):
         chunk = keys[i : i + 1000]
@@ -297,6 +309,8 @@ def known_keys(db: Session, keys: list[str]) -> set[str]:
 # ---------------------------------------------------------------- the month
 @dataclass
 class SaleRow:
+    """A sale in the month's return."""
+
     number: str
     issue_date: date
     buyer_name: str
@@ -310,6 +324,8 @@ class SaleRow:
 
 @dataclass
 class PurchaseRow:
+    """A purchase in the month's return, with how it counts."""
+
     invoice_id: int
     issuer_ruc: str
     issuer_name: str
@@ -325,6 +341,8 @@ class PurchaseRow:
 
 @dataclass
 class WithholdingRow:
+    """A withholding in the month's return."""
+
     issuer_name: str
     number: str
     issue_date: date
@@ -359,6 +377,8 @@ class Form:
 
 @dataclass
 class NoteRow:
+    """A credit or debit note in the month's return."""
+
     kind: str
     direction: str
     issuer_ruc: str
@@ -375,6 +395,8 @@ class NoteRow:
 
 @dataclass
 class IvaMonth:
+    """A person's monthly IVA return: sales, purchases, withholdings and the form's boxes."""
+
     person: str
     month: date
     sales: list[SaleRow]
@@ -389,6 +411,7 @@ class IvaMonth:
 
 
 def opening(db: Session, person: str) -> tuple[date, Decimal, Decimal] | None:
+    """A person's opening credit: the month it is from, and the purchase and retention credit."""
     s = db.get(AppSetting, OPENING + person)
     if s is None:
         return None
@@ -412,6 +435,7 @@ def set_opening(
 
 
 def set_issuer(db: Session, issuer_ruc: str, iva_use: str, user: str) -> None:
+    """Say how an issuer's purchases count for IVA: business, personal or not at all."""
     if iva_use not in ("business", "personal", "none"):
         raise IvaError("Choose business, personal or none.")
     r = db.scalar(select(TaxIssuerRule).where(TaxIssuerRule.issuer_ruc == issuer_ruc))
@@ -590,7 +614,7 @@ def month(db: Session, person: str, m: date) -> IvaMonth:
 
 
 # ---------------------------------------------------------------- the accountant's workbook
-def workbook(r: IvaMonth) -> bytes:
+def workbook(r: IvaMonth) -> bytes:  # noqa: C901 - baseline, docs/refactors.md #15
     """The month as the accountant's workbook: sales, purchases with credit and personal expenses
     (as SRI lists them), and the Form 104 figures."""
     from openpyxl import Workbook

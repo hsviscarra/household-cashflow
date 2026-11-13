@@ -54,7 +54,8 @@ def _section_of(text: str) -> str | None:
     return SECTIONS.get(key)
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Bank of America statement's pages: period, balances, lines and tie-out checks."""
     text = "\n".join(pages)
     m = PERIOD.search(text)
     if not m:

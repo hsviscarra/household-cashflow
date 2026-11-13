@@ -13,6 +13,8 @@ from typing import Protocol
 
 
 class RuleRow(Protocol):
+    """What the matcher needs from a rule, whether stored or just typed."""
+
     rule_id: int
     pattern: str
     match_type: str
@@ -27,6 +29,8 @@ class RuleRow(Protocol):
 
 @dataclass(frozen=True)
 class Rule:
+    """A merchant rule as the matcher reads it."""
+
     rule_id: int
     pattern: str
     match_type: str
@@ -40,6 +44,7 @@ class Rule:
 
     @classmethod
     def of(cls, r: RuleRow) -> "Rule":
+        """A rule from its database row."""
         return cls(
             r.rule_id,
             r.pattern,
@@ -94,6 +99,7 @@ def in_range(rule: Rule, amount: Decimal | None) -> bool:
 
 
 def matches(rule: Rule, description: str, amount: Decimal | None = None) -> bool:
+    """Whether a rule matches a description (and an amount, when the rule has a range)."""
     if not in_range(rule, amount):
         return False
     text = normalize(description)
@@ -116,6 +122,7 @@ def matches(rule: Rule, description: str, amount: Decimal | None = None) -> bool
 def first_match(
     rules: Iterable[Rule], description: str, amount: Decimal | None = None
 ) -> Rule | None:
+    """The first active rule that matches, in priority order; None when none does."""
     for rule in sorted(rules, key=lambda r: (r.priority, r.rule_id)):
         if rule.is_active and matches(rule, description, amount):
             return rule
