@@ -1178,6 +1178,10 @@ export type ProjectionMonth = {
   net: string;
   end_cash: string;
   items: ProjectionEvent[];
+  // ADR-096: where cash likely ends, and the groups that make the month heavier than usual.
+  end_cash_low?: string | null;
+  end_cash_high?: string | null;
+  seasonal?: { group_name: string; extra: string }[];
 };
 export type Projection = {
   today: string;
@@ -1211,9 +1215,20 @@ export type Projection = {
     first_short: string | null;
     end_cash: string;
   } | null;
+  // ADR-096: the likely range day by day and the chance of going under the floor.
+  band?: { day: string; low: string; high: string }[];
+  chance_under_floor?: string | null;
+  seasons?: boolean;
+  seasonal_groups?: number;
 };
 // ADR-033: choices, per-account runs and what-ifs.
-export type ForecastOptions = { horizon: number; average_over: number; floor: number; include_held: boolean };
+export type ForecastOptions = {
+  horizon: number;
+  average_over: number;
+  floor: number;
+  include_held: boolean;
+  seasons: boolean; // everyday spending follows the seasons (ADR-096)
+};
 export type ForecastChange = {
   name: string;
   amount: string; // money in positive
@@ -1237,6 +1252,7 @@ export const DEFAULT_FORECAST: ForecastOptions = {
   average_over: 3,
   floor: 0,
   include_held: false,
+  seasons: true,
 };
 export const fetchProjection = (o: ForecastOptions = DEFAULT_FORECAST) => {
   const same = (Object.keys(DEFAULT_FORECAST) as (keyof ForecastOptions)[]).every(
@@ -1244,7 +1260,7 @@ export const fetchProjection = (o: ForecastOptions = DEFAULT_FORECAST) => {
   );
   return send<Projection>(
     "GET",
-    `/api/projections${same ? "" : query({ horizon: o.horizon, average_over: o.average_over, floor: o.floor, include_held: String(o.include_held) })}`,
+    `/api/projections${same ? "" : query({ horizon: o.horizon, average_over: o.average_over, floor: o.floor, include_held: String(o.include_held), seasons: String(o.seasons) })}`,
   );
 };
 export const runScenario = (o: ForecastOptions, changes: ForecastChange[]) =>

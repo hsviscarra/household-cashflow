@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.106.0] — The forecast as a range, with seasons and saved scenarios
+
+### Added
+- **A likely range.** Forecast shows where cash is in 8 of 10 cases, day by day and at each
+  month's end, and the chance of going under your floor. It comes from how much your everyday
+  spending really varied in the last 24 months (ADR-096).
+- **Seasons.** A group that moves the same way every year (school, December, a yearly payment)
+  is forecast in its month, not spread as an average; what goes on cards is paid the month
+  after. It needs two complete years of history, and can be turned off.
+- **Saved scenarios.** Name a set of what-ifs, keep it, and compare up to three with the
+  forecast as it is: lowest cash, cash by month and the difference at the end.
+
 ## [0.105.0] — Compare with last year, bulk "Whose", invoices as a table
 
 ### Added

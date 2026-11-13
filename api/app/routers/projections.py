@@ -12,12 +12,14 @@ from app.db.session import get_session
 from app.schemas import (
     ProjectionAccountOut,
     ProjectionAlertOut,
+    ProjectionBandOut,
     ProjectionDayOut,
     ProjectionEventOut,
     ProjectionMonthOut,
     ProjectionOut,
     ScenarioBaseOut,
     ScenarioIn,
+    SeasonalNoteOut,
 )
 from app.services import projections
 
@@ -36,6 +38,7 @@ def get_projections(
     average_over: Annotated[int, Query(description="Months to average: 3, 6 or 12")] = 3,
     floor: Annotated[Decimal, Query(ge=0, description="Warn under this balance")] = Decimal(0),
     include_held: Annotated[bool, Query(description="Count money held for others")] = False,
+    seasons: Annotated[bool, Query(description="Everyday spending follows the seasons")] = True,
 ) -> ProjectionOut:
     if horizon not in projections.HORIZONS or average_over not in projections.AVERAGES:
         raise HTTPException(422, "Horizon is 1, 3 or 12 months; the average 3, 6 or 12.")
@@ -46,6 +49,7 @@ def get_projections(
         average_over=average_over,
         floor=floor,
         include_held=include_held,
+        follow_seasons=seasons,
     )
     return _out(p)
 
@@ -58,6 +62,7 @@ def scenario(body: ScenarioIn, db: DB, today: Today = None) -> ProjectionOut:
         "average_over": body.average_over,
         "floor": body.floor,
         "include_held": body.include_held,
+        "follow_seasons": body.seasons,
     }
     changes = [projections.Change(**c.model_dump()) for c in body.changes]
     p = projections.project(db, today, changes=changes, **opts)  # type: ignore[arg-type]
@@ -89,6 +94,9 @@ def _out(p: projections.Projection) -> ProjectionOut:
                 net=m.net,
                 end_cash=m.end_cash,
                 items=[ProjectionEventOut(**asdict(e)) for e in m.items],
+                end_cash_low=m.end_cash_low,
+                end_cash_high=m.end_cash_high,
+                seasonal=[SeasonalNoteOut(group_name=n, extra=x) for n, x in m.seasonal],
             )
             for m in p.months
         ],
@@ -126,4 +134,8 @@ def _out(p: projections.Projection) -> ProjectionOut:
         ],
         first_short=p.first_short,
         end_cash=p.end_cash,
+        band=[ProjectionBandOut(day=d, low=lo, high=hi) for d, lo, hi in p.band],
+        chance_under_floor=p.chance_under_floor,
+        seasons=p.seasons,
+        seasonal_groups=p.seasonal_groups,
     )
