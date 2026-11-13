@@ -31,6 +31,7 @@ const SUBS: Subscriptions = {
       last: "2026-09-08",
       next_expected: "2026-09-15",
       active: true,
+      price_up: "2.00",
     },
     {
       merchant: "STREAMFLIX",
@@ -158,6 +159,7 @@ describe("Subscriptions page", () => {
     const weekly = screen.getByRole("list", { name: "Weekly" });
     expect(weekly).toHaveTextContent("43.29 a month · 519.48 a year");
     expect(weekly).toHaveTextContent("Active");
+    expect(weekly).toHaveTextContent("Went up 2.00"); // ADR-097
     expect(weekly).toHaveTextContent(/next about Sep 15, 2026/);
     fireEvent.click(within(weekly).getByRole("button", { name: /GOOGLE \*SAMPLE APP M/ }));
     expect(screen.getByRole("list", { name: "Charges of GOOGLE *SAMPLE APP M" }).children).toHaveLength(2);

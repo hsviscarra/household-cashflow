@@ -12,6 +12,7 @@ import {
   fetchPortfolio,
   fetchProjection,
   fetchReview,
+  fetchSafeToSpend,
   fetchStatus,
   fetchTodo,
   type Flows,
@@ -25,6 +26,7 @@ import Info from "../components/Info";
 import KpiCard from "../components/KpiCard";
 import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
 import { PersonNote } from "../components/Personalize";
+import SafeToSpend from "../components/SafeToSpend";
 import type { ExplainKey } from "../explain";
 import { addMonths, localToday, money, monthLong, monthShort, num, pct } from "../money";
 import { personParam, usePerson, useSettings } from "../prefs";
@@ -38,6 +40,7 @@ import { paceLine } from "./Goals";
 export const WIDGETS: Record<string, string> = {
   needs: "Needs you",
   kpis: "This month so far",
+  safe: "Safe to spend",
   money: "Your money now",
   networth: "Net worth",
   cashflow: "Cash flow, 12 months",
@@ -50,15 +53,25 @@ export const WIDGETS: Record<string, string> = {
 };
 const LAYOUT = 2; // saved widget lists from before this layout start from the new default
 const ALL = Object.keys(WIDGETS);
+// Widgets added after a person saved their list show up for them once, after the first two;
+// hiding one afterwards sticks, because the list they save says which widgets it knew.
+const KNOWN_BEFORE = ALL.filter((w) => w !== "safe");
+const NEW_AT = 2;
 const COMING_DAYS = 14;
 
 /** The person's widgets in their order; every widget when nothing is saved. */
 export function useWidgets(): [string[], (ids: string[]) => void] {
   const { settings, set } = useSettings();
-  const home = settings.home as { widgets?: unknown; layout?: number } | undefined;
+  const home = settings.home as { widgets?: unknown; layout?: number; known?: unknown } | undefined;
   const saved = home?.layout === LAYOUT ? home.widgets : undefined;
-  const shown = Array.isArray(saved) ? saved.filter((w): w is string => ALL.includes(w as string)) : ALL;
-  return [shown, (ids) => set("home", { widgets: ids, layout: LAYOUT })];
+  if (!Array.isArray(saved)) return [ALL, (ids) => set("home", { widgets: ids, layout: LAYOUT, known: ALL })];
+  const shown = saved.filter((w): w is string => ALL.includes(w as string));
+  const known = Array.isArray(home?.known) ? (home.known as string[]) : KNOWN_BEFORE;
+  const fresh = ALL.filter((w) => !known.includes(w) && !shown.includes(w));
+  return [
+    [...shown.slice(0, NEW_AT), ...fresh, ...shown.slice(NEW_AT)],
+    (ids) => set("home", { widgets: ids, layout: LAYOUT, known: ALL }),
+  ];
 }
 
 const addDays = (iso: string, days: number) => {
@@ -106,6 +119,7 @@ export default function Home() {
   const parts: Record<string, ReactNode> = {
     needs: <Needs key="needs" />,
     kpis: m ? <Numbers key="kpis" m={m} /> : null,
+    safe: <Safe key="safe" />,
     money: <MoneyNow key="money" />,
     networth: <NetWorth key="networth" />,
     cashflow: m ? <CashFlow12 key="cashflow" m={m} /> : null,
@@ -300,6 +314,19 @@ function Card({
       </div>
       <div className="mt-3">{children}</div>
     </section>
+  );
+}
+
+/** What is left for the rest of this month after bills and goals (ADR-097). Always the month
+ * running now, whichever month the page shows. */
+function Safe() {
+  const q = useQuery({ queryKey: ["savings", "safe"], queryFn: fetchSafeToSpend, staleTime: 5 * 60_000 });
+  return (
+    <Card id="safe" title="Safe to spend" link={["/savings", "Saving"]}>
+      {q.error && <p className="text-muted">Not available right now.</p>}
+      {!q.data && !q.error && <p className="text-muted">Loading…</p>}
+      {q.data && <SafeToSpend safe={q.data} />}
+    </Card>
   );
 }
 

@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.107.0] — Saving, safe to spend, and which debt to pay first
+
+### Added
+- **Saving** (Budget & goals → Saving): your savings rate by month, what your goals need each
+  month against what you plan, and your debts with the two payoff orders compared: highest
+  rate first and smallest balance first, with the months and the interest of each (ADR-097).
+  Type a debt's rate and monthly payment where the app can only estimate them.
+- **Safe to spend** on Home: what is left for the rest of the month after the bills still due
+  and your goals, and how much that is a day.
+- **Subscriptions that went up**: an active subscription whose last charge is over its earlier
+  ones says by how much.
+
 ## [0.106.0] — The forecast as a range, with seasons and saved scenarios
 
 ### Added

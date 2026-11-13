@@ -120,6 +120,9 @@ function SubscriptionRow({ s }: { s: Subscription }) {
           </span>
         </button>
         <span className="flex shrink-0 items-center gap-3">
+          {s.price_up && (
+            <span className="pill bg-attention-bg text-attention-ink">Went up {money(s.price_up)}</span>
+          )}
           {!possible && (
             <span className={`pill ${s.active ? "pill-good" : "bg-attention-bg text-attention-ink"}`}>
               {s.active ? "Active" : "Stopped?"}

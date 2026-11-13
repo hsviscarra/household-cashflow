@@ -909,6 +909,7 @@ class SubscriptionOut(BaseModel):
     last: date
     next_expected: date | None
     active: bool
+    price_up: Decimal | None = None
 
 
 class SubscriptionsOut(BaseModel):

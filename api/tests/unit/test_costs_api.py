@@ -102,6 +102,8 @@ def test_weekly_monthly_possible_and_stopped(client: TestClient, db: Session) ->
     monthly = found["STREAMFLIX"]
     assert (monthly["cadence"], Decimal(monthly["typical"])) == ("monthly", Decimal("12.99"))
     assert monthly["category_path"] == "Subscriptions & Software / Media"
+    # 13.49 after two charges of 12.99: a price increase worth saying (ADR-097).
+    assert Decimal(monthly["price_up"]) == Decimal("0.50") and weekly["price_up"] is None
     assert found["OLDAPP*SUB"]["active"] is False
     assert found["BETTERFIT APP"]["cadence"] == "possible"
     assert "CORNER SHOP" not in found and "COMISION" not in found
@@ -109,6 +111,15 @@ def test_weekly_monthly_possible_and_stopped(client: TestClient, db: Session) ->
     assert [x["cadence"] for x in out["subscriptions"]][:2] == ["weekly", "monthly"]
     assert Decimal(out["weekly_monthly_cost"]) == Decimal("43.29")
     assert Decimal(out["monthly_cost"]) == Decimal("43.29") + Decimal("12.99")
+
+
+def test_price_increases() -> None:
+    d = Decimal
+    assert subscriptions.price_up([d("9.99"), d("9.99"), d("11.99")]) == d("2.00")
+    assert subscriptions.price_up([d("9.99"), d("10.20")]) is None  # under 0.50
+    assert subscriptions.price_up([d("100"), d("102")]) is None  # under 3%
+    assert subscriptions.price_up([d("12.99"), d("9.99")]) is None  # cheaper
+    assert subscriptions.price_up([d("9.99")]) is None
 
 
 def test_cadences() -> None:

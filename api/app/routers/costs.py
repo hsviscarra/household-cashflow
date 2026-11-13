@@ -39,6 +39,7 @@ def get_subscriptions(db: DB, today: Today = None) -> SubscriptionsOut:
                 last=s.last,
                 next_expected=s.next_expected,
                 active=s.active,
+                price_up=s.price_up,
             )
             for s in found
         ],

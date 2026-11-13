@@ -449,6 +449,26 @@ def _purchase_events(
     return out
 
 
+def rest_of_month(db: Session, today: date) -> list[Event]:
+    """What the plan still expects this month, from today to its last day: income, bills, loan
+    and purchase installments and the income tax (ADR-097). A salary that arrives this month
+    for the next one isn't in it: it counts in its own month (ADR-084)."""
+    current = recurring.first(today)
+    end = recurring.add_months(current, 1) - timedelta(days=1)
+    events = [
+        e
+        for e in _recurring_events(db, current, _usual_days(db), loans.due_by_month(db))
+        if e.day >= today and e.month is None
+    ]
+    paid_categories = {t.category_id for t in db.scalars(select(RecurringTemplate))}
+    events += [e for e in _purchase_events(db, today, [current], paid_categories) if e.day <= end]
+    events += [
+        Event(day, name, -amount, "fixed")
+        for day, name, amount in tax_projection.payments(db, today, end)
+    ]
+    return sorted(events, key=lambda e: (e.day, e.name))
+
+
 def alerts(db: Session, today: date) -> list[Alert]:
     """Groups that spent more than 30% (and at least 25.00) above their average of the three
     months before, in the last complete month. The average counts the months that have any

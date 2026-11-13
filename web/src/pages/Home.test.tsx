@@ -293,6 +293,17 @@ beforeEach(() => {
           ],
         });
       if (url === "/api/projections") return json(PROJECTION);
+      if (url === "/api/savings/safe-to-spend")
+        return json({
+          month: "2026-10-01",
+          left_so_far: "2400",
+          income_to_come: "0",
+          bills_to_come: "1000",
+          goals_to_go: "50",
+          days_left: 12,
+          amount: "1350",
+          a_day: "112.50",
+        });
       if (url === "/api/networth") return json(SHEET);
       if (url === "/api/people")
         return json([{ counterparty_id: 1, name: "Rubén", holding_id: 2, is_active: true }]);
@@ -379,6 +390,7 @@ describe("Home", () => {
     const all = [
       "needs",
       "kpis",
+      "safe",
       "money",
       "networth",
       "cashflow",
@@ -389,15 +401,22 @@ describe("Home", () => {
       "where",
       "inbox",
     ];
-    fireEvent.click(within(panel).getAllByRole("button", { name: "Hide" })[10]); // Inbox
+    // Safe to spend (ADR-097): the month running now, with how it was reached.
+    const safe = screen.getByRole("region", { name: "Safe to spend" });
+    expect(await within(safe).findByLabelText("Safe to spend")).toHaveTextContent("1,350.00");
+    expect(safe).toHaveTextContent("about 112.50 a day for 12 days");
+    expect(safe).toHaveTextContent("Bills still due this month−1,000.00");
+
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Hide" })[11]); // Inbox
     await waitFor(() => expect(screen.queryByRole("region", { name: "Inbox" })).not.toBeInTheDocument());
-    expect(settings.home).toEqual({ widgets: all.slice(0, 10), layout: 2 });
+    expect(settings.home).toEqual({ widgets: all.slice(0, 11), layout: 2, known: all });
     fireEvent.click(within(panel).getByRole("button", { name: "Move Coming up up" }));
     await waitFor(() =>
       expect(settings.home).toEqual({
         widgets: [
           "needs",
           "kpis",
+          "safe",
           "money",
           "networth",
           "cashflow",
@@ -408,12 +427,13 @@ describe("Home", () => {
           "where",
         ],
         layout: 2,
+        known: all,
       }),
     );
     fireEvent.click(within(panel).getByRole("button", { name: "Show" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "Inbox" })).toBeInTheDocument());
     fireEvent.click(within(panel).getByRole("button", { name: "Back to the default" }));
-    await waitFor(() => expect(settings.home).toEqual({ widgets: all, layout: 2 }));
+    await waitFor(() => expect(settings.home).toEqual({ widgets: all, layout: 2, known: all }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("region", { name: "Customize Home" })).not.toBeInTheDocument();
   });
@@ -436,5 +456,7 @@ describe("Home", () => {
     expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
     expect(await screen.findByText("Every line has a category.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Goals" })).not.toBeInTheDocument();
+    // A widget added after this list was saved shows up once, after the first two.
+    expect(screen.getByRole("region", { name: "Safe to spend" })).toBeInTheDocument();
   });
 });
