@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.102.1] — Let the database pause
+
+### Fixed
+- **The database was kept awake, and billed, whenever the app was up.** The app held open
+  connections, and Azure SQL only pauses with none. It now opens a connection per request, and
+  the pause delay is 15 minutes instead of 60 (ADR-092).
+
 ## [0.102.0] — Transactions on the shared table
 
 ### Changed

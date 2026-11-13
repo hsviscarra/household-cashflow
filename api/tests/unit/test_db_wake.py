@@ -46,3 +46,23 @@ def test_after_the_last_try_the_error_is_raised(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(RuntimeError):
         db.connect_waking(d.connect)
     assert d.tries == len(db.WAITS) + 1
+
+
+def test_sql_server_keeps_no_idle_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-092: an open pooled connection is a session, and a session keeps Azure SQL awake."""
+    from sqlalchemy.pool import NullPool, QueuePool
+
+    asked: list[dict[str, Any]] = []
+    real = db.create_engine
+
+    def fake(url: Any, **kw: Any) -> Any:
+        asked.append(kw)
+        return real("sqlite:///:memory:")  # the driver for SQL Server isn't needed to check this
+
+    monkeypatch.setattr(db, "create_engine", fake)
+    db.make_engine("mssql+pyodbc://u:p@example.database.windows.net/cashflow?driver=x")
+    assert asked[-1]["poolclass"] is NullPool and "pool_recycle" not in asked[-1]
+    db.make_engine("mssql+pyodbc://u:p@h/db?driver=x", poolclass=QueuePool)
+    assert asked[-1]["poolclass"] is QueuePool  # a caller can still ask for one
+    db.make_engine("sqlite:///:memory:")
+    assert "poolclass" not in asked[-1] and asked[-1]["pool_pre_ping"] is True
