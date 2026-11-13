@@ -131,11 +131,19 @@ describe("Tax deductions", () => {
     );
     expect(screen.getByText(/1 invoice isn't anyone's yet/)).toBeInTheDocument();
 
-    const row = (await screen.findAllByRole("listitem")).find((li) => li.textContent?.includes("FARMACIA"))!;
-    expect(row).toHaveTextContent("Apr 10, 2026 · invoice 001-001-000000123 · 12.00 before VAT, 13.80 paid");
-    expect(row).toHaveTextContent("whose: from the line that paid it");
-    expect(within(row).getByLabelText("All from this supplier")).toBeChecked(); // on by default
+    const table = await screen.findByRole("table", { name: "Invoices of 2026" });
+    const row = within(table)
+      .getAllByRole("row")
+      .find((tr) => tr.textContent?.includes("FARMACIA"))!;
+    expect(row).toHaveTextContent("Apr 10, 2026");
+    expect(row).toHaveTextContent("12.00");
+    expect(row).toHaveTextContent("from the line that paid it");
+    expect(screen.getByLabelText(/A choice applies to all from the same supplier/)).toBeChecked(); // on by default
     expect(row).toHaveTextContent("No SRI group yet");
+    // The invoice number and what was paid are columns a person can add (ADR-091).
+    expect(row).not.toHaveTextContent("001-001-000000123");
+    fireEvent.click(screen.getByLabelText("Invoice"));
+    await vi.waitFor(() => expect(row).toHaveTextContent("001-001-000000123"));
     pickCategory(
       await within(row).findByRole("combobox", { name: /Category for FARMACIA/ }),
       "Pharm",
@@ -148,7 +156,7 @@ describe("Tax deductions", () => {
       category_id: 21,
       remember_issuer: true,
     });
-    fireEvent.change(within(row).getByLabelText("Whose invoice"), { target: { value: "" } });
+    fireEvent.change(within(row).getByLabelText(/^Whose invoice from FARMACIA/), { target: { value: "" } });
     await vi.waitFor(() =>
       expect(calls.filter((c) => c.url === "/api/invoices/7/gastos").map((c) => c.body)).toContain(
         '{"person":null,"remember_issuer":true}',

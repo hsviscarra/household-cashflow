@@ -95,3 +95,26 @@ export function useSavedViews() {
       ),
   };
 }
+
+export type TableSort = { id: string; dir: "asc" | "desc" };
+export type TableLayout = { columns: string[]; sort: TableSort | null; group: string | null };
+
+/** One table's layout for this person (ADR-091): which columns and in what order, the sort and the
+ * grouping. Stored under the same key as `useColumns`, so a table can move to it without losing
+ * the columns a person already chose. Unknown ids (a column that was removed) are dropped. */
+export function useTableLayout(
+  table: string,
+  all: string[],
+  defaults: string[] = all,
+): [TableLayout, (change: Partial<TableLayout>) => void] {
+  const { settings, set } = useSettings();
+  const saved = asRecord(settings[`table:${table}`]);
+  const known = (id: unknown): id is string => typeof id === "string" && all.includes(id);
+  const columns = (Array.isArray(saved.columns) ? saved.columns : defaults).filter(known);
+  const rawSort = asRecord(saved.sort);
+  const sort: TableSort | null = known(rawSort.id)
+    ? { id: rawSort.id, dir: rawSort.dir === "desc" ? "desc" : "asc" }
+    : null;
+  const layout: TableLayout = { columns, sort, group: known(saved.group) ? saved.group : null };
+  return [layout, (change) => set(`table:${table}`, { ...layout, ...change })];
+}

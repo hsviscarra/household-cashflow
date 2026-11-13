@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.100.0] — One table for every page: Deductions
+
+### Added
+- **A shared table** (ADR-091): choose the columns and their order, click a header to sort,
+  group rows with subtotals, and see a totals row. Your layout is remembered per table.
+- **Taxes → Deductions** is the first page on it: the invoices can be grouped by supplier, month,
+  whose, category or SRI group, sorted by any column, and the invoice number, amount paid and
+  what paid it can be added as columns.
+
+### Changed
+- "All from this supplier" is one switch above the invoices instead of a checkbox on each row.
+
 ## [0.99.0] — Net worth: Overview and Manage
 
 ### Changed
