@@ -2236,3 +2236,18 @@ export const fetchExplore = (q: {
   person?: string | null;
   group_id?: number | null;
 }) => send<ExploreResult>("GET", `/api/explore${query(q)}`);
+
+// ---------- ask Claude (ADR-100) ----------
+export type AskUsage = {
+  available: boolean;
+  month: string;
+  spent: Money;
+  questions: number;
+  cap: Money;
+  left: Money;
+};
+export type AskAnswer = { answer: string; cost: Money; tools_used: string[]; usage: AskUsage };
+export const fetchAskUsage = () => send<AskUsage>("GET", "/api/ask/usage");
+export const askClaude = (body: { question: string; page?: string; month?: string; deep?: boolean }) =>
+  send<AskAnswer>("POST", "/api/ask", body);
+export const setAskCap = (cap: number) => send<AskUsage>("PUT", "/api/ask/cap", { cap: cap.toFixed(2) });

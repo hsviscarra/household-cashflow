@@ -24,6 +24,7 @@ import PurchasesPage from "./pages/Purchases";
 import GroceriesPage from "./pages/Groceries";
 import IvaPage from "./pages/Iva";
 import CategoryCheckPage from "./pages/CategoryCheck";
+import AskClaude from "./components/AskClaude";
 import SearchBox from "./components/SearchBox";
 import ClosePage from "./pages/Close";
 import BillsPage from "./pages/Bills";
@@ -258,6 +259,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <SavedViewLinks onNavigate={onNavigate} />
       <div className="mt-auto flex flex-col gap-2 px-0 pt-6">
         <SearchBox />
+        <AskClaude />
         <Link
           to="/import"
           onClick={onNavigate}

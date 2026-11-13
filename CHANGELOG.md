@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.110.0] — Ask Claude inside the app
+
+### Added
+- **Ask Claude** (in the menu, on every page): ask in plain words ("why was October higher than
+  September?") and get an answer from your own numbers. Claude reads the same cash flow,
+  spending, bills and net worth it reads today from the Claude app, and can't change anything.
+  "Think harder" uses the larger model. Each question costs a fraction of a cent to a few
+  cents; the month has a limit, $10.00 until you change it on the panel (ADR-100).
+
 ## [0.109.0] — Explore
 
 ### Added
