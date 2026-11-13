@@ -5,6 +5,17 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.105.0] — Compare with last year, bulk "Whose", invoices as a table
+
+### Added
+- **Compare with a year earlier** on Spending over time: last year's same months as a line over
+  the columns, and beside each month in the table and the CSV with the change (ADR-095).
+- **Give ticked lines to a person** on Transactions ("Whose"), next to "Categorize as".
+
+### Changed
+- **Purchases' invoices are on the shared table**: sort, group by supplier, payment or person
+  with subtotals, and find an invoice by a product on it. The products open under the row.
+
 ## [0.104.0] — A chart with controls
 
 ### Added

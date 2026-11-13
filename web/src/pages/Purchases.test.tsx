@@ -147,7 +147,12 @@ describe("purchases", () => {
     expect(list).toHaveTextContent("Paid with Capital One Venture on Oct 29");
     expect(list).toHaveTextContent("Payment not found yet");
     fireEvent.click(within(list).getByRole("button", { name: /SUPER PRUEBA/ }));
-    expect(within(list).getByRole("table")).toHaveTextContent("LECHE ENTERA 1L21.052.10Dairy & Eggs");
+    expect(within(list).getByRole("table", { name: /^Products on invoice/ })).toHaveTextContent(
+      "LECHE ENTERA 1L21.052.10Dairy & Eggs",
+    );
+    // On the shared table (ADR-095): an invoice is found by a product on it.
+    fireEvent.change(within(list).getByLabelText("Find in this table"), { target: { value: "leche" } });
+    expect(within(list).getAllByRole("button", { name: /SUPER|FARMA|PRUEBA/ })).toHaveLength(1);
     expect(list).toHaveTextContent("Invoice 072-140-000123456: 15.00 before tax, VAT 0.98");
   });
 
@@ -166,7 +171,9 @@ describe("purchases", () => {
       "Supermarket",
     );
     await waitFor(() =>
-      expect(calls).toContain('PUT /api/invoices/products {"product_key":"LECHE ENTERA 1L","category_id":41}'),
+      expect(calls).toContain(
+        'PUT /api/invoices/products {"product_key":"LECHE ENTERA 1L","category_id":41}',
+      ),
     );
     expect(await within(section).findByText(/LECHE ENTERA 1L: saved/)).toBeInTheDocument();
   });
