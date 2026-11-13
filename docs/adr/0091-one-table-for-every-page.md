@@ -31,3 +31,12 @@ grouped or added up.
 - A wide table scrolls sideways on a phone; the list it replaced wrapped. The phone version
   (plan item D3) is where that gets its own layout.
 - Transactions keeps its own column picker until it moves; both store under the same key shape.
+
+## 0.101.0: By category and Groceries
+
+- **Transactions → By category**: a category's lines are on the shared table. Who, Counts in and
+  Note can be added; group by month, account, who, merchant or the month it counts in; the total
+  is a row. A column can carry its own header (`Column.header`) for the "tick every line" box.
+- **Groceries → Top products**: sort by price change or quantity, group by type of product.
+- **Not moved: Bills' year grid.** It is a month-by-month matrix that is edited in place; its
+  columns are the months, so choosing and sorting columns doesn't apply. It stays as it is.

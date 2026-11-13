@@ -88,5 +88,10 @@ describe("By category", () => {
     expect(box).toHaveTextContent(/2 lines · .?70\.00/);
     fireEvent.click(within(box).getByLabelText("Tick FARMACIA"));
     expect(within(box).getByText("Move 1 ticked to")).toBeInTheDocument();
+    // The lines are on the shared table (ADR-091): a totals row, and columns to add.
+    const table = within(box).getByRole("table", { name: "Lines in Groceries / Supermarket" });
+    expect(within(table).getAllByRole("row").at(-1)).toHaveTextContent(/Total · 2.*70\.00/);
+    expect(within(box).getByLabelText("Group by")).toBeInTheDocument();
+    expect(within(box).getByLabelText("Counts in")).not.toBeChecked();
   });
 });

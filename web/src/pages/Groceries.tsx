@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { fetchGroceries, type Groceries } from "../api";
 import { addMonths, localToday, money, monthLong, monthShort, num, pct } from "../money";
+import DataTable, { type Column } from "../components/DataTable";
 import { Legend, StackedColumns } from "../components/charts";
 import GroceryProducts from "./GroceryProducts";
 import GroceryTrends from "./GroceryTrends";
@@ -263,6 +264,65 @@ function Stores({ g }: { g: Groceries }) {
   );
 }
 
+type Product = Groceries["products"][number];
+const change = (p: Product) => (p.change === null ? null : num(p.change));
+// Top products on the shared table (ADR-091): sort by price change, group by type of product.
+const PRODUCT_COLUMNS: Column<Product>[] = [
+  {
+    id: "product",
+    label: "Product",
+    fixed: true,
+    sort: (p) => p.description,
+    group: (p) => p.product_group ?? "No type yet",
+    cell: (p) => (
+      <span className="block max-w-72 truncate" title={p.description}>
+        {p.description}
+        {p.product_group && <span className="block text-xs text-muted">{p.product_group}</span>}
+      </span>
+    ),
+  },
+  {
+    id: "bought",
+    label: "Bought",
+    align: "right",
+    sort: (p) => Number(p.quantity),
+    cell: (p) => `${Number(p.quantity).toLocaleString("en-US", { maximumFractionDigits: 3 })} · ${p.times}×`,
+  },
+  {
+    id: "unit",
+    label: "Unit price",
+    align: "right",
+    sort: (p) => num(p.unit_price),
+    cell: (p) => money(p.unit_price),
+  },
+  {
+    id: "change",
+    label: "vs before",
+    align: "right",
+    sort: (p) => change(p) ?? 0,
+    cell: (p) => {
+      const ch = change(p);
+      return (
+        <span
+          className={
+            ch === null ? "text-muted" : ch > 0.02 ? "text-danger-ink" : ch < -0.02 ? "text-good-ink" : ""
+          }
+        >
+          {ch === null ? "new" : `${ch > 0 ? "+" : ""}${pct(ch)}`}
+        </span>
+      );
+    },
+  },
+  {
+    id: "spent",
+    label: "Spent",
+    align: "right",
+    sort: (p) => num(p.amount),
+    total: (p) => num(p.amount),
+    cell: (p) => <span className="font-semibold">{money(p.amount)}</span>,
+  },
+];
+
 function Products({ g, month }: { g: Groceries; month: string }) {
   if (!g.products.length) return null;
   return (
@@ -275,51 +335,16 @@ function Products({ g, month }: { g: Groceries; month: string }) {
           Every product, by type and brand
         </Link>
       </div>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-muted">
-            <tr>
-              <th scope="col" className="px-2 py-1 text-left font-semibold">
-                Product
-              </th>
-              <th scope="col" className="px-2 py-1 text-right font-semibold">
-                Bought
-              </th>
-              <th scope="col" className="px-2 py-1 text-right font-semibold">
-                Unit price
-              </th>
-              <th scope="col" className="px-2 py-1 text-right font-semibold">
-                vs before
-              </th>
-              <th scope="col" className="px-2 py-1 text-right font-semibold">
-                Spent
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {g.products.map((p) => {
-              const ch = p.change === null ? null : num(p.change);
-              return (
-                <tr key={p.product_key}>
-                  <td className="max-w-72 truncate px-2 py-2" title={p.description}>
-                    {p.description}
-                    {p.product_group && <span className="block text-xs text-muted">{p.product_group}</span>}
-                  </td>
-                  <td className="num px-2 py-2 text-right">
-                    {Number(p.quantity).toLocaleString("en-US", { maximumFractionDigits: 3 })} · {p.times}×
-                  </td>
-                  <td className="num px-2 py-2 text-right">{money(p.unit_price)}</td>
-                  <td
-                    className={`num px-2 py-2 text-right ${ch === null ? "text-muted" : ch > 0.02 ? "text-danger-ink" : ch < -0.02 ? "text-good-ink" : ""}`}
-                  >
-                    {ch === null ? "new" : `${ch > 0 ? "+" : ""}${pct(ch)}`}
-                  </td>
-                  <td className="num px-2 py-2 text-right font-semibold">{money(p.amount)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mt-3">
+        <DataTable
+          table="groceries-top-products"
+          caption="Top products of the month"
+          columns={PRODUCT_COLUMNS}
+          rows={g.products}
+          rowKey={(p) => p.product_key}
+          defaults={["bought", "unit", "change", "spent"]}
+          defaultSort={{ id: "spent", dir: "desc" }}
+        />
       </div>
     </section>
   );

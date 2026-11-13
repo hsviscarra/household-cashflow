@@ -4,7 +4,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { fetchCategories, fetchTransactions, statementPageUrl, updateTransaction, type Txn } from "../api";
 import CategoryPicker from "../components/CategoryPicker";
-import { addMonths, localToday, money, num } from "../money";
+import DataTable, { type Column } from "../components/DataTable";
+import { addMonths, localToday, money, monthLong, num } from "../money";
 import { personParam, usePerson } from "../prefs";
 
 // Transactions → By category (ADR-065): every category of a period with its lines, to check them
@@ -156,6 +157,9 @@ export default function CategoryCheckPage() {
   );
 }
 
+// The columns shown until a person chooses their own (ADR-091).
+const LINE_DEFAULTS = ["date", "account", "amount", "move"];
+
 function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPicker>[0]["groups"] }) {
   const qc = useQueryClient();
   const [ticked, setTicked] = useState<Set<number>>(new Set());
@@ -182,6 +186,107 @@ function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPi
       else n.add(id);
       return n;
     });
+  const columns: Column<Txn>[] = [
+    {
+      id: "tick",
+      label: "Tick",
+      fixed: true,
+      header: (
+        <input
+          type="checkbox"
+          aria-label="Tick every line"
+          checked={ticked.size === all.length && all.length > 0}
+          onChange={(e) => setTicked(e.target.checked ? new Set(all) : new Set())}
+        />
+      ),
+      cell: (t) => (
+        <input
+          type="checkbox"
+          aria-label={`Tick ${t.description}`}
+          checked={ticked.has(t.transaction_id)}
+          onChange={() => toggle(t.transaction_id)}
+        />
+      ),
+    },
+    {
+      id: "description",
+      label: "Description",
+      fixed: true,
+      sort: (t) => t.description,
+      group: (t) => t.merchant ?? t.description,
+      cell: (t) => (
+        <span className="block max-w-80 truncate" title={t.description}>
+          {t.description}
+          {t.statement_file_id && (
+            <>
+              {" "}
+              <a
+                className="text-xs text-primary underline"
+                target="_blank"
+                rel="noreferrer"
+                href={statementPageUrl(t.statement_file_id, null)}
+              >
+                statement
+              </a>
+            </>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: "date",
+      label: "Date",
+      sort: (t) => t.txn_date,
+      group: (t) => monthLong(`${t.txn_date.slice(0, 7)}-01`),
+      cell: (t) => <span className="whitespace-nowrap">{day(t.txn_date)}</span>,
+    },
+    {
+      id: "account",
+      label: "Account",
+      sort: (t) => t.account_name ?? t.source,
+      group: (t) => t.account_name ?? t.source,
+      cell: (t) => <span className="text-muted">{t.account_name ?? t.source}</span>,
+    },
+    {
+      id: "who",
+      label: "Who",
+      sort: (t) => t.person ?? "",
+      group: (t) => t.person ?? "Nobody",
+      cell: (t) => t.person ?? "",
+    },
+    {
+      id: "month",
+      label: "Counts in",
+      sort: (t) => t.cash_month,
+      group: (t) => monthLong(t.cash_month),
+      cell: (t) => <span className="whitespace-nowrap">{monthLong(t.cash_month)}</span>,
+    },
+    { id: "note", label: "Note", cell: (t) => <span className="text-muted">{t.notes ?? ""}</span> },
+    {
+      id: "amount",
+      label: "Amount",
+      align: "right",
+      sort: (t) => num(t.amount),
+      total: (t) => num(t.amount),
+      cell: (t) => <span className={num(t.amount) > 0 ? "text-flow-in" : ""}>{money(t.amount)}</span>,
+    },
+    {
+      id: "move",
+      label: "Move to",
+      cell: (t) => (
+        <div className="w-56">
+          <CategoryPicker
+            label={`Move ${t.description} to`}
+            hideLabel
+            groups={groups}
+            value=""
+            placeholder="Move to…"
+            onChange={(id) => id !== "" && move.mutate({ ids: [t.transaction_id], category_id: id })}
+          />
+        </div>
+      ),
+    },
+  ];
   return (
     <section aria-label={row.path} className="card min-w-0 p-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -214,86 +319,16 @@ function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPi
           {note}
         </p>
       )}
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-muted">
-            <tr>
-              <th scope="col" className="w-8 px-2 py-1 text-left">
-                <input
-                  type="checkbox"
-                  aria-label="Tick every line"
-                  checked={ticked.size === all.length && all.length > 0}
-                  onChange={(e) => setTicked(e.target.checked ? new Set(all) : new Set())}
-                />
-              </th>
-              <th scope="col" className="px-2 py-1 text-left font-semibold">
-                Date
-              </th>
-              <th scope="col" className="px-2 py-1 text-left font-semibold">
-                Description
-              </th>
-              <th scope="col" className="px-2 py-1 text-left font-semibold">
-                Account
-              </th>
-              <th scope="col" className="px-2 py-1 text-right font-semibold">
-                Amount
-              </th>
-              <th scope="col" className="px-2 py-1 text-left font-semibold">
-                Move to
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {row.lines
-              .slice()
-              .sort((a, b) => b.txn_date.localeCompare(a.txn_date))
-              .map((t) => (
-                <tr key={t.transaction_id}>
-                  <td className="px-2 py-2">
-                    <input
-                      type="checkbox"
-                      aria-label={`Tick ${t.description}`}
-                      checked={ticked.has(t.transaction_id)}
-                      onChange={() => toggle(t.transaction_id)}
-                    />
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-2">{day(t.txn_date)}</td>
-                  <td className="max-w-80 truncate px-2 py-2" title={t.description}>
-                    {t.description}
-                    {t.statement_file_id && (
-                      <>
-                        {" "}
-                        <a
-                          className="text-xs text-primary underline"
-                          target="_blank"
-                          rel="noreferrer"
-                          href={statementPageUrl(t.statement_file_id, null)}
-                        >
-                          statement
-                        </a>
-                      </>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 text-muted">{t.account_name ?? t.source}</td>
-                  <td className={`num px-2 py-2 text-right ${num(t.amount) > 0 ? "text-flow-in" : ""}`}>
-                    {money(t.amount)}
-                  </td>
-                  <td className="w-60 px-2 py-2">
-                    <CategoryPicker
-                      label={`Move ${t.description} to`}
-                      hideLabel
-                      groups={groups}
-                      value=""
-                      placeholder="Move to…"
-                      onChange={(id) =>
-                        id !== "" && move.mutate({ ids: [t.transaction_id], category_id: id })
-                      }
-                    />
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+      <div className="mt-3">
+        <DataTable
+          table="category-lines"
+          caption={`Lines in ${row.path}`}
+          columns={columns}
+          rows={row.lines}
+          rowKey={(t) => t.transaction_id}
+          defaults={LINE_DEFAULTS}
+          defaultSort={{ id: "date", dir: "desc" }}
+        />
       </div>
     </section>
   );
