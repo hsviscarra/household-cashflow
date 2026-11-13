@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.109.0] — Explore
+
+### Added
+- **Explore** (Spending → Explore): build your own view of spending. Pick what to measure
+  (amount, number of lines, average line), what goes in the rows and the columns, a period and
+  a filter; see it as a table or a chart, download it, keep it by name and pin it to Home,
+  where it shows in "Your views" (ADR-099).
+
 ## [0.108.0] — Net worth, years ahead
 
 ### Added

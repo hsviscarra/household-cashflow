@@ -2210,3 +2210,29 @@ export const DEFAULT_AHEAD: AheadChoices = {
 };
 export const fetchAhead = (c: AheadChoices = DEFAULT_AHEAD) =>
   send<Ahead>("GET", `/api/networth/ahead${query(c)}`);
+
+// ---------- explore (ADR-099) ----------
+export type ExploreMeasure = "amount" | "lines" | "average";
+export type ExploreDimension =
+  "month" | "year" | "group" | "category" | "person" | "account" | "country" | "merchant" | "kind";
+export type ExploreResult = {
+  measure: ExploreMeasure;
+  rows_by: ExploreDimension;
+  cols_by: ExploreDimension | null;
+  rows: string[];
+  cols: string[];
+  cells: Money[][];
+  row_totals: Money[];
+  col_totals: Money[];
+  total: Money;
+  folded: number;
+};
+export const fetchExplore = (q: {
+  start: string;
+  end: string;
+  rows: ExploreDimension;
+  cols?: ExploreDimension | null;
+  measure: ExploreMeasure;
+  person?: string | null;
+  group_id?: number | null;
+}) => send<ExploreResult>("GET", `/api/explore${query(q)}`);

@@ -19,6 +19,7 @@ from app.routers import (
     classify,
     close,
     costs,
+    explore,
     gastos,
     goals,
     health,
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(reconcile.router)
     app.include_router(savings.router)
     app.include_router(outlook.router)
+    app.include_router(explore.router)
 
     app.router.routes.append(mcp_route)
 

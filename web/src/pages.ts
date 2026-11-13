@@ -56,6 +56,14 @@ export const PAGES: PageDef[] = [
     summary: "Product by product, from electronic invoices.",
   },
   {
+    path: "/explore",
+    label: "Explore",
+    group: "Money",
+    feature: "F13",
+    summary:
+      "Build your own view of spending: a measure, rows, columns and a period; save it and pin it to Home.",
+  },
+  {
     path: "/transactions",
     label: "Transactions",
     group: "Money",

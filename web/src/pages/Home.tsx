@@ -26,8 +26,10 @@ import Info from "../components/Info";
 import KpiCard from "../components/KpiCard";
 import LinesPanel, { type LinesTarget } from "../components/LinesPanel";
 import { PersonNote } from "../components/Personalize";
+import PinnedViews from "../components/PinnedViews";
 import SafeToSpend from "../components/SafeToSpend";
 import type { ExplainKey } from "../explain";
+import { VIEWS_KEY, savedViews } from "../explore";
 import { addMonths, localToday, money, monthLong, monthShort, num, pct } from "../money";
 import { personParam, usePerson, useSettings } from "../prefs";
 import { rows } from "./CashFlow";
@@ -50,12 +52,13 @@ export const WIDGETS: Record<string, string> = {
   coming: "Coming up",
   where: "Where it went",
   inbox: "Inbox",
+  views: "Your views (pinned on Explore)",
 };
 const LAYOUT = 2; // saved widget lists from before this layout start from the new default
 const ALL = Object.keys(WIDGETS);
 // Widgets added after a person saved their list show up for them once, after the first two;
 // hiding one afterwards sticks, because the list they save says which widgets it knew.
-const KNOWN_BEFORE = ALL.filter((w) => w !== "safe");
+const KNOWN_BEFORE = ALL.filter((w) => w !== "safe" && w !== "views");
 const NEW_AT = 2;
 const COMING_DAYS = 14;
 
@@ -115,6 +118,8 @@ export default function Home() {
   });
   const f = flows.data;
   const m = measures.data;
+  const { settings } = useSettings();
+  const pinned = savedViews(settings[VIEWS_KEY]).filter((v) => v.pinned);
 
   const parts: Record<string, ReactNode> = {
     needs: <Needs key="needs" />,
@@ -129,6 +134,7 @@ export default function Home() {
     coming: <Coming key="coming" />,
     where: f ? <Where key="where" f={f} /> : null,
     inbox: <InboxCard key="inbox" />,
+    views: pinned.length ? <PinnedViews key="views" views={pinned} /> : null,
   };
   const wide = new Set(["needs", "kpis"]);
 
@@ -187,11 +193,13 @@ export default function Home() {
         </div>
       )}
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
-        {widgets.map((w) => (
-          <div key={w} className={wide.has(w) ? "lg:col-span-2" : undefined}>
-            {parts[w]}
-          </div>
-        ))}
+        {widgets
+          .filter((w) => w !== "views" || pinned.length > 0) // nothing pinned: no empty card
+          .map((w) => (
+            <div key={w} className={wide.has(w) ? "lg:col-span-2" : undefined}>
+              {parts[w]}
+            </div>
+          ))}
       </div>
       {!widgets.length && (
         <p className="mt-6 text-muted">Every widget is hidden. Use Customize to bring some back.</p>

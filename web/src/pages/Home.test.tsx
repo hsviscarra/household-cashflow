@@ -400,6 +400,7 @@ describe("Home", () => {
       "coming",
       "where",
       "inbox",
+      "views",
     ];
     // Safe to spend (ADR-097): the month running now, with how it was reached.
     const safe = screen.getByRole("region", { name: "Safe to spend" });
@@ -409,7 +410,7 @@ describe("Home", () => {
 
     fireEvent.click(within(panel).getAllByRole("button", { name: "Hide" })[11]); // Inbox
     await waitFor(() => expect(screen.queryByRole("region", { name: "Inbox" })).not.toBeInTheDocument());
-    expect(settings.home).toEqual({ widgets: all.slice(0, 11), layout: 2, known: all });
+    expect(settings.home).toEqual({ widgets: all.filter((w) => w !== "inbox"), layout: 2, known: all });
     fireEvent.click(within(panel).getByRole("button", { name: "Move Coming up up" }));
     await waitFor(() =>
       expect(settings.home).toEqual({
@@ -425,6 +426,7 @@ describe("Home", () => {
           "coming",
           "goals",
           "where",
+          "views",
         ],
         layout: 2,
         known: all,
