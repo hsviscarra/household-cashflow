@@ -31,6 +31,8 @@ from app.models import (
 
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
+IN_CHUNK = 1000  # ids in one IN (...): SQL Server allows 2,100 parameters a query
+USER_MAX = 320  # the width of created_by
 CLAUDE = "claude (automatic)"  # who made an issuer rule Claude was sure about (ADR-081)
 PEOPLE = ("Hernan", "Lauren")
 RATE = Decimal("0.18")
@@ -175,7 +177,66 @@ def _by_products(db: Session, ids: list[int]) -> dict[int, str]:
     return out
 
 
-def rows(db: Session, year: int) -> list[Row]:  # noqa: C901 - baseline, docs/refactors.md #15
+Paths = dict[int, tuple[str, str | None]]
+
+
+@dataclass(frozen=True)
+class _Evidence:
+    """What decides an invoice's kind when nobody chose it: issuer rules, the category of the
+    line that paid it, and its products."""
+
+    rules: dict[str, str]  # issuer -> kind
+    by_claude: set[str]  # issuers whose rule Claude suggested (ADR-081)
+    paths: Paths
+    products: dict[int, str]  # invoice -> kind, by what it mostly holds
+
+
+def _whose(inv: Invoice, paid_by: Transaction | None) -> tuple[str | None, str | None]:
+    """Whose invoice it is and where that comes from: chosen on the invoice, or the line's."""
+    if inv.person:
+        return inv.person, "invoice"
+    if paid_by is not None and paid_by.person in PEOPLE:
+        return paid_by.person, "paid"
+    return None, None
+
+
+def _kind(
+    inv: Invoice, paid_by: Transaction | None, ev: _Evidence
+) -> tuple[str | None, str | None]:
+    """An invoice's deductible kind and where it comes from, the strongest evidence first: a
+    person's choice, the issuer's rule, the paying line's category, then its products."""
+    if inv.category_id is not None:
+        return sri_group(ev.paths, inv.category_id), "chosen"
+    if inv.gp_category:
+        return inv.gp_category, "chosen"
+    if inv.issuer_ruc in ev.rules:
+        return ev.rules[inv.issuer_ruc], "claude" if inv.issuer_ruc in ev.by_claude else "issuer"
+    line_category = paid_by.category_id if paid_by is not None else None
+    name, group = ev.paths.get(line_category or 0, (None, None))
+    if name and (name in BY_CATEGORY or (group or "") in BY_CATEGORY):
+        return BY_CATEGORY.get(name) or BY_CATEGORY[group or ""], "paid"
+    if inv.invoice_id in ev.products:
+        return ev.products[inv.invoice_id], "products"
+    if line_category in ev.paths:
+        # Paid by a line whose category isn't in any SRI group: not deductible, the same as
+        # choosing that category here by hand, so it isn't asked for again (ADR-085).
+        return "none", "paid"
+    return None, None
+
+
+def _paying_lines(db: Session, invoices: list[Invoice]) -> dict[int, Transaction]:
+    """The line that paid each invoice, by transaction id."""
+    ids = [i.transaction_id for i in invoices if i.transaction_id]
+    out: dict[int, Transaction] = {}
+    for i in range(0, len(ids), IN_CHUNK):
+        for txn in db.scalars(
+            select(Transaction).where(Transaction.transaction_id.in_(ids[i : i + IN_CHUNK]))
+        ):
+            out[txn.transaction_id] = txn
+    return out
+
+
+def rows(db: Session, year: int) -> list[Row]:
     """A year's invoices as deductible-expense rows: whose, what kind, how much counts and why."""
     invoices = list(
         db.scalars(
@@ -187,47 +248,23 @@ def rows(db: Session, year: int) -> list[Row]:  # noqa: C901 - baseline, docs/re
         )
     )
     all_rules = list(db.scalars(select(GpIssuerRule)))
-    rules = {r.issuer_ruc: r.gp_category for r in all_rules}
-    by_claude = {r.issuer_ruc for r in all_rules if r.created_by == CLAUDE}  # ADR-081
-    paid_ids = [i.transaction_id for i in invoices if i.transaction_id]
-    paid: dict[int, Transaction] = {}
-    for i in range(0, len(paid_ids), 1000):
-        for txn in db.scalars(
-            select(Transaction).where(Transaction.transaction_id.in_(paid_ids[i : i + 1000]))
-        ):
-            paid[txn.transaction_id] = txn
+    paid = _paying_lines(db, invoices)
     paths = _paths(db)
-    products = _by_products(db, [i.invoice_id for i in invoices])
+    ev = _Evidence(
+        {r.issuer_ruc: r.gp_category for r in all_rules},
+        {r.issuer_ruc for r in all_rules if r.created_by == CLAUDE},
+        paths,
+        _by_products(db, [i.invoice_id for i in invoices]),
+    )
     out = []
     for inv in invoices:
         t = paid.get(inv.transaction_id or 0)
         name, group = (
             paths.get(t.category_id, (None, None)) if t and t.category_id else (None, None)
         )
-        if inv.person:
-            person, p_src = inv.person, "invoice"
-        elif t is not None and t.person in PEOPLE:
-            person, p_src = t.person, "paid"
-        else:
-            person, p_src = None, None
-        category: str | None
-        if inv.category_id is not None:
-            category, c_src = sri_group(paths, inv.category_id), "chosen"
-        elif inv.gp_category:
-            category, c_src = inv.gp_category, "chosen"
-        elif inv.issuer_ruc in rules:
-            category = rules[inv.issuer_ruc]
-            c_src = "claude" if inv.issuer_ruc in by_claude else "issuer"
-        elif name and (name in BY_CATEGORY or (group or "") in BY_CATEGORY):
-            category, c_src = BY_CATEGORY.get(name) or BY_CATEGORY[group or ""], "paid"
-        elif inv.invoice_id in products:
-            category, c_src = products[inv.invoice_id], "products"
-        elif t is not None and t.category_id in paths:
-            # Paid by a line whose category isn't in any SRI group: not deductible, the same as
-            # choosing that category here by hand, so it isn't asked for again (ADR-085).
-            category, c_src = "none", "paid"
-        else:
-            category, c_src = None, None
+        person, p_src = _whose(inv, t)
+        category, c_src = _kind(inv, t, ev)
+        shown = inv.category_id or (t.category_id if t else None)
         out.append(
             Row(
                 inv.invoice_id,
@@ -243,8 +280,8 @@ def rows(db: Session, year: int) -> list[Row]:  # noqa: C901 - baseline, docs/re
                 c_src,
                 inv.transaction_id,
                 f"{group} / {name}" if group and name else name,
-                inv.category_id or (t.category_id if t else None),
-                _path(paths, inv.category_id or (t.category_id if t else None)),
+                shown,
+                _path(paths, shown),
             )
         )
     return out
@@ -333,7 +370,34 @@ def summary(db: Session, year: int) -> Summary:
     return out
 
 
-def choose(  # noqa: C901 - baseline, docs/refactors.md #15
+def _remember_issuer(db: Session, inv: Invoice, category: str | None, user: str) -> None:
+    """Make the choice the issuer's rule (or drop the rule when the choice is cleared). The
+    invoice then keeps no choice of its own, so changing the rule later moves it too."""
+    rule = db.scalars(select(GpIssuerRule).where(GpIssuerRule.issuer_ruc == inv.issuer_ruc)).first()
+    if category is None:
+        if rule is not None:
+            db.delete(rule)
+        return
+    if rule is None:
+        db.add(
+            GpIssuerRule(
+                issuer_ruc=inv.issuer_ruc, gp_category=category, created_by=user[:USER_MAX]
+            )
+        )
+    else:
+        rule.gp_category = category
+    inv.gp_category = None
+
+
+def _choose_person(db: Session, inv: Invoice, person: str | None, remember: bool) -> None:
+    if person is not None and person not in PEOPLE:
+        raise GastosError(f"Person must be one of {', '.join(PEOPLE)}.")
+    inv.person = person
+    if remember and person is not None:
+        _same_person(db, inv, person)
+
+
+def choose(
     db: Session,
     invoice_id: int,
     user: str,
@@ -352,44 +416,19 @@ def choose(  # noqa: C901 - baseline, docs/refactors.md #15
     if inv is None:
         raise GastosError(f"Invoice {invoice_id} not found.", 404)
     if set_person:
-        if person is not None and person not in PEOPLE:
-            raise GastosError(f"Person must be one of {', '.join(PEOPLE)}.")
-        inv.person = person
-        if remember_issuer and person is not None:
-            _same_person(db, inv, person)
+        _choose_person(db, inv, person, remember_issuer)
     if set_app_category:
         # An app category (the same list as everywhere else); its SRI group follows from it.
         if category_id is not None and db.get(Category, category_id) is None:
             raise GastosError(f"Category {category_id} not found.")
-        inv.category_id = category_id
-        set_category = True
         category = None if category_id is None else sri_group(_paths(db), category_id)
-    if set_category:
+    if set_category or set_app_category:
         if category is not None and category != "none" and category not in GP_CATEGORIES:
             raise GastosError(f"Unknown category {category}.")
-        if not set_app_category:
-            inv.category_id = None
+        inv.category_id = category_id if set_app_category else None
         inv.gp_category = category
         if remember_issuer:
-            if category is None:
-                rule = db.scalars(
-                    select(GpIssuerRule).where(GpIssuerRule.issuer_ruc == inv.issuer_ruc)
-                ).first()
-                if rule is not None:
-                    db.delete(rule)
-            else:
-                rule = db.scalars(
-                    select(GpIssuerRule).where(GpIssuerRule.issuer_ruc == inv.issuer_ruc)
-                ).first()
-                if rule is None:
-                    db.add(
-                        GpIssuerRule(
-                            issuer_ruc=inv.issuer_ruc, gp_category=category, created_by=user[:320]
-                        )
-                    )
-                else:
-                    rule.gp_category = category
-                inv.gp_category = None  # the rule decides, so changing it later moves this too
+            _remember_issuer(db, inv, category, user)
     db.commit()
     return inv
 

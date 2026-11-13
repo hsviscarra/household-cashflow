@@ -238,7 +238,7 @@ def alerts(db: Session, today: date | None = None) -> list[Alert]:
             continue
         try:
             out += find(db, today)
-        except Exception:
+        except Exception:  # one kind of alert failing must not hide the others: logged below
             db.rollback()
             log.exception("Alerts: %s failed", kind)
     return out

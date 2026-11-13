@@ -26,6 +26,7 @@ SMALL_VISITS = 5  # ...at least this many times in the month
 NEW_MIN = Decimal(50)  # a merchant new this month, worth a look from this much
 NEW_LOOKBACK = 6  # months without it before
 RISING_MIN = Decimal(100)  # a group up this much...
+RISING_OVER = 3  # months before that make a group's usual
 RISING_SHARE = Decimal("0.25")  # ...and this share over its average of the 3 months before
 CHEAPER_SHARE = Decimal("0.05")  # another store at least 5% cheaper per unit
 PRICE_MONTHS = 3
@@ -254,57 +255,81 @@ def _money(x: Decimal) -> str:
     return f"${_q(x):,.2f}"
 
 
-def ideas(db: Session, month: date, person: str | None = None) -> list[Idea]:  # noqa: C901 - baseline, docs/refactors.md #15
-    """Patterns in a month's lines worth a look, biggest first: fees and interest, delivery
-    apps, small frequent charges, merchants new this month, groups well above their usual, and
-    products another store sold for less."""
-    m = first(month)
-    ym = m.strftime("%Y-%m")
-    rows = _lines(db, add_months(m, -NEW_LOOKBACK), m, person)
-    this = [r for r in rows if r.cash_month == m]
-    out: list[Idea] = []
+def _total(rs: list[Any]) -> Decimal:
+    return sum((Decimal(str(r.amount)) for r in rs), ZERO)
 
-    fees = [r for r in this if r.type == "fee_interest"]
-    if fees:
-        total = sum((Decimal(str(r.amount)) for r in fees), ZERO)
-        out.append(
-            Idea(
-                "fees",
-                f"Bank fees and interest: {len(fees)} charges",
-                "Each one is small, so they add up unseen. Open them to see which habit drives "
-                "them (transfers, withdrawals, a card's interest).",
-                _q(total),
-                len(fees),
-                f"/spending?month={ym}&view=merchants&g={fees[0].group_id}",
-            )
+
+@dataclass
+class _Lines:
+    """A month's lines, and the months before it, as the ideas read them."""
+
+    month: date
+    rows: list[Any]  # the month and the NEW_LOOKBACK months before
+    by_merchant: dict[str, list[Any]] = field(default_factory=dict)  # statement lines, no fees
+    delivery: dict[str, list[Any]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Group the month's statement lines by merchant and pick out the delivery apps."""
+        grouped: dict[str, list[Any]] = defaultdict(list)
+        for r in self.this:
+            if r.source != "excel_history" and r.type != "fee_interest":
+                grouped[key_of(str(r.merchant))].append(r)
+        self.by_merchant = dict(grouped)
+        self.delivery = {k: rs for k, rs in grouped.items() if DELIVERY.search(k)}
+
+    @property
+    def this(self) -> list[Any]:
+        """The month's own lines."""
+        return [r for r in self.rows if r.cash_month == self.month]
+
+    def link(self, group_id: object = None, view: str = "merchants") -> str:
+        """Where on Spending an idea's lines are."""
+        group = f"&g={group_id}" if group_id is not None else ""
+        return f"/spending?month={self.month:%Y-%m}&view={view}{group}"
+
+
+def _fees(ln: _Lines) -> list[Idea]:
+    fees = [r for r in ln.this if r.type == "fee_interest"]
+    if not fees:
+        return []
+    return [
+        Idea(
+            "fees",
+            f"Bank fees and interest: {len(fees)} charges",
+            "Each one is small, so they add up unseen. Open them to see which habit drives "
+            "them (transfers, withdrawals, a card's interest).",
+            _q(_total(fees)),
+            len(fees),
+            ln.link(fees[0].group_id),
         )
+    ]
 
-    statement = [r for r in this if r.source != "excel_history" and r.type != "fee_interest"]
-    by_merchant: dict[str, list[Any]] = defaultdict(list)
-    for r in statement:
-        by_merchant[key_of(str(r.merchant))].append(r)
 
-    delivery = {k: v_ for k, v_ in by_merchant.items() if DELIVERY.search(k)}
-    if delivery:
-        total = sum((Decimal(str(r.amount)) for rs in delivery.values() for r in rs), ZERO)
-        n = sum(1 for rs in delivery.values() for r in rs if r.amount > 0)
-        shown = ", ".join(sorted(delivery)[:3])
-        out.append(
-            Idea(
-                "delivery",
-                f"Delivery apps: {n} orders",
-                f"{shown}. Delivery fees and markups are inside these totals; the same basket "
-                "at the store usually costs less.",
-                _q(total),
-                n,
-                f"/spending?month={ym}&view=merchants",
-            )
+def _delivery(ln: _Lines) -> list[Idea]:
+    if not ln.delivery:
+        return []
+    orders = [r for rs in ln.delivery.values() for r in rs]
+    n = sum(1 for r in orders if r.amount > 0)
+    shown = ", ".join(sorted(ln.delivery)[:3])
+    return [
+        Idea(
+            "delivery",
+            f"Delivery apps: {n} orders",
+            f"{shown}. Delivery fees and markups are inside these totals; the same basket "
+            "at the store usually costs less.",
+            _q(_total(orders)),
+            n,
+            ln.link(),
         )
+    ]
 
-    for key, rs in by_merchant.items():
+
+def _small_and_frequent(ln: _Lines) -> list[Idea]:
+    out = []
+    for key, rs in ln.by_merchant.items():
         visits = [r for r in rs if r.amount > 0]
-        total = sum((Decimal(str(r.amount)) for r in rs), ZERO)
-        if key in delivery or len(visits) < SMALL_VISITS or total / len(visits) > SMALL_TICKET:
+        total = _total(rs)
+        if key in ln.delivery or len(visits) < SMALL_VISITS or total / len(visits) > SMALL_TICKET:
             continue
         out.append(
             Idea(
@@ -314,42 +339,52 @@ def ideas(db: Session, month: date, person: str | None = None) -> list[Idea]:  #
                 "habit hides.",
                 _q(total),
                 len(visits),
-                f"/spending?month={ym}&view=merchants&g={rs[0].group_id}",
+                ln.link(rs[0].group_id),
             )
         )
+    return out
 
+
+def _new_merchants(ln: _Lines) -> list[Idea]:
     seen_before = {
-        key_of(str(r.merchant)) for r in rows if r.cash_month < m and r.source != "excel_history"
+        key_of(str(r.merchant))
+        for r in ln.rows
+        if r.cash_month < ln.month and r.source != "excel_history"
     }
-    has_history = any(r.cash_month < m and r.source != "excel_history" for r in rows)
-    if has_history:
-        for key, rs in by_merchant.items():
-            total = sum((Decimal(str(r.amount)) for r in rs), ZERO)
-            if key in seen_before or key in delivery or total < NEW_MIN:
-                continue
-            out.append(
-                Idea(
-                    f"new:{key}",
-                    f"New this month: {key}",
-                    f"Not seen in the {NEW_LOOKBACK} months before. One-off, or the start of "
-                    "something that repeats?",
-                    _q(total),
-                    len(rs),
-                    f"/spending?month={ym}&view=merchants&g={rs[0].group_id}",
-                )
+    if not seen_before:  # no statement history: everything would be "new"
+        return []
+    out = []
+    for key, rs in ln.by_merchant.items():
+        total = _total(rs)
+        if key in seen_before or key in ln.delivery or total < NEW_MIN:
+            continue
+        out.append(
+            Idea(
+                f"new:{key}",
+                f"New this month: {key}",
+                f"Not seen in the {NEW_LOOKBACK} months before. One-off, or the start of "
+                "something that repeats?",
+                _q(total),
+                len(rs),
+                ln.link(rs[0].group_id),
             )
+        )
+    return out
 
+
+def _rising_groups(ln: _Lines) -> list[Idea]:
     groups: dict[int, dict[date, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
     names: dict[int, str] = {}
-    for r in rows:
+    for r in ln.rows:
         groups[int(r.group_id)][r.cash_month] += Decimal(str(r.amount))
         names[int(r.group_id)] = str(r.group_name)
+    out = []
     for gid, by_month in groups.items():
-        prior = [by_month.get(add_months(m, -i), ZERO) for i in (1, 2, 3)]
+        prior = [by_month.get(add_months(ln.month, -i), ZERO) for i in range(1, RISING_OVER + 1)]
         if not all(prior):
             continue
-        usual = sum(prior, ZERO) / 3
-        now = by_month.get(m, ZERO)
+        usual = sum(prior, ZERO) / RISING_OVER
+        now = by_month.get(ln.month, ZERO)
         if now - usual >= RISING_MIN and now >= usual * (1 + RISING_SHARE):
             out.append(
                 Idea(
@@ -359,24 +394,43 @@ def ideas(db: Session, month: date, person: str | None = None) -> list[Idea]:  #
                     "three before.",
                     _q(now - usual),
                     0,
-                    f"/spending?month={ym}&view=merchants&g={gid}",
+                    ln.link(gid),
                 )
             )
+    return out
 
-    cheaper = [p for p in products(db, m) if p.cheaper_store]
-    if cheaper:
-        total = sum((p.could_save for p in cheaper), ZERO)
-        top = max(cheaper, key=lambda p: p.could_save)
-        out.append(
-            Idea(
-                "cheaper",
-                f"Same product, cheaper store: {len(cheaper)} products",
-                f"For example {top.description}: {_money(top.unit_price)} at "
-                f"{', '.join(top.stores)}, {_money(top.cheaper_price or ZERO)} at "
-                f"{top.cheaper_store}.",
-                _q(total),
-                len(cheaper),
-                f"/spending?month={ym}&view=products",
-            )
+
+def _cheaper_elsewhere(db: Session, ln: _Lines) -> list[Idea]:
+    cheaper = [p for p in products(db, ln.month) if p.cheaper_store]
+    if not cheaper:
+        return []
+    top = max(cheaper, key=lambda p: p.could_save)
+    return [
+        Idea(
+            "cheaper",
+            f"Same product, cheaper store: {len(cheaper)} products",
+            f"For example {top.description}: {_money(top.unit_price)} at "
+            f"{', '.join(top.stores)}, {_money(top.cheaper_price or ZERO)} at "
+            f"{top.cheaper_store}.",
+            _q(sum((p.could_save for p in cheaper), ZERO)),
+            len(cheaper),
+            ln.link(view="products"),
         )
+    ]
+
+
+def ideas(db: Session, month: date, person: str | None = None) -> list[Idea]:
+    """Patterns in a month's lines worth a look, biggest first: fees and interest, delivery
+    apps, small frequent charges, merchants new this month, groups well above their usual, and
+    products another store sold for less."""
+    m = first(month)
+    ln = _Lines(m, _lines(db, add_months(m, -NEW_LOOKBACK), m, person))
+    out = [
+        *_fees(ln),
+        *_delivery(ln),
+        *_small_and_frequent(ln),
+        *_new_merchants(ln),
+        *_rising_groups(ln),
+        *_cheaper_elsewhere(db, ln),
+    ]
     return sorted(out, key=lambda i: (-i.amount, i.title))

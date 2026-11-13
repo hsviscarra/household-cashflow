@@ -25,6 +25,7 @@ from app.services import (
     status,
     transfers,
 )
+from app.services import rules as rule_engine
 from app.services.recurring import add_months, first
 
 # How old a value may get before it's out of date (days), by kind: monthly statements, investments
@@ -41,81 +42,13 @@ FRESH_DAYS = {
 }
 MONTHS = 3  # months of Data status to look back on
 MAX_TASKS = 25  # per section; the count says how many there are
-# Words of descriptions that say nothing about who or what ("TRANSFERENCIA INTERNET", "SU PAGO
-# MUCHAS GRACIAS"): a rule on them would catch unrelated payments, so Always is off for them.
-GENERIC_WORDS = frozenset(
-    (
-        "TRANSFERENCIA",
-        "TRANSFERENCIAS",
-        "INTERNET",
-        "SU",
-        "PAGO",
-        "PAGOS",
-        "MUCHAS",
-        "GRACIAS",
-        "DEPOSITO",
-        "DEPOSITOS",
-        "TRANSFER",
-        "ONLINE",
-        "BANKING",
-        "RETIRO",
-        "CAJERO",
-        "ATM",
-        "NOTA",
-        "CREDITO",
-        "DEBITO",
-        "ENVIADA",
-        "RECIBIDA",
-        "INTERBANCARIA",
-        "INTERBANCARIO",
-        "DE",
-        "A",
-        "POR",
-        "EN",
-        "MOVIL",
-        "BANCA",
-        "WEB",
-        "TO",
-        "FROM",
-        "PAYMENT",
-        "MOBILE",
-        "CTA",
-        "CTAS",
-        "CUENTA",
-        "CUENTAS",
-        "TERCEROS",
-        "TERCERO",
-        "BCA",
-        "BCO",
-        "BANCO",
-        "BANCOS",
-        "ENL",
-        "LINEA",
-        "OTROS",
-        "OTRAS",
-        "ENVIO",
-        "ENVIADO",
-        "SPI",
-        "DIRECTO",
-        "DIRECTA",
-        "INTERNA",
-        "INTERNO",
-        "PROPIAS",
-        "PROPIA",
-        "AHORROS",
-        "CORRIENTE",
-        "TRANSF",
-        "TRF",
-        "ZELLE",
-    )
-)
+GENERIC_WORDS = rule_engine.GENERIC_WORDS
 DISMISSED = "todo-dismissed:"  # core.app_setting keys of tasks let go (ADR-058)
 
 
 def rule_ok(merchant_key: str | None) -> bool:
-    """Whether a rule on this description would be safe: it names someone or something."""
-    words = (merchant_key or "").upper().replace("*", " ").split()
-    return bool(words) and not all(w in GENERIC_WORDS for w in words)
+    """Whether a rule on this description would be safe (the rule engine decides)."""
+    return rule_engine.rule_ok(merchant_key)
 
 
 def _dismiss_key(task_key: str) -> str:

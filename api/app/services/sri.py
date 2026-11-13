@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Invoice
+from app.services import iva
 
 KEY = re.compile(r"(?<!\d)\d{49}(?!\d)")
 FACTURA = "01"
@@ -68,8 +69,6 @@ def find_keys(db: Session, text: str) -> Keys:
     for i in range(0, len(invoices), 1000):
         chunk = invoices[i : i + 1000]
         have |= set(db.scalars(select(Invoice.access_key).where(Invoice.access_key.in_(chunk))))
-    from app.services import iva
-
     have |= iva.known_keys(db, invoices)
     out.stored = len(have)
     out.new = [k for k in invoices if k not in have]

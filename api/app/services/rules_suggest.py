@@ -9,8 +9,8 @@ from sqlalchemy import ColumnElement, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models import FROM_BANKS, MerchantRule, Transaction
+from app.services import classify
 from app.services import rules as rule_engine
-from app.services.classify import merchant_key
 
 MIN_TIMES = 2
 MIN_KEY = 3  # characters: a shorter key says too little to be a rule
@@ -104,10 +104,8 @@ def learn(db: Session, t: Transaction, user: str) -> Learned | None:
     hand, all to one category, and no rule knows it, save the rule and apply it to the lines
     still waiting (ADR-079). Never for a bare transfer text ("TRANSFERENCIA INTERNET": it names
     no one), a merchant whose rule was deleted or turned off, or one categorized two ways."""
-    from app.services import classify, todo  # todo and classify import this module's users
-
-    key = merchant_key(t.description_raw or "")
-    if t.category_id is None or len(key) < MIN_KEY or not todo.rule_ok(key):
+    key = rule_engine.key(t.description_raw or "")
+    if t.category_id is None or len(key) < MIN_KEY or not rule_engine.rule_ok(key):
         return None
     if db.scalar(select(MerchantRule.rule_id).where(MerchantRule.pattern == key).limit(1)):
         return None  # there was a rule once: a person removed it or turned it off
@@ -126,7 +124,7 @@ def learn(db: Session, t: Transaction, user: str) -> Learned | None:
         pattern=key,
         match_type="contains",
         category_id=t.category_id,
-        priority=classify.REVIEW_RULE_PRIORITY,
+        priority=rule_engine.REVIEW_RULE_PRIORITY,
         set_person=who if len(people) == 1 and (who := next(iter(people))) in OWNERS else None,
     )
     db.add(rule)

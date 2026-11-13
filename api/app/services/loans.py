@@ -43,6 +43,7 @@ from app.services import recurring
 SOURCE = "amortization"
 CENT = Decimal("0.01")
 ZERO = Decimal(0)
+MIN_AMOUNTS = 4  # a row has at least principal, interest, total and balance
 PAID = {"CANCELADO", "PAGADO"}
 STATES = ("CANCELADO", "PAGADO", "POR VENCER", "VENCIDO")
 ROW = re.compile(
@@ -99,9 +100,8 @@ def _money(text: str) -> Decimal:
         raise ValueError(text) from exc
 
 
-def read_table(data: bytes) -> Table:  # noqa: C901 - baseline, docs/refactors.md #15
-    """Read a lender's amortization table (PDF) into installments, with any problems found
-    (a missing number, balances that don't follow); LoanError when it isn't such a table."""
+def _pdf_text(data: bytes) -> str:
+    """The PDF's text, or LoanError when it can't be read or isn't an amortization table."""
     try:
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             text = "\n".join((page.extract_text() or "") for page in pdf.pages)
@@ -109,8 +109,11 @@ def read_table(data: bytes) -> Table:  # noqa: C901 - baseline, docs/refactors.m
         raise LoanError("This file could not be read as a PDF.") from exc
     if "TABLA DE AMORTIZ" not in text.upper():
         raise LoanError("This isn't an amortization table (no “Tabla de amortización” heading).")
-    approved = APPROVED.search(text)
-    term = TERM.search(text)
+    return text
+
+
+def _installments(text: str) -> tuple[list[Row], list[str]]:
+    """The table's rows in order, and the rows that can't be read or don't add up."""
     rows: list[Row] = []
     problems: list[str] = []
     for line in text.splitlines():
@@ -119,32 +122,28 @@ def read_table(data: bytes) -> Table:  # noqa: C901 - baseline, docs/refactors.m
             continue
         amounts = [_money(x) for x in m["amounts"].split()]
         n = int(m["n"])
-        if len(amounts) < 4:
+        if len(amounts) < MIN_AMOUNTS:
             problems.append(f"Installment {n}: too few amounts to read.")
             continue
         principal, interest, *middle, total, balance = amounts
         if principal + interest + sum(middle, ZERO) != total:
             problems.append(f"Installment {n}: its amounts don't add up to its total {total}.")
-        rows.append(
-            Row(
-                n,
-                date(int(m["y"]), int(m["m"]), 1),
-                principal,
-                interest,
-                total - principal - interest,
-                total,
-                balance,
-                m["state"],
-            )
-        )
-    if not rows:
-        raise LoanError("No installments were found in the table.")
+        period = date(int(m["y"]), int(m["m"]), 1)
+        other = total - principal - interest
+        rows.append(Row(n, period, principal, interest, other, total, balance, m["state"]))
     rows.sort(key=lambda r: r.number)
+    return rows, problems
+
+
+def _sequence_problems(rows: list[Row], approved: Decimal | None) -> list[str]:
+    """The first installment missing from the numbering, and the first balance that isn't the
+    one before less the principal."""
+    problems = []
     for i, r in enumerate(rows, start=1):
         if r.number != i:
             problems.append(f"Installment {i} is missing.")
             break
-    previous = _money(approved[1]) if approved else None
+    previous = approved
     for r in rows:
         if previous is not None and abs(previous - r.principal - r.balance_after) > CENT:
             problems.append(
@@ -153,9 +152,21 @@ def read_table(data: bytes) -> Table:  # noqa: C901 - baseline, docs/refactors.m
             )
             break
         previous = r.balance_after
-    return Table(
-        rows, _money(approved[1]) if approved else None, int(term[1]) if term else None, problems
-    )
+    return problems
+
+
+def read_table(data: bytes) -> Table:
+    """Read a lender's amortization table (PDF) into installments, with any problems found
+    (a missing number, balances that don't follow); LoanError when it isn't such a table."""
+    text = _pdf_text(data)
+    found = APPROVED.search(text)
+    approved = _money(found[1]) if found else None
+    term = TERM.search(text)
+    rows, problems = _installments(text)
+    if not rows:
+        raise LoanError("No installments were found in the table.")
+    problems += _sequence_problems(rows, approved)
+    return Table(rows, approved, int(term[1]) if term else None, problems)
 
 
 def _loan(db: Session, holding_id: int) -> Holding:

@@ -18,6 +18,9 @@ from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.worksheet.worksheet import Worksheet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -614,92 +617,57 @@ def month(db: Session, person: str, m: date) -> IvaMonth:
 
 
 # ---------------------------------------------------------------- the accountant's workbook
-def workbook(r: IvaMonth) -> bytes:  # noqa: C901 - baseline, docs/refactors.md #15
-    """The month as the accountant's workbook: sales, purchases with credit and personal expenses
-    (as SRI lists them), and the Form 104 figures."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Font
+SHEET_COLUMNS = [
+    "RUC EMISOR",
+    "RAZON SOCIAL EMISOR",
+    "TIPO COMPROBANTE",
+    "SERIE COMPROBANTE",
+    "CLAVE ACCESO",
+    "FECHA EMISION",
+    "VALOR SIN IMPUESTOS",
+    "IVA",
+    "IMPORTE TOTAL",
+    "RTE RTA",
+    "RTE IVA",
+]
+MONEY_FORMAT = "#,##0.00"
+DATE_FORMAT = "DD/MM/YYYY"
+# Columns added up under each section (0-based): amounts, and for sales the withholdings too.
+SALES_TOTALS = (6, 7, 8, 9, 10)
+PURCHASE_TOTALS = (6, 7, 8)
+SheetRow = list[object]
 
-    wb = Workbook()
-    ws = wb.active
-    assert ws is not None
-    ws.title = f"{r.month:%Y-%m}"
-    bold = Font(bold=True)
-    ws.append(
-        [
-            "RUC EMISOR",
-            "RAZON SOCIAL EMISOR",
-            "TIPO COMPROBANTE",
-            "SERIE COMPROBANTE",
-            "CLAVE ACCESO",
-            "FECHA EMISION",
-            "VALOR SIN IMPUESTOS",
-            "IVA",
-            "IMPORTE TOTAL",
-            "RTE RTA",
-            "RTE IVA",
-        ]
-    )
-    for c in ws[1]:
-        c.font = bold
 
-    def title(text: str) -> None:
-        ws.append([])
-        ws.append([text])
-        ws.cell(ws.max_row, 1).font = bold
-
-    def total(rows: list[list[object]], cols: tuple[int, ...]) -> None:
-        line: list[object] = [""] * 11
-        line[0] = "TOTAL"
-        for col in cols:
-            line[col] = sum((Decimal(str(x[col] or 0)) for x in rows), ZERO)
-        ws.append(line)
-        for cell in ws[ws.max_row]:
-            cell.font = bold
-
-    title("VENTAS 15%")
-    rows: list[list[object]] = [
+def _sale_rows(r: IvaMonth) -> list[SheetRow]:
+    return [
         ["", s.buyer_name, "Factura", s.number, "", s.issue_date, s.base_taxed + s.base_zero,
          s.tax, s.total, s.income_tax_withheld or None, s.iva_withheld or None]
         for s in r.sales
     ]  # fmt: skip
-    for x in rows:
-        ws.append(x)
-    total(rows, (6, 7, 8, 9, 10))
-    for name, use in (("COMPRAS 15%", "business"), ("GASTOS PERSONALES", "personal")):
-        title(name)
-        rows = [
-            [p.issuer_ruc, p.issuer_name, "Factura", p.number, p.access_key, p.issue_date,
-             p.base_taxed + p.base_zero, p.tax, p.total, None, None]
-            for p in r.purchases if p.iva_use == use
-        ]  # fmt: skip
-        for x in rows:
-            ws.append(x)
-        total(rows, (6, 7, 8))
-    if r.tax_notes:
-        title("NOTAS DE CRÉDITO Y DÉBITO")
-        rows = [
-            [n.issuer_ruc, n.name,
-             ("Nota de crédito" if n.kind == "credit" else "Nota de débito")
-             + (" emitida" if n.direction == "issued" else " recibida"),
-             n.number, n.modified_number or "", n.issue_date, n.base_taxed + n.base_zero,
-             n.tax, n.total, None, None]
-            for n in r.tax_notes if n.counts
-        ]  # fmt: skip
-        for x in rows:
-            ws.append(x)
-    for row in ws.iter_rows(min_row=2):
-        for c in row:
-            if isinstance(c.value, date):
-                c.number_format = "DD/MM/YYYY"
-            elif isinstance(c.value, Decimal):
-                c.number_format = "#,##0.00"
-    f = r.form
-    form = wb.create_sheet("Formulario 104")
-    form.append(["Campo", "Descripción", "Valor"])
-    for c in form[1]:
-        c.font = bold
-    for code, text, value in (
+
+
+def _purchase_rows(r: IvaMonth, use: str) -> list[SheetRow]:
+    return [
+        [p.issuer_ruc, p.issuer_name, "Factura", p.number, p.access_key, p.issue_date,
+         p.base_taxed + p.base_zero, p.tax, p.total, None, None]
+        for p in r.purchases if p.iva_use == use
+    ]  # fmt: skip
+
+
+def _note_rows(r: IvaMonth) -> list[SheetRow]:
+    return [
+        [n.issuer_ruc, n.name,
+         ("Nota de crédito" if n.kind == "credit" else "Nota de débito")
+         + (" emitida" if n.direction == "issued" else " recibida"),
+         n.number, n.modified_number or "", n.issue_date, n.base_taxed + n.base_zero,
+         n.tax, n.total, None, None]
+        for n in r.tax_notes if n.counts
+    ]  # fmt: skip
+
+
+def _form_rows(f: Form) -> list[tuple[str, str, object]]:
+    """The Form 104 boxes, in the form's order: (box, what it is, value)."""
+    return [
         ("401", "Ventas locales gravadas tarifa diferente de cero (valor bruto)", f.f401),
         ("411", "Ventas locales gravadas tarifa diferente de cero (valor neto)", f.f411),
         ("421", "IVA generado", f.f421),
@@ -720,10 +688,70 @@ def workbook(r: IvaMonth) -> bytes:  # noqa: C901 - baseline, docs/refactors.md 
         ("615", "Saldo crédito tributario próximo mes: adquisiciones", f.f615),
         ("617", "Saldo crédito tributario próximo mes: retenciones", f.f617),
         ("620 / 902", "Total impuesto a pagar", f.f620),
-    ):
+    ]
+
+
+class _Sheet:
+    """Writes the month's sheet section by section, in the layout the accountant uses."""
+
+    def __init__(self, ws: Worksheet, bold: Font) -> None:
+        self.ws = ws
+        self.bold = bold
+        ws.append(SHEET_COLUMNS)
+        self._bold_last_row()
+
+    def _bold_last_row(self) -> None:
+        for cell in self.ws[self.ws.max_row]:
+            cell.font = self.bold
+
+    def section(self, name: str, rows: list[SheetRow], totals: tuple[int, ...] = ()) -> None:
+        """A blank line, the section's name, its rows and, with `totals`, a TOTAL line."""
+        self.ws.append([])
+        self.ws.append([name])
+        self.ws.cell(self.ws.max_row, 1).font = self.bold
+        for row in rows:
+            self.ws.append(row)
+        if totals:
+            line: SheetRow = [""] * len(SHEET_COLUMNS)
+            line[0] = "TOTAL"
+            for col in totals:
+                line[col] = sum((Decimal(str(x[col] or 0)) for x in rows), ZERO)
+            self.ws.append(line)
+            self._bold_last_row()
+
+    def number_formats(self) -> None:
+        """Dates and amounts shown the way Ecuador writes them."""
+        for row in self.ws.iter_rows(min_row=2):
+            for c in row:
+                if isinstance(c.value, date):
+                    c.number_format = DATE_FORMAT
+                elif isinstance(c.value, Decimal):
+                    c.number_format = MONEY_FORMAT
+
+
+def workbook(r: IvaMonth) -> bytes:
+    """The month as the accountant's workbook: sales, purchases with credit and personal expenses
+    (as SRI lists them), and the Form 104 figures."""
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = f"{r.month:%Y-%m}"
+    bold = Font(bold=True)
+    sheet = _Sheet(ws, bold)
+    sheet.section("VENTAS 15%", _sale_rows(r), SALES_TOTALS)
+    sheet.section("COMPRAS 15%", _purchase_rows(r, "business"), PURCHASE_TOTALS)
+    sheet.section("GASTOS PERSONALES", _purchase_rows(r, "personal"), PURCHASE_TOTALS)
+    if r.tax_notes:
+        sheet.section("NOTAS DE CRÉDITO Y DÉBITO", _note_rows(r))
+    sheet.number_formats()
+    form = wb.create_sheet("Formulario 104")
+    form.append(["Campo", "Descripción", "Valor"])
+    for c in form[1]:
+        c.font = bold
+    for code, text, value in _form_rows(r.form):
         form.append([code, text, value])
         if isinstance(value, Decimal):
-            form.cell(form.max_row, 3).number_format = "#,##0.00"
+            form.cell(form.max_row, 3).number_format = MONEY_FORMAT
     form.column_dimensions["B"].width = 60
     ws.column_dimensions["B"].width = 45
     out = BytesIO()

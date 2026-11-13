@@ -166,7 +166,7 @@ def autopilot(db: Session, year: int) -> Done:
             known.add(a.ruc)
             done.saved += 1
         db.commit()
-    except Exception:
+    except Exception:  # best effort after a load: the invoices wait on Taxes, logged below
         db.rollback()
         log.exception("Tax categories: Claude didn't finish")
     return done

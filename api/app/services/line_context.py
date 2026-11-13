@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models import Account, AppSetting, Category, Invoice, MerchantRule, Transaction
+from app.services import invoice_category
 from app.services import rules as rule_engine
 
 NEAR_DAYS = 7  # a transfer's other side, an invoice: within a week
@@ -250,7 +251,5 @@ def link_invoice(db: Session, t: Transaction, invoice_id: int) -> Invoice:
         old.transaction_id = None
     inv.transaction_id = t.transaction_id
     db.commit()
-    from app.services import invoice_category
-
     invoice_category.apply(db, since=inv.issue_date)
     return inv

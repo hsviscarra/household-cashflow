@@ -26,11 +26,10 @@ from app.models import (
     StgTransaction,
     Transaction,
 )
-from app.services import payday, transfers
+from app.services import payday, recurring, transfers
 from app.services import rules as rule_engine
 
-# Lower than the seeded merchant rules (10-30): a rule Hernan saves while reviewing is specific.
-REVIEW_RULE_PRIORITY = 15
+REVIEW_RULE_PRIORITY = rule_engine.REVIEW_RULE_PRIORITY
 
 
 class ClassifyError(Exception):
@@ -505,7 +504,29 @@ def rule_type(kind: str, account: Account, amount: Decimal) -> str:
 
 
 # ---------------- one line ----------------
-def edit(  # noqa: C901 - baseline, docs/refactors.md #15
+def _edit_category(db: Session, row: Transaction, category_id: int | None, user: str) -> None:
+    """Give a line a category by hand; a transfer that stops being one loses its pair."""
+    if category_id is None:
+        raise ClassifyError("Choose a category.")
+    category = db.get(Category, category_id)
+    if category is None:
+        raise ClassifyError(f"Category {category_id} not found.", 404)
+    set_category(db, row, category, "manual", "Edited", user)
+    if row.transfer_group_id is not None and category.kind != "transfer":
+        transfers.unlink(db, row.transfer_group_id, user)  # no longer a transfer
+
+
+def _edit_counterparty(
+    db: Session, row: Transaction, counterparty_id: int | None, user: str
+) -> None:
+    """Say whose money a line is, or clear it."""
+    if counterparty_id is not None and db.get(Counterparty, counterparty_id) is None:
+        raise ClassifyError(f"Person {counterparty_id} not found.", 404)
+    _log(db, row, "counterparty_id", row.counterparty_id, counterparty_id, "Edited", user)
+    row.counterparty_id = counterparty_id
+
+
+def edit(
     db: Session,
     row: Transaction,
     user: str,
@@ -522,14 +543,7 @@ def edit(  # noqa: C901 - baseline, docs/refactors.md #15
     if "counts_in" in fields:
         _count_in(db, row, counts_in, user)
     if "category_id" in fields:
-        if category_id is None:
-            raise ClassifyError("Choose a category.")
-        category = db.get(Category, category_id)
-        if category is None:
-            raise ClassifyError(f"Category {category_id} not found.", 404)
-        set_category(db, row, category, "manual", "Edited", user)
-        if row.transfer_group_id is not None and category.kind != "transfer":
-            transfers.unlink(db, row.transfer_group_id, user)  # no longer a transfer
+        _edit_category(db, row, category_id, user)
     if "notes" in fields:
         _log(db, row, "notes", row.notes, notes, "Edited", user)
         row.notes = notes
@@ -537,10 +551,7 @@ def edit(  # noqa: C901 - baseline, docs/refactors.md #15
         _log(db, row, "person", row.person, person, "Edited", user)
         row.person = person
     if "counterparty_id" in fields:
-        if counterparty_id is not None and db.get(Counterparty, counterparty_id) is None:
-            raise ClassifyError(f"Person {counterparty_id} not found.", 404)
-        _log(db, row, "counterparty_id", row.counterparty_id, counterparty_id, "Edited", user)
-        row.counterparty_id = counterparty_id
+        _edit_counterparty(db, row, counterparty_id, user)
     db.commit()
     if row.type == "transfer" and row.transfer_group_id is None:
         transfers.match(db, user)
@@ -549,8 +560,6 @@ def edit(  # noqa: C901 - baseline, docs/refactors.md #15
 def _count_in(db: Session, row: Transaction, month: date | None, user: str) -> None:
     """Move a line to the month a person says it counts in (ADR-089). A bill it paid belongs to
     the old month's entry, so that link is dropped and the new month is matched again."""
-    from app.services import recurring  # recurring's users import this module
-
     if row.source == "excel_history":
         raise ClassifyError("The workbook's rows have no day to move.")
     try:

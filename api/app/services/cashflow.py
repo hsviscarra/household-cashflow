@@ -12,6 +12,7 @@ from sqlalchemy import Select, and_, case, exists, func, not_, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import FROM_BANKS, Account, Category, Counterparty, Transaction, v_excel_month
+from app.services import rules as rule_engine
 from app.services.recurring import add_months, first
 
 ZERO = Decimal("0")
@@ -210,8 +211,6 @@ class Line:
 
 
 def _line(r: Transaction, cname: str | None, aname: str | None, who: str | None) -> Line:
-    from app.services.classify import merchant_key
-
     return Line(
         transaction_id=r.transaction_id,
         txn_date=r.txn_date,
@@ -227,7 +226,7 @@ def _line(r: Transaction, cname: str | None, aname: str | None, who: str | None)
         category_id=r.category_id,
         statement_file_id=r.statement_file_id,
         counterparty=who,
-        merchant_key=merchant_key(r.description_raw),
+        merchant_key=rule_engine.key(r.description_raw),
         cash_month=r.cash_month,
         month_override=r.month_override,
     )

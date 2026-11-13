@@ -139,3 +139,82 @@ def validate_pattern(pattern: str, match_type: str) -> str | None:
         except re.error as exc:
             return f"Not a valid regular expression: {exc}"
     return None
+
+
+# Lower than the seeded merchant rules (10-30): a rule saved while reviewing is specific.
+REVIEW_RULE_PRIORITY = 15
+
+# Words of descriptions that say nothing about who or what ("TRANSFERENCIA INTERNET", "SU PAGO
+# MUCHAS GRACIAS"): a rule on them would catch unrelated payments, so Always is off for them.
+GENERIC_WORDS = frozenset(
+    (
+        "TRANSFERENCIA",
+        "TRANSFERENCIAS",
+        "INTERNET",
+        "SU",
+        "PAGO",
+        "PAGOS",
+        "MUCHAS",
+        "GRACIAS",
+        "DEPOSITO",
+        "DEPOSITOS",
+        "TRANSFER",
+        "ONLINE",
+        "BANKING",
+        "RETIRO",
+        "CAJERO",
+        "ATM",
+        "NOTA",
+        "CREDITO",
+        "DEBITO",
+        "ENVIADA",
+        "RECIBIDA",
+        "INTERBANCARIA",
+        "INTERBANCARIO",
+        "DE",
+        "A",
+        "POR",
+        "EN",
+        "MOVIL",
+        "BANCA",
+        "WEB",
+        "TO",
+        "FROM",
+        "PAYMENT",
+        "MOBILE",
+        "CTA",
+        "CTAS",
+        "CUENTA",
+        "CUENTAS",
+        "TERCEROS",
+        "TERCERO",
+        "BCA",
+        "BCO",
+        "BANCO",
+        "BANCOS",
+        "ENL",
+        "LINEA",
+        "OTROS",
+        "OTRAS",
+        "ENVIO",
+        "ENVIADO",
+        "SPI",
+        "DIRECTO",
+        "DIRECTA",
+        "INTERNA",
+        "INTERNO",
+        "PROPIAS",
+        "PROPIA",
+        "AHORROS",
+        "CORRIENTE",
+        "TRANSF",
+        "TRF",
+        "ZELLE",
+    )
+)
+
+
+def rule_ok(merchant_key: str | None) -> bool:
+    """Whether a rule on this description would be safe: it names someone or something."""
+    words = (merchant_key or "").upper().replace("*", " ").split()
+    return bool(words) and not all(w in GENERIC_WORDS for w in words)
