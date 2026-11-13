@@ -42,12 +42,16 @@ class PdfError(Exception):
 
 @dataclass
 class PdfInfo:
+    """A PDF's page count and text."""
+
     pages: int
     text: str
 
 
 @dataclass
 class Detection:
+    """Which bank a statement is from, with its last four digits, period, owner and kind."""
+
     source: str
     last4: list[str] = field(default_factory=list)
     period_start: date | None = None
@@ -59,10 +63,12 @@ class Detection:
 
     @property
     def label(self) -> str:
+        """The bank's name as shown to people."""
         return SOURCES[self.source]
 
 
 def read_pdf(data: bytes) -> PdfInfo:
+    """A PDF's page count and text; PdfError when it isn't a readable PDF."""
     if not data.startswith(b"%PDF-"):
         raise PdfError("This file is not a PDF.")
     try:
@@ -185,6 +191,8 @@ def _pichincha_period(text: str) -> tuple[date | None, date | None]:
 
 @dataclass(frozen=True)
 class Fingerprint:
+    """What identifies a bank's statement: the marks in its text and how to read its period."""
+
     source: str
     # Any of these (case-insensitive) identifies the bank. Only domains and legal names: merchant
     # lines such as "CAPITAL ONE MOBILE PMT" on a BofA statement must not match.
@@ -254,6 +262,7 @@ def _owner(fp: Fingerprint, text: str) -> str | None:
 
 
 def detect(text: str) -> Detection:
+    """Which bank a statement's text is from, with its last four digits and period."""
     low = text.lower()
     for fp in FINGERPRINTS:
         if any(mark in low for mark in fp.marks):

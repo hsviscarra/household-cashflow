@@ -47,6 +47,8 @@ CENT = Decimal("0.01")
 
 @dataclass
 class Charge:
+    """One charge of a subscription."""
+
     transaction_id: int
     txn_date: date
     amount: Decimal  # positive: what it cost
@@ -56,6 +58,8 @@ class Charge:
 
 @dataclass
 class Subscription:
+    """A repeating charge: its cadence, usual amount and yearly cost."""
+
     merchant: str
     cadence: str  # weekly, monthly, quarterly, yearly or possible
     typical: Decimal
@@ -70,6 +74,7 @@ class Subscription:
 
     @property
     def last(self) -> date:
+        """The day of the latest charge."""
         return self.charges[-1].txn_date
 
 
@@ -169,6 +174,7 @@ def price_up(amounts: list[Decimal]) -> Decimal | None:
 
 
 def find(db: Session, today: date | None = None) -> list[Subscription]:
+    """The recurring charges in the last 400 days of lines, by cadence, with what each costs."""
     today = today or date.today()
     paths, subs, costs = _paths(db)
     rows = [

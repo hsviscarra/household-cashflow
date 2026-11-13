@@ -20,6 +20,8 @@ ROUND_TO = Decimal(10)
 
 
 class BudgetError(Exception):
+    """A budget change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -63,6 +65,8 @@ def suggestion(db: Session, month: date) -> dict[int, Decimal]:
 
 @dataclass
 class GroupBudget:
+    """A group's budget in a month: planned, carried over, spent and its pace."""
+
     group_id: int
     name: str
     color: str | None
@@ -80,6 +84,8 @@ class GroupBudget:
 
 @dataclass
 class MonthBudget:
+    """A month's budget: its groups, totals and how far through the month it is."""
+
     month: date
     day_share: Decimal  # how much of the month has passed (1 for a past month)
     groups: list[GroupBudget] = field(default_factory=list)
@@ -112,6 +118,7 @@ def _carried(
 
 
 def month_view(db: Session, month: date, today: date | None = None) -> MonthBudget:
+    """A month's budget by group: planned, spent, what carried over and the pace so far."""
     today = today or date.today()
     month = first(month)
     if month > first(today):

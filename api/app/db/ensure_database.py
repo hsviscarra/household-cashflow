@@ -11,6 +11,7 @@ from app.config import get_settings
 
 
 def main() -> None:
+    """Create the local database when it doesn't exist yet; does nothing outside local runs."""
     settings = get_settings()
     if settings.app_env != "local":
         print(f"ensure_database: skipped (APP_ENV={settings.app_env})")

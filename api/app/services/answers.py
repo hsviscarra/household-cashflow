@@ -18,6 +18,8 @@ MINUS = "\u2212"  # the page's minus sign
 
 @dataclass
 class Answer:
+    """One of the month's ten answers: the number, a sentence of detail and where to look."""
+
     n: int
     question: str
     answer: str
@@ -289,6 +291,7 @@ def _trust(db: Session, month: date, today: date) -> Answer:
 
 
 def answers(db: Session, month: date, today: date | None = None) -> list[Answer]:
+    """The ten answers for a month, in their fixed order."""
     today = today or date.today()
     month = first(month)
     ideas = shopping.ideas(db, month)

@@ -32,6 +32,9 @@ PICHINCHA = "Banco Pichincha"
 
 @dataclass
 class Notice:
+    """A bank's transfer notice: direction, amount, the accounts' last four digits and the other
+    party."""
+
     bank: str  # the bank of the household's account the money left or reached
     direction: str  # "sent" or "received"
     amount: Decimal  # positive

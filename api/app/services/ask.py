@@ -93,7 +93,9 @@ class Caller(Protocol):
 
     def __call__(
         self, model: str, system: str, tools: list[Tool], messages: list[dict[str, Any]]
-    ) -> Turn: ...
+    ) -> Turn:
+        """Send the conversation so far and return Claude's turn."""
+        ...
 
 
 @dataclass
@@ -107,6 +109,7 @@ class Usage:
 
     @property
     def left(self) -> Decimal:
+        """What is left of the month's limit, never under zero."""
         return max(ZERO, self.cap - self.spent)
 
 

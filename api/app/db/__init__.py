@@ -1,3 +1,9 @@
+"""The database engine and connections.
+
+Azure SQL serverless pauses when idle, so the engine keeps no pool on SQL Server (ADR-092) and
+rides out the resume when the first login finds the database asleep (ADR-068).
+"""
+
 import logging
 import time
 from collections.abc import Iterator
@@ -13,6 +19,7 @@ from app.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
+    """The app's database engine, made once from DATABASE_URL."""
     url = get_settings().database_url
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
@@ -28,6 +35,7 @@ LOGIN_TIMEOUT = 60  # seconds each try waits for the login
 
 
 def waking(exc: BaseException) -> bool:
+    """Whether an error is Azure SQL saying the database is still waking from its pause."""
     return any(w in str(exc) for w in WAKING)
 
 
@@ -67,9 +75,11 @@ def make_engine(url: str | URL, **kw: Any) -> Engine:
 
 
 def get_connection() -> Iterator[Connection]:
+    """A connection for one request, closed after it."""
     with get_engine().connect() as conn:
         yield conn
 
 
 def ping(conn: Connection) -> bool:
+    """Whether the database answers a trivial query."""
     return bool(conn.execute(text("SELECT 1")).scalar_one() == 1)

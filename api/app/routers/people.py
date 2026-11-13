@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.models import Account, Counterparty, Holding, Transaction, TransferNote
@@ -20,10 +20,6 @@ router = APIRouter(prefix="/api", tags=["people"])
 DB = Annotated[Session, Depends(get_session)]
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 def _fail(db: Session, exc: people.PeopleError) -> HTTPException:
     db.rollback()
     return HTTPException(exc.status, str(exc))
@@ -31,6 +27,8 @@ def _fail(db: Session, exc: people.PeopleError) -> HTTPException:
 
 # ---------------------------------------------------------------- people
 class PersonIn(BaseModel):
+    """A new person."""
+
     name: str = Field(min_length=1, max_length=100)
     patterns: str | None = Field(default=None, max_length=400)
     category_id: int | None = None
@@ -43,6 +41,8 @@ class PersonIn(BaseModel):
 
 
 class PersonPatch(BaseModel):
+    """The fields of a person to change."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     patterns: str | None = Field(default=None, max_length=400)
     category_id: int | None = None
@@ -52,6 +52,8 @@ class PersonPatch(BaseModel):
 
 
 class PersonOut(BaseModel):
+    """A person with their balance and totals."""
+
     counterparty_id: int
     name: str
     patterns: str | None
@@ -94,6 +96,7 @@ def _person(db: Session, counterparty_id: int) -> Counterparty:
 
 @router.get("/people", response_model=list[PersonOut])
 def list_people(db: DB) -> list[PersonOut]:
+    """The people money moves to and from, active first, with what each holds or is owed."""
     totals = people.totals(db)
     rows = db.scalars(
         select(Counterparty).order_by(Counterparty.is_active.desc(), Counterparty.name)
@@ -103,15 +106,16 @@ def list_people(db: DB) -> list[PersonOut]:
 
 @router.post("/people", response_model=PersonOut, status_code=status.HTTP_201_CREATED)
 def create_person(body: PersonIn, db: DB, request: Request) -> PersonOut:
+    """Add a person, optionally with a balance of their own on the balance sheet."""
     fields = body.model_dump(exclude={"new_balance", "opening_balance", "opening_as_of"})
     if body.new_balance:
         fields.pop("holding_id", None)
     try:
-        p = people.create_person(db, fields, _user(request))
+        p = people.create_person(db, fields, current_user(request))
         if body.new_balance:
             people.new_balance_item(db, p, body.opening_balance, body.opening_as_of or date.today())
         db.commit()
-        transfers.match(db, _user(request))
+        transfers.match(db, current_user(request))
     except people.PeopleError as exc:
         raise _fail(db, exc) from exc
     return _person_out(db, p, people.totals(db))
@@ -119,11 +123,14 @@ def create_person(body: PersonIn, db: DB, request: Request) -> PersonOut:
 
 @router.patch("/people/{counterparty_id}", response_model=PersonOut)
 def update_person(counterparty_id: int, body: PersonPatch, db: DB, request: Request) -> PersonOut:
+    """Change a person; transfers are matched again, since their patterns may now fit."""
     p = _person(db, counterparty_id)
     try:
-        people.update_person(db, p, body.model_dump(exclude_unset=True), _user(request))
+        people.update_person(db, p, body.model_dump(exclude_unset=True), current_user(request))
         db.commit()
-        transfers.match(db, _user(request))  # an exchanger's lines pair with their other side
+        transfers.match(
+            db, current_user(request)
+        )  # an exchanger's lines pair with their other side
     except people.PeopleError as exc:
         raise _fail(db, exc) from exc
     return _person_out(db, p, people.totals(db))
@@ -131,11 +138,14 @@ def update_person(counterparty_id: int, body: PersonPatch, db: DB, request: Requ
 
 @router.delete("/people/{counterparty_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_person(counterparty_id: int, db: DB) -> Response:
+    """Remove a person; their lines stay, without the link."""
     people.delete_person(db, _person(db, counterparty_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 class PersonLineOut(BaseModel):
+    """A line linked to a person."""
+
     transaction_id: int
     txn_date: date
     amount: Decimal
@@ -147,6 +157,7 @@ class PersonLineOut(BaseModel):
 
 @router.get("/people/{counterparty_id}/lines", response_model=list[PersonLineOut])
 def person_lines(counterparty_id: int, db: DB) -> list[PersonLineOut]:
+    """Every line linked to a person, newest first."""
     _person(db, counterparty_id)
     names = {a.account_id: a.name for a in db.scalars(select(Account))}
     paths = category_paths(db)
@@ -171,6 +182,8 @@ def person_lines(counterparty_id: int, db: DB) -> list[PersonLineOut]:
 
 # ---------------------------------------------------------------- transfer notes
 class NoteIn(BaseModel):
+    """A transfer received or sent, noted before its bank line arrives."""
+
     txn_date: date
     direction: Literal["sent", "received"]
     amount: Decimal = Field(gt=0, description="Positive; direction says which way it went")
@@ -184,6 +197,8 @@ class NoteIn(BaseModel):
 
 
 class NoteOut(BaseModel):
+    """A transfer note and the line it matched, if any."""
+
     note_id: int
     txn_date: date
     amount: Decimal
@@ -241,6 +256,7 @@ def list_notes(
     state: Annotated[Literal["open", "matched", "all"], Query()] = "all",
     days: Annotated[int, Query(ge=1, le=3660)] = 120,
 ) -> list[NoteOut]:
+    """Notes about transfers expected or made, open, matched or all, over the last days."""
     q = select(TransferNote).where(TransferNote.txn_date >= date.today() - timedelta(days=days))
     if state == "open":
         q = q.where(TransferNote.transaction_id.is_(None))
@@ -252,10 +268,11 @@ def list_notes(
 
 @router.post("/transfer-notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)
 def add_note(body: NoteIn, db: DB, request: Request) -> NoteOut:
+    """Note a transfer received or sent; it is matched to its bank line when that arrives."""
     fields = body.model_dump(exclude={"direction", "amount"})
     fields["amount"] = body.amount if body.direction == "received" else -body.amount
     try:
-        note, _ = people.add_note(db, fields, _user(request))
+        note, _ = people.add_note(db, fields, current_user(request))
     except people.PeopleError as exc:
         raise _fail(db, exc) from exc
     return _note_out(db, note)
@@ -270,6 +287,8 @@ def delete_note(note_id: int, db: DB) -> Response:
 
 
 class MatchedOut(BaseModel):
+    """How many notes matched and how many lines were tagged."""
+
     matched: int
     tagged: int
 
@@ -277,5 +296,5 @@ class MatchedOut(BaseModel):
 @router.post("/transfer-notes/match", response_model=MatchedOut)
 def match_notes(db: DB, request: Request) -> MatchedOut:
     """Match open notes and tag lines with people (also runs after each approved statement)."""
-    user = _user(request)
+    user = current_user(request)
     return MatchedOut(matched=people.match_all(db, user), tagged=people.tag_lines(db, user))

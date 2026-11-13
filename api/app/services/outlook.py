@@ -45,6 +45,7 @@ def kept_a_year(db: Session, today: date) -> Decimal:
 
 
 def start(db: Session, today: date, years: int) -> long_view.Start:
+    """What the household has today, by kind, and each loan's path over `years` years."""
     by_class: dict[str, Decimal] = {}
     paths = []
     other_assets = other_debts = ZERO

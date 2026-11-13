@@ -81,10 +81,12 @@ class Cell:
     lines: int = 0
 
     def add(self, amount: Decimal, lines: int) -> None:
+        """Add a sum and its count."""
         self.amount += amount
         self.lines += lines
 
     def value(self, measure: str) -> Decimal:
+        """The cell in the chosen measure: the amount, the number of lines or the average line."""
         if measure == "lines":
             return Decimal(self.lines)
         if measure == "average":

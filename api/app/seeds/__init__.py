@@ -141,6 +141,7 @@ def load_v3(conn: Connection, account: Table, category: Table, merchant_rule: Ta
 
 
 def unload_v3(conn: Connection, account: Table, merchant_rule: Table) -> None:
+    """Take out what seed v3 added (the downgrade of its migration)."""
     conn.execute(
         delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v3.MERCHANT_RULES]))
     )
@@ -167,6 +168,7 @@ def load_v4(conn: Connection, category: Table, merchant_rule: Table) -> None:
 
 
 def unload_v4(conn: Connection, merchant_rule: Table) -> None:
+    """Take out what seed v4 added."""
     conn.execute(
         delete(merchant_rule).where(
             merchant_rule.c.pattern.in_({p for p, *_ in v4.MERCHANT_RULES}),
@@ -214,6 +216,7 @@ def load_v6(conn: Connection, account: Table, category: Table, merchant_rule: Ta
 
 
 def unload_v6(conn: Connection, account: Table, merchant_rule: Table) -> None:
+    """Take out what seed v6 added."""
     conn.execute(
         delete(merchant_rule).where(merchant_rule.c.pattern.in_([p for p, *_ in v6.MERCHANT_RULES]))
     )
@@ -255,7 +258,7 @@ def _add_subs(
         conn.execute(insert(category), rows)
 
 
-def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:
+def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:  # noqa: C901 - baseline, docs/refactors.md #15
     """The fuller tree (seed v7). Anything Hernan already renamed, moved or added is left alone."""
     for path, new in v7.RENAMES:
         cid = _category_ids(conn, category).get(path)

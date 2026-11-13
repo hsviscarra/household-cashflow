@@ -19,6 +19,7 @@ Today = Annotated[date | None, Query(description="For tests: the day to look bac
 
 @router.get("/subscriptions", response_model=SubscriptionsOut)
 def get_subscriptions(db: DB, today: Today = None) -> SubscriptionsOut:
+    """Recurring charges found in the lines, with what the active ones cost a month."""
     found = subscriptions.find(db, today)
     steady = [s for s in found if s.active and s.cadence != "possible"]
     return SubscriptionsOut(
@@ -52,6 +53,7 @@ def get_debt(
     year: Annotated[int | None, Query(ge=2019, le=2100)] = None,
     today: Today = None,
 ) -> DebtOut:
+    """Interest and fees by account for a year, and each card's latest balance."""
     d = debt.cost(db, year, today)
     return DebtOut(
         year=d.year,

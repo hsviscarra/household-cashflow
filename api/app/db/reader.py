@@ -25,6 +25,7 @@ def _quoted(password: str) -> str:
 
 
 def ensure_reader() -> str:
+    """Create or update the read-only login the MCP endpoint queries with; says what it did."""
     s = get_settings()
     if not s.reader_password:
         return "ensure_reader: skipped (READER_PASSWORD not set)"

@@ -8,6 +8,8 @@ from typing import TypedDict
 
 
 class AccountSeed(TypedDict):
+    """An account as the seed lists it."""
+
     name: str
     institution: str
     kind: str
@@ -85,6 +87,8 @@ ACCOUNTS: list[AccountSeed] = [
 
 
 class GroupSeed(TypedDict):
+    """A category group with its children, as the seed lists it."""
+
     name: str
     kind: str
     color: str | None

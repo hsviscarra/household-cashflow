@@ -20,6 +20,8 @@ MIN_PATTERN = 3
 
 @dataclass
 class FoundBill:
+    """A recurring charge found in the lines that no recurring item covers yet."""
+
     merchant: str
     every_months: int
     amount: Decimal  # the typical charge, positive
@@ -76,6 +78,7 @@ def _charged(db: Session, ids: list[int]) -> dict[int, Transaction]:
 
 
 def find(db: Session, today: date | None = None) -> list[FoundBill]:
+    """Subscriptions found in the lines that no recurring item covers yet: bills to add."""
     templates = list(db.scalars(select(RecurringTemplate).where(RecurringTemplate.is_active)))
     out = []
     subs = [s for s in subscriptions.find(db, today) if s.cadence in EVERY and s.active]

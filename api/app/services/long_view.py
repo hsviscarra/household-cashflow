@@ -89,6 +89,7 @@ class Year:
     milestones: list[str] = field(default_factory=list)
 
     def net(self, case: str) -> Decimal:
+        """Net worth at the year's end with investments at the low, expected or high return."""
         owned = (
             self.cash + self.investments[case] + self.property + self.vehicles + self.other_assets
         )

@@ -80,7 +80,8 @@ def _person(name: str) -> str | None:
     return next((PEOPLE[w] for w in name.upper().split() if w in PEOPLE), None)
 
 
-def parse(pages: list[str]) -> ParsedStatement:
+def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Read a Diners Club statement's pages (scans included): period, lines and checks."""
     pages = [fold_accents(p) for p in pages]  # OCR of a scan drops them: match without accents
     text = "\n".join(pages)
     p = PERIOD.search(text)

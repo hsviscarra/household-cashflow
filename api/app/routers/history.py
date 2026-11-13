@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.models import Budget, v_category_month, v_monthly_cash, v_monthly_cashflow
 from app.schemas import (
@@ -48,14 +48,16 @@ async def _read(file: UploadFile) -> tuple[bytes, ParsedWorkbook]:
 
 @router.post("/history/excel/preview", response_model=HistoryPreviewOut)
 async def preview_history(file: UploadFile, db: DB) -> HistoryPreviewOut:
+    """Read the Cash Flow workbook and show what loading it would change, without loading."""
     data, parsed = await _read(file)
     return history_load.preview(db, parsed, file.filename or "", history_load.sha256(data))
 
 
 @router.post("/history/excel/load", response_model=HistoryLoadOut)
 async def load_history(file: UploadFile, request: Request, db: DB) -> HistoryLoadOut:
+    """Load the Cash Flow workbook's months as history; reloading the same file changes nothing."""
     data, parsed = await _read(file)
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    user = current_user(request)
     try:
         out = history_load.load(db, parsed, file.filename or "", history_load.sha256(data), user)
     except history_load.HistoryError as exc:
@@ -77,6 +79,8 @@ def monthly_cashflow(
         Query(description="spending: card purchases when made; cash: bank money only (ADR-007)"),
     ] = "spending",
 ) -> list[MonthlyCashflowOut]:
+    """Income, expenses, savings, debt payments and net by month, in the spending or the cash
+    view."""
     v = v_monthly_cash if view == "cash" else v_monthly_cashflow
     q = select(v).order_by(v.c.cash_month)
     if start:
@@ -116,6 +120,7 @@ def cashflow_measures(
 def category_months(
     db: DB, year: Annotated[int, Query(ge=2000, le=2100)]
 ) -> list[CategoryMonthOut]:
+    """A year's amounts by category and month."""
     v = v_category_month
     q = (
         select(v)
@@ -130,6 +135,8 @@ Person = Annotated[Literal["Hernan", "Lauren", "Joint"] | None, Query()]
 
 
 class FlowOut(BaseModel):
+    """One category's flow in a month."""
+
     type: str
     group_id: int
     group_name: str
@@ -142,12 +149,16 @@ class FlowOut(BaseModel):
 
 
 class MonthTotalOut(BaseModel):
+    """A month's money in and out."""
+
     month: date
     money_in: Decimal
     money_out: Decimal
 
 
 class FlowsOut(BaseModel):
+    """A month's cash flow with the trend."""
+
     month: date
     prev_month: date
     months: list[date]
@@ -157,6 +168,8 @@ class FlowsOut(BaseModel):
 
 
 class FlowLineOut(BaseModel):
+    """A line behind a flow."""
+
     transaction_id: int
     txn_date: date
     description: str
@@ -294,7 +307,8 @@ def get_sources(db: DB) -> SourcesOut:
 
 @router.put("/sources", response_model=SourcesOut)
 def put_sources(body: SourcesIn, request: Request, db: DB) -> SourcesOut:
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    """Set the first month whose statements count in place of the workbook."""
+    user = current_user(request)
     try:
         sources.set_statements_from(db, body.statements_from, user)
     except sources.SourceError as exc:

@@ -9,7 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.models import Account, Category, MerchantRule, StgTransaction, Transaction
 from app.schemas import (
@@ -52,11 +52,13 @@ def _get[T](db: Session, model: type[T], key: int, label: str) -> T:
 # ---------------- accounts ----------------
 @router.get("/accounts", response_model=list[AccountOut])
 def list_accounts(db: DB) -> list[Account]:
+    """Every bank account and card."""
     return list(db.scalars(select(Account).order_by(Account.country.desc(), Account.name)))
 
 
 @router.post("/accounts", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
 def create_account(body: AccountIn, db: DB) -> Account:
+    """Add an account; names are unique."""
     account = Account(**body.model_dump())
     db.add(account)
     _commit(db, f"An account named {body.name!r} already exists.")
@@ -65,6 +67,7 @@ def create_account(body: AccountIn, db: DB) -> Account:
 
 @router.patch("/accounts/{account_id}", response_model=AccountOut)
 def update_account(account_id: int, body: AccountPatch, db: DB) -> Account:
+    """Change an account's details."""
     account = _get(db, Account, account_id, "Account")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(account, field, value)
@@ -75,6 +78,7 @@ def update_account(account_id: int, body: AccountPatch, db: DB) -> Account:
 # ---------------- categories ----------------
 @router.get("/categories", response_model=list[CategoryGroup])
 def list_categories(db: DB) -> list[CategoryGroup]:
+    """Categories as groups with their children, and how many lines each holds."""
     rows = list(db.scalars(select(Category).order_by(Category.sort_order, Category.name)))
     lines = dict(
         db.execute(
@@ -106,6 +110,7 @@ def list_categories(db: DB) -> list[CategoryGroup]:
 
 @router.post("/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
 def create_category(body: CategoryIn, db: DB) -> Category:
+    """Add a group (it needs a kind) or a category under a group."""
     if body.parent_id is None:
         if body.kind is None:
             raise HTTPException(422, "A new group needs a kind.")
@@ -137,6 +142,7 @@ def create_category(body: CategoryIn, db: DB) -> Category:
 
 @router.patch("/categories/{category_id}", response_model=CategoryOut)
 def update_category(category_id: int, body: CategoryPatch, db: DB) -> Category:
+    """Rename, describe, reorder or move a category."""
     category = _get(db, Category, category_id, "Category")
     changes = body.model_dump(exclude_unset=True)
     if "parent_id" in changes:
@@ -166,7 +172,7 @@ def delete_category(
 ) -> CategoryUsesOut:
     """Delete a category; what uses it moves to `move_to` (same kind). Groups go once empty."""
     category = _get(db, Category, category_id, "Category")
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    user = current_user(request)
     try:
         moved = category_service.delete(db, category, move_to, user)
     except category_service.CategoryError as exc:
@@ -241,6 +247,8 @@ def _check_rule(db: Session, pattern: str | None, match_type: str, category_id: 
 
 
 class RuleSuggestionOut(BaseModel):
+    """A rule worth saving: a merchant categorized the same way several times by hand."""
+
     pattern: str
     category_id: int
     category_path: str
@@ -269,6 +277,7 @@ def rule_suggestions(db: DB) -> list[RuleSuggestionOut]:
 
 @router.get("/merchant-rules", response_model=list[RuleOut])
 def list_rules(db: DB) -> list[RuleOut]:
+    """Every merchant rule, in the order they are tried."""
     paths = _paths(db)
     rules = db.scalars(select(MerchantRule).order_by(MerchantRule.priority, MerchantRule.rule_id))
     return [_rule_out(r, paths) for r in rules]
@@ -276,6 +285,7 @@ def list_rules(db: DB) -> list[RuleOut]:
 
 @router.post("/merchant-rules", response_model=RuleOut, status_code=status.HTTP_201_CREATED)
 def create_rule(body: RuleIn, db: DB, request: Request) -> RuleOut:
+    """Add a merchant rule and apply it to the lines waiting for a category."""
     _check_rule(db, body.pattern, body.match_type, body.category_id)
     _check_range(body.amount_min, body.amount_max)
     rule = MerchantRule(**body.model_dump())
@@ -286,6 +296,7 @@ def create_rule(body: RuleIn, db: DB, request: Request) -> RuleOut:
 
 @router.patch("/merchant-rules/{rule_id}", response_model=RuleOut)
 def update_rule(rule_id: int, body: RulePatch, db: DB, request: Request) -> RuleOut:
+    """Change a merchant rule."""
     rule = _get(db, MerchantRule, rule_id, "Rule")
     changes = body.model_dump(exclude_unset=True)
     _check_rule(
@@ -308,7 +319,7 @@ def _apply(db: Session, rule: MerchantRule, request: Request) -> int:
     statements waiting for approval. Lines already categorized are never changed."""
     if not rule.is_active:
         return 0
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    user = current_user(request)
     count = classify.apply_rule(db, rule, user) + classify.classify_waiting(db, rule=rule)
     db.commit()
     return count
@@ -316,6 +327,7 @@ def _apply(db: Session, rule: MerchantRule, request: Request) -> int:
 
 @router.delete("/merchant-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rule(rule_id: int, db: DB) -> Response:
+    """Remove a rule; the lines it classified keep their category."""
     rule = _get(db, MerchantRule, rule_id, "Rule")
     # Lines it classified keep their category; they just no longer point at the rule.
     db.execute(update(StgTransaction).where(StgTransaction.rule_id == rule_id).values(rule_id=None))
@@ -331,6 +343,7 @@ def test_rules(
     description: Annotated[str, Query(min_length=1)],
     amount: Annotated[Decimal | None, Query()] = None,
 ) -> RuleTestOut:
+    """Which rule, if any, a description and amount would match."""
     rows = list(db.scalars(select(MerchantRule)))
     candidates = [rule_engine.Rule.of(r) for r in rows]
     hit = rule_engine.first_match(candidates, description, amount)

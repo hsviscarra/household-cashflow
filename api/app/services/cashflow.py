@@ -47,6 +47,8 @@ def _signed() -> Any:
 
 @dataclass
 class Flow:
+    """One category's amount in a month, by kind."""
+
     type: str
     group_id: int
     group_name: str
@@ -60,6 +62,8 @@ class Flow:
 
 @dataclass
 class MonthTotal:
+    """A month's money in and out."""
+
     month: date
     money_in: Decimal
     money_out: Decimal
@@ -67,6 +71,8 @@ class MonthTotal:
 
 @dataclass
 class Flows:
+    """A month's cash flow with the months available and the trend."""
+
     month: date
     prev_month: date
     months: list[date]
@@ -120,6 +126,7 @@ def _by_category(db: Session, month: date, person: str | None) -> dict[tuple[Any
 def trend(
     db: Session, month: date, person: str | None, count: int = TREND_MONTHS
 ) -> list[MonthTotal]:
+    """Money in and out for each of the `count` months up to `month`."""
     t = Transaction
     start = add_months(month, -(count - 1))
     q = counted(
@@ -142,6 +149,7 @@ def trend(
 
 
 def flows(db: Session, month: date | None = None, person: str | None = None) -> Flows:
+    """A month's cash flow by kind and category; without a month, the latest that has started."""
     months = _months(db, person)
     if month:
         month = first(month)
@@ -179,6 +187,8 @@ def flows(db: Session, month: date | None = None, person: str | None = None) -> 
 
 @dataclass
 class Line:
+    """A line behind a flow."""
+
     transaction_id: int
     txn_date: date
     description: str

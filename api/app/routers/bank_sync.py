@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.models import Account, Transaction
 from app.services import bank_sync, refresh
@@ -20,12 +20,10 @@ BY_HAND = timedelta(minutes=30)  # "Sync now" no more often than this, to respec
 
 
 class LinkIn(BaseModel):
+    """The bank's account to follow and the app's account it is."""
+
     sync_id: str = Field(min_length=1, max_length=100)
     account_id: int | None = None
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
 
 
 def _status(db: Session) -> dict[str, Any]:
@@ -87,7 +85,7 @@ def run(
     soon = last is not None and now - last.loaded_at < BY_HAND
     if not auto and soon and not bank_sync.newly_linked(db, last):
         raise HTTPException(429, "Synced a few minutes ago; try again in half an hour.")
-    user = _user(request)
+    user = current_user(request)
     try:
         done = refresh.bank(db, user, today)
     except bank_sync.SyncError as e:

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import ask
 
@@ -52,10 +52,6 @@ class CapIn(BaseModel):
     cap: Decimal = Field(ge=0, le=ask.MAX_CAP, max_digits=7, decimal_places=2)
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()[:200]
-
-
 def _usage(u: ask.Usage) -> UsageOut:
     return UsageOut(
         available=ask.available(),
@@ -76,7 +72,7 @@ def get_usage(db: DB, today: Today = None) -> UsageOut:
 @router.put("/cap", response_model=UsageOut)
 def set_cap(body: CapIn, db: DB, request: Request, today: Today = None) -> UsageOut:
     """Change the monthly limit; 0 turns asking off."""
-    ask.set_cap(db, body.cap, _user(request))
+    ask.set_cap(db, body.cap, current_user(request))
     return _usage(ask.usage(db, today or date.today()))
 
 
@@ -87,7 +83,7 @@ def post_question(body: QuestionIn, db: DB, request: Request, today: Today = Non
         a = ask.ask(
             db,
             body.question,
-            _user(request),
+            current_user(request),
             today=today,
             page=body.page,
             month=body.month,

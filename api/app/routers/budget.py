@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import budget
 
@@ -19,6 +19,8 @@ Month = Annotated[str, Path(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
 
 
 class GroupBudgetOut(BaseModel):
+    """A group's budget in a month: planned, carried over and spent."""
+
     group_id: int
     name: str
     color: str | None
@@ -35,6 +37,8 @@ class GroupBudgetOut(BaseModel):
 
 
 class MonthBudgetOut(BaseModel):
+    """A month's budget with its groups and totals."""
+
     month: date
     day_share: Decimal
     groups: list[GroupBudgetOut]
@@ -46,12 +50,16 @@ class MonthBudgetOut(BaseModel):
 
 
 class PlanIn(BaseModel):
+    """A group's budget from a month on, and whether what is left rolls over."""
+
     from_month: date
     amount: Decimal = Field(ge=0, le=1_000_000)
     rollover: bool = False
 
 
 class SinkingFundOut(BaseModel):
+    """A bill that comes less than monthly, as an amount to set aside each month."""
+
     template_id: int
     name: str
     every_months: int
@@ -63,6 +71,8 @@ class SinkingFundOut(BaseModel):
 
 
 class StartedOut(BaseModel):
+    """How many groups got a first budget."""
+
     added: int
 
 
@@ -70,14 +80,11 @@ def _month(m: str) -> date:
     return date.fromisoformat(f"{m}-01")
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 @router.get("/{month}", response_model=MonthBudgetOut)
 def month_budget(
     month: Month, db: DB, today: Annotated[date | None, Query()] = None
 ) -> MonthBudgetOut:
+    """A month's budget by group: planned, spent, pace and what carries over."""
     return MonthBudgetOut(**asdict(budget.month_view(db, _month(month), today)))
 
 
@@ -85,7 +92,9 @@ def month_budget(
 def set_plan(group_id: int, body: PlanIn, db: DB, request: Request) -> None:
     """A group's budget from a month on (0 = none from then); later changes are replaced."""
     try:
-        budget.set_plan(db, group_id, body.from_month, body.amount, body.rollover, _user(request))
+        budget.set_plan(
+            db, group_id, body.from_month, body.amount, body.rollover, current_user(request)
+        )
     except budget.BudgetError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
 
@@ -93,7 +102,7 @@ def set_plan(group_id: int, body: PlanIn, db: DB, request: Request) -> None:
 @router.post("/{month}/start-from-average", response_model=StartedOut)
 def start_from_average(month: Month, db: DB, request: Request) -> StartedOut:
     """Every group with spending and no budget yet: its 3-month average from this month on."""
-    return StartedOut(added=budget.start_from_average(db, _month(month), _user(request)))
+    return StartedOut(added=budget.start_from_average(db, _month(month), current_user(request)))
 
 
 @router.get("/{month}/yearly-bills", response_model=list[SinkingFundOut])

@@ -34,6 +34,8 @@ REVIEW_RULE_PRIORITY = 15
 
 
 class ClassifyError(Exception):
+    """A change to a line that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -82,6 +84,7 @@ def set_category(
     user: str,
     rule_id: int | None = None,
 ) -> None:
+    """Give a line a category and the type that follows from it, logging both changes."""
     new_type = type_for(category, row.amount)
     _log(db, row, "category_id", row.category_id, category.category_id, reason, user)
     _log(db, row, "type", row.type, new_type, reason, user)
@@ -95,6 +98,8 @@ def set_category(
 # ---------------- review queue ----------------
 @dataclass
 class ReviewLine:
+    """A line waiting for a category."""
+
     transaction_id: int  # a loaded line; on a statement's page, the staged line (stg_id)
     txn_date: date
     amount: Decimal
@@ -109,12 +114,15 @@ class ReviewLine:
 
 @dataclass
 class ReviewGroup:
+    """A merchant's waiting lines, with any suggestion."""
+
     merchant_key: str
     lines: list[ReviewLine] = field(default_factory=list)
     suggestion: MerchantSuggestion | None = None
 
     @property
     def total(self) -> Decimal:
+        """What the group's lines add up to."""
         return sum((ln.amount for ln in self.lines), Decimal(0))
 
 
@@ -124,6 +132,7 @@ def _has_parts() -> Exists:
 
 
 def uncategorized(db: Session, month: date | None = None) -> list[Transaction]:
+    """Bank and card lines without a category (split parents left out), for a month or all."""
     q = select(Transaction).where(
         Transaction.category_id.is_(None),
         Transaction.source.in_(FROM_BANKS),
@@ -135,6 +144,7 @@ def uncategorized(db: Session, month: date | None = None) -> list[Transaction]:
 
 
 def review_groups(db: Session, month: date | None = None) -> list[ReviewGroup]:
+    """The lines waiting for a category, grouped by merchant, biggest first, with any suggestion."""
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
     groups: dict[str, ReviewGroup] = {}
     rows = uncategorized(db, month)
@@ -226,6 +236,8 @@ def _with_suggestions(db: Session, groups: dict[str, ReviewGroup]) -> list[Revie
 
 @dataclass
 class Resolved:
+    """What a resolve did: lines categorized here and by the rule it saved."""
+
     categorized: int
     rule_id: int | None
     also_by_rule: int
@@ -360,6 +372,8 @@ def resolve_staged(
 
 @dataclass
 class Accepted:
+    """What accepting suggestions did."""
+
     merchants: int
     lines: int
     also_by_rule: int
@@ -483,6 +497,7 @@ def classify_waiting(
 
 def rule_type(kind: str, account: Account, amount: Decimal) -> str:
     # Money in on a card is a refund; on a bank account it is income until a rule says otherwise.
+    """The type a line takes from its category's kind, its account and its sign."""
     money_in = "refund" if account.kind == "credit_card" else "income"
     default = money_in if amount > 0 else "expense"
     kinds = {"transfer": "transfer", "income": "income", "savings": "savings"}
@@ -490,7 +505,7 @@ def rule_type(kind: str, account: Account, amount: Decimal) -> str:
 
 
 # ---------------- one line ----------------
-def edit(
+def edit(  # noqa: C901 - baseline, docs/refactors.md #15
     db: Session,
     row: Transaction,
     user: str,
@@ -502,6 +517,8 @@ def edit(
     counts_in: date | None = None,
     fields: set[str],
 ) -> None:
+    """Apply the fields named in `fields` to a line (category, note, person, counterparty, the
+    month it counts in), logging each change."""
     if "counts_in" in fields:
         _count_in(db, row, counts_in, user)
     if "category_id" in fields:
@@ -549,12 +566,15 @@ def _count_in(db: Session, row: Transaction, month: date | None, user: str) -> N
 # ---------------- splits ----------------
 @dataclass
 class Part:
+    """One part of a split."""
+
     amount: Decimal
     category_id: int
     notes: str | None = None
 
 
 def parts_of(db: Session, row: Transaction) -> list[Transaction]:
+    """The parts a line was split into, in order."""
     return list(
         db.scalars(
             select(Transaction)
@@ -620,6 +640,7 @@ def split(db: Session, row: Transaction, parts: list[Part], user: str) -> list[T
 
 
 def unsplit(db: Session, row: Transaction, user: str, commit: bool = True) -> int:
+    """Remove a line's split; returns how many parts were removed."""
     parts = parts_of(db, row)
     if parts:
         summary = "; ".join(f"{p.amount}" for p in parts)
@@ -633,6 +654,7 @@ def unsplit(db: Session, row: Transaction, user: str, commit: bool = True) -> in
 
 
 def history(db: Session, row: Transaction) -> list[ChangeLog]:
+    """The changes logged for a line, newest first."""
     return list(
         db.scalars(
             select(ChangeLog)
@@ -648,6 +670,7 @@ def history(db: Session, row: Transaction) -> list[ChangeLog]:
 
 
 def part_counts(db: Session, ids: list[int]) -> dict[int, int]:
+    """How many parts each of the given lines was split into."""
     counts: dict[int, int] = defaultdict(int)
     if ids:
         for (parent,) in db.execute(

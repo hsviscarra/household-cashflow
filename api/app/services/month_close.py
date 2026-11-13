@@ -33,6 +33,8 @@ SRI_URL = "https://srienlinea.sri.gob.ec"
 
 
 class CloseError(Exception):
+    """A month can't be closed or reopened; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -49,6 +51,8 @@ class Open:
 
 @dataclass
 class Unusual:
+    """A group that spent well over its average in the month."""
+
     group: str
     amount: Decimal
     average: Decimal
@@ -56,6 +60,8 @@ class Unusual:
 
 @dataclass
 class Decided:
+    """A rule decided while closing the month."""
+
     rule_id: int
     pattern: str
     category_id: int
@@ -65,6 +71,8 @@ class Decided:
 
 @dataclass
 class Close:
+    """A month's close: when it is ready, what is missing and what stood out."""
+
     month: date
     ready_on: date
     ready: bool
@@ -79,10 +87,12 @@ class Close:
 
 
 def last_month(today: date) -> date:
+    """The month before today's."""
     return add_months(first(today), -1)
 
 
 def ready_on(month: date) -> date:
+    """The day a month can be closed: the CLOSE_DAY of the month after."""
     return add_months(first(month), 1).replace(day=CLOSE_DAY)
 
 
@@ -190,6 +200,7 @@ def close(db: Session, month: date, user: str, today: date | None = None) -> Clo
 
 
 def reopen(db: Session, month: date, today: date | None = None) -> Close:
+    """Take back a month's close; the report and the data stay as they are."""
     row = db.get(AppSetting, _key(first(month)))
     if row is not None:
         db.delete(row)

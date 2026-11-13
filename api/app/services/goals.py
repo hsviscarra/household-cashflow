@@ -19,6 +19,8 @@ CENT = Decimal("0.01")
 
 
 class GoalError(Exception):
+    """A goal change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -26,6 +28,8 @@ class GoalError(Exception):
 
 @dataclass
 class Place:
+    """Somewhere a goal's money can be kept, with its value."""
+
     key: str
     name: str
     value: Decimal | None
@@ -52,6 +56,8 @@ def months_between(today: date, target: date) -> int:
 
 @dataclass
 class GoalView:
+    """A goal with its progress, what it needs a month and its status."""
+
     goal_id: int
     name: str
     target_amount: Decimal
@@ -73,6 +79,7 @@ class GoalView:
 
 
 def view(g: Goal, where: dict[str, Place], today: date) -> GoalView:
+    """A goal with how far it is, what it needs a month to arrive on its date, and its status."""
     place = where.get(g.item_key) if g.item_key else None
     if place is not None:
         current, as_of = place.value or ZERO, place.as_of
@@ -116,6 +123,7 @@ def view(g: Goal, where: dict[str, Place], today: date) -> GoalView:
 
 
 def all_goals(db: Session, today: date | None = None) -> list[GoalView]:
+    """Every goal as a view, active first."""
     today = today or date.today()
     where = places(db, today)
     goals = db.scalars(select(Goal).order_by(Goal.is_active.desc(), Goal.sort_order, Goal.goal_id))
@@ -141,6 +149,7 @@ def _check(db: Session, values: dict[str, object], today: date) -> None:
 
 
 def create(db: Session, values: dict[str, object], user: str, today: date | None = None) -> Goal:
+    """Add a goal after checking its values."""
     _check(db, values, today or date.today())
     g = Goal(**{k: v for k, v in values.items() if k in FIELDS}, created_by=user[:320])
     db.add(g)
@@ -151,6 +160,7 @@ def create(db: Session, values: dict[str, object], user: str, today: date | None
 def update(
     db: Session, goal_id: int, changes: dict[str, object], today: date | None = None
 ) -> Goal:
+    """Change a goal after checking the new values; GoalError 404 when it doesn't exist."""
     g = db.get(Goal, goal_id)
     if g is None:
         raise GoalError(f"Goal {goal_id} not found.", 404)
@@ -165,6 +175,7 @@ def update(
 
 
 def delete(db: Session, goal_id: int) -> None:
+    """Remove a goal; GoalError 404 when it doesn't exist."""
     g = db.get(Goal, goal_id)
     if g is None:
         raise GoalError(f"Goal {goal_id} not found.", 404)

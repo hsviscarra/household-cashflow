@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.ingestion.storage import StatementStore, get_store
@@ -53,10 +53,6 @@ Month = Annotated[date | None, Query(description="Any day of the month; all mont
 HIGH = Decimal("0.8")
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 def _row(db: Session, transaction_id: int) -> Transaction:
     row = db.get(Transaction, transaction_id)
     if row is None:
@@ -71,6 +67,8 @@ def transaction_out(
     parts: int = 0,
     other: transfers.Leg | None = None,
 ) -> TransactionOut:
+    """An approved line as the API returns it, with its category path, split parts and transfer
+    side."""
     return TransactionOut(
         transaction_id=t.transaction_id,
         txn_date=t.txn_date,
@@ -119,6 +117,7 @@ def review(
         date | None, Query(description="Any day of the month; all months if left out")
     ] = None,
 ) -> ReviewOut:
+    """Lines waiting for a category, grouped by merchant, with any suggestion."""
     return _review_out(db, classify.review_groups(db, month), month)
 
 
@@ -152,12 +151,13 @@ def _review_out(db: Session, groups: list[classify.ReviewGroup], month: date | N
 
 @router.post("/review/resolve", response_model=ResolveOut)
 def resolve(body: ResolveIn, db: DB, request: Request) -> ResolveOut:
+    """Give a merchant's waiting lines a category, optionally keeping it as a rule."""
     try:
         done = classify.resolve(
             db,
             body.merchant_key,
             body.category_id,
-            _user(request),
+            current_user(request),
             transaction_ids=body.transaction_ids,
             save_rule=body.save_rule,
             pattern=body.pattern,
@@ -200,13 +200,15 @@ def suggest(
 def edit_transaction(
     transaction_id: int, body: TransactionPatch, db: DB, request: Request
 ) -> TransactionOut:
+    """Change a line's category, note, person, counterparty or the month it counts in; each change
+    is logged."""
     row = _row(db, transaction_id)
     fields = body.model_fields_set
     try:
         classify.edit(
             db,
             row,
-            _user(request),
+            current_user(request),
             category_id=body.category_id,
             notes=body.notes,
             person=body.person,
@@ -219,8 +221,8 @@ def edit_transaction(
         raise _fail(exc) from exc
     learned = None
     if "category_id" in fields:
-        recurring.recategorized(db, row, _user(request))
-        learned = rules_suggest.learn(db, row, _user(request))
+        recurring.recategorized(db, row, current_user(request))
+        learned = rules_suggest.learn(db, row, current_user(request))
     out = _one_out(db, row)
     if learned is not None:
         out.learned = LearnedOut(**vars(learned))
@@ -231,10 +233,11 @@ def edit_transaction(
 def split_transaction(
     transaction_id: int, body: SplitIn, db: DB, request: Request
 ) -> list[TransactionOut]:
+    """Split a line into parts by category; the parts must add up to the line."""
     row = _row(db, transaction_id)
     parts = [classify.Part(p.amount, p.category_id, p.notes) for p in body.parts]
     try:
-        made = classify.split(db, row, parts, _user(request))
+        made = classify.split(db, row, parts, current_user(request))
     except classify.ClassifyError as exc:
         db.rollback()
         raise _fail(exc) from exc
@@ -243,8 +246,9 @@ def split_transaction(
 
 @router.delete("/transactions/{transaction_id}/split", status_code=status.HTTP_204_NO_CONTENT)
 def remove_split(transaction_id: int, db: DB, request: Request) -> Response:
+    """Undo a split: the parts go and the line counts whole again."""
     row = _row(db, transaction_id)
-    if not classify.unsplit(db, row, _user(request)):
+    if not classify.unsplit(db, row, current_user(request)):
         raise HTTPException(404, "This line isn't split.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -276,6 +280,8 @@ def transaction_source(transaction_id: int, db: DB, store: Store) -> LineSourceO
 
 @router.get("/batches/{batch_id}/lines/{stg_id}/source", response_model=LineSourceOut)
 def staged_source(batch_id: int, stg_id: int, db: DB, store: Store) -> LineSourceOut:
+    """Where a line waiting in a batch was read from: the statement's page and the text
+    around it."""
     row = db.get(StgTransaction, stg_id)
     if row is None or row.batch_id != batch_id:
         raise HTTPException(404, f"Line {stg_id} not found in this statement.")
@@ -293,6 +299,8 @@ def line_context_of(transaction_id: int, db: DB) -> dict[str, Any]:
 
 
 class InvoiceLinkIn(BaseModel):
+    """The invoice a line paid."""
+
     invoice_id: int
 
 
@@ -311,6 +319,7 @@ def link_invoice(transaction_id: int, body: InvoiceLinkIn, db: DB) -> dict[str, 
 
 @router.get("/transactions/{transaction_id}/history", response_model=list[ChangeOut])
 def transaction_history(transaction_id: int, db: DB) -> list[ChangeOut]:
+    """Every change made to a line, with before and after."""
     return [ChangeOut.model_validate(c) for c in classify.history(db, _row(db, transaction_id))]
 
 
@@ -324,8 +333,10 @@ MinConfidence = Annotated[
 def accept_suggestions(
     db: DB, request: Request, month: Month = None, min_confidence: MinConfidence = HIGH
 ) -> AcceptedOut:
+    """Accept Claude's suggestions at or above a confidence for the lines waiting, each with
+    a rule."""
     done = classify.accept_suggestions(
-        db, _user(request), min_confidence=min_confidence, month=month
+        db, current_user(request), min_confidence=min_confidence, month=month
     )
     return AcceptedOut(**vars(done))
 
@@ -347,13 +358,14 @@ def batch_review(batch_id: int, db: DB) -> ReviewOut:
 
 @router.post("/batches/{batch_id}/resolve", response_model=ResolveOut)
 def batch_resolve(batch_id: int, body: ResolveIn, db: DB, request: Request) -> ResolveOut:
+    """Give a merchant's lines in a batch a category before it is approved."""
     try:
         done = classify.resolve_staged(
             db,
             batch_id,
             body.merchant_key,
             body.category_id,
-            _user(request),
+            current_user(request),
             stg_ids=body.transaction_ids,  # on a statement's page, the staged lines' ids
             save_rule=body.save_rule,
             pattern=body.pattern,
@@ -391,17 +403,20 @@ def batch_suggest(batch_id: int, db: DB) -> SuggestOut:
 def batch_accept_suggestions(
     batch_id: int, db: DB, request: Request, min_confidence: MinConfidence = HIGH
 ) -> AcceptedOut:
+    """Accept Claude's suggestions for a batch still in preview."""
     batch = _waiting(db, batch_id)
     if batch.status != "preview":
         raise HTTPException(409, f"This statement is already {batch.status}.")
     done = classify.accept_suggestions(
-        db, _user(request), min_confidence=min_confidence, batch_id=batch_id
+        db, current_user(request), min_confidence=min_confidence, batch_id=batch_id
     )
     return AcceptedOut(**vars(done))
 
 
 # ---------------- ADR-029: the Inbox doing more of the work ----------------
 class AutoRuleOut(BaseModel):
+    """A rule made by accepting a suggestion on its own, with what it has categorized."""
+
     rule_id: int
     pattern: str
     category_id: int
@@ -412,16 +427,22 @@ class AutoRuleOut(BaseModel):
 
 
 class AutoOut(BaseModel):
+    """The automatic rules and the confidence they need."""
+
     threshold: Decimal
     on: bool
     rules: list[AutoRuleOut]
 
 
 class UndoneOut(BaseModel):
+    """How many lines an undone rule gave back."""
+
     lines: int
 
 
 class ManyIn(BaseModel):
+    """Several merchants to give one category."""
+
     merchant_keys: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(
         min_length=1, max_length=200
     )
@@ -430,6 +451,8 @@ class ManyIn(BaseModel):
 
 
 class ManyOut(BaseModel):
+    """What categorizing several merchants did, and which were skipped."""
+
     merchants: int
     lines: int
     also_by_rule: int
@@ -437,6 +460,8 @@ class ManyOut(BaseModel):
 
 
 class WhoIn(BaseModel):
+    """A transfer line and the person it was to or from."""
+
     transaction_id: int
     counterparty_id: int
 
@@ -466,7 +491,7 @@ def recently_auto(db: DB) -> AutoOut:
 def undo_auto(rule_id: int, db: DB, request: Request) -> UndoneOut:
     """Turn the rule off and put its lines back in the Inbox."""
     try:
-        return UndoneOut(lines=inbox.undo_auto(db, rule_id, _user(request)))
+        return UndoneOut(lines=inbox.undo_auto(db, rule_id, current_user(request)))
     except inbox.InboxError as exc:
         db.rollback()
         raise _inbox_fail(exc) from exc
@@ -478,7 +503,7 @@ def resolve_many(body: ManyIn, db: DB, request: Request) -> ManyOut:
     if body.category_id is not None and db.get(Category, body.category_id) is None:
         raise HTTPException(404, f"Category {body.category_id} not found.")
     done = inbox.resolve_many(
-        db, body.merchant_keys, body.category_id, _user(request), body.save_rule
+        db, body.merchant_keys, body.category_id, current_user(request), body.save_rule
     )
     return ManyOut(**vars(done))
 
@@ -495,8 +520,9 @@ def who(db: DB, month: Month = None) -> list[TransactionOut]:
 
 @router.post("/review/who", response_model=TransactionOut)
 def set_who(body: WhoIn, db: DB, request: Request) -> TransactionOut:
+    """Say which person a transfer line was to or from."""
     try:
-        row = inbox.set_who(db, body.transaction_id, body.counterparty_id, _user(request))
+        row = inbox.set_who(db, body.transaction_id, body.counterparty_id, current_user(request))
     except inbox.InboxError as exc:
         db.rollback()
         raise _inbox_fail(exc) from exc

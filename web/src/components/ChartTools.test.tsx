@@ -23,7 +23,7 @@ describe("ChartTools", () => {
     render(
       <ChartTools
         name="Cash flow"
-        period={{ value: "12", options: { "6": "6 months", "12": "12 months" }, onChange }}
+        period={{ value: "12" as "6" | "12", options: { "6": "6 months", "12": "12 months" }, onChange }}
         csv={{ file: "x.csv", rows: () => [["a"]] }}
         explain="Explain our cash flow."
       />,

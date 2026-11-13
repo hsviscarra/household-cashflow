@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ingestion import stage
 from app.ingestion.preview import batch_out, category_paths
@@ -23,10 +23,6 @@ DB = Annotated[Session, Depends(get_session)]
 Store = Annotated[StatementStore, Depends(get_store)]
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 def _batch(db: Session, batch_id: int) -> ImportBatch:
     b = db.get(ImportBatch, batch_id)
     if b is None:
@@ -36,12 +32,14 @@ def _batch(db: Session, batch_id: int) -> ImportBatch:
 
 @router.post("/statements/{statement_id}/read", response_model=BatchOut)
 def read_statement(statement_id: int, request: Request, db: DB, store: Store) -> BatchOut:
+    """Read a stored statement into a batch waiting for approval: its lines, checks and
+    proposals."""
     sf = db.get(StatementFile, statement_id)
     if sf is None:
         raise HTTPException(404, f"Statement {statement_id} not found.")
     try:
-        batch = stage.parse_statement(db, store, sf, _user(request))
-        stage.auto_approve(db, batch, _user(request))
+        batch = stage.parse_statement(db, store, sf, current_user(request))
+        stage.auto_approve(db, batch, current_user(request))
     except stage.StageError as exc:
         db.rollback()
         raise HTTPException(exc.status, str(exc)) from exc
@@ -50,26 +48,33 @@ def read_statement(statement_id: int, request: Request, db: DB, store: Store) ->
 
 @router.get("/batches/{batch_id}", response_model=BatchOut)
 def get_batch(batch_id: int, db: DB) -> BatchOut:
+    """One batch with its checks, totals and lines."""
     return batch_out(db, _batch(db, batch_id))
 
 
 @router.post("/batches/{batch_id}/approve", response_model=ApproveOut)
 def approve_batch(batch_id: int, request: Request, db: DB) -> ApproveOut:
+    """Merge a batch that ties out into the approved lines; says how many loaded and were
+    skipped."""
     batch = _batch(db, batch_id)
     try:
-        loaded, skipped = stage.approve(db, batch, _user(request))
+        loaded, skipped = stage.approve(db, batch, current_user(request))
     except stage.StageError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return ApproveOut(batch_id=batch_id, loaded=loaded, skipped_duplicates=skipped)
 
 
 class WaitingOut(BaseModel):
+    """A batch that couldn't be approved on its own, and why."""
+
     batch_id: int
     file_name: str
     reason: str
 
 
 class ApproveReadyOut(BaseModel):
+    """What approving every ready batch loaded, and what is still waiting."""
+
     approved: int
     loaded: int
     waiting: list[WaitingOut]
@@ -97,7 +102,7 @@ def approve_ready(request: Request, db: DB) -> ApproveReadyOut:
         reason = stage.not_ready(db, batch)
         if reason is None:
             try:
-                n, _ = stage.approve(db, batch, _user(request))
+                n, _ = stage.approve(db, batch, current_user(request))
             except stage.StageError as exc:
                 reason = str(exc)
             else:
@@ -105,7 +110,7 @@ def approve_ready(request: Request, db: DB) -> ApproveReadyOut:
                 loaded += n
                 continue
         waiting.append(WaitingOut(batch_id=batch.batch_id, file_name=name, reason=reason))
-    auto = inbox.autopilot(db, _user(request)) if approved else inbox.Autopilot()
+    auto = inbox.autopilot(db, current_user(request)) if approved else inbox.Autopilot()
     return ApproveReadyOut(
         approved=approved,
         loaded=loaded,
@@ -128,9 +133,10 @@ def apply_rules(batch_id: int, db: DB) -> ApplyRulesOut:
 
 @router.post("/batches/{batch_id}/reject", response_model=BatchOut)
 def reject_batch(batch_id: int, request: Request, db: DB) -> BatchOut:
+    """Reject a batch: nothing reaches the approved lines."""
     batch = _batch(db, batch_id)
     try:
-        stage.reject(db, batch, _user(request))
+        stage.reject(db, batch, current_user(request))
     except stage.StageError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return batch_out(db, batch)
@@ -156,6 +162,7 @@ def list_transactions(
     ] = 1,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> list[TransactionOut]:
+    """Approved lines, newest first, by month, account, source, person or text."""
     q = (
         select(Transaction, Account.name)
         .outerjoin(Account, Account.account_id == Transaction.account_id)

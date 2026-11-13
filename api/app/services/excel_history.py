@@ -44,6 +44,8 @@ CENT = Decimal("0.01")
 
 @dataclass
 class Cell:
+    """A value in a Cash Flow sheet with where it is and what its row is called."""
+
     sheet: str
     cell: str
     row: int
@@ -57,6 +59,8 @@ class Cell:
 
 @dataclass
 class MonthCheck:
+    """A month's rows against the sheet's own totals."""
+
     month: date
     sheet: str
     income_rows: Decimal
@@ -69,6 +73,7 @@ class MonthCheck:
 
     @property
     def matches(self) -> bool:
+        """Whether the rows read add up to the workbook's own totals for the month."""
         return (
             self.income_rows == self.income_workbook and self.expense_rows == self.expense_workbook
         )
@@ -88,22 +93,29 @@ class MonthCheck:
 
 @dataclass
 class HistoryRow:
+    """A cell with the category it maps to; planned months are marked."""
+
     cell: Cell
     mapping: Mapping
     is_plan: bool
 
     @property
     def signed_amount(self) -> Decimal:
+        """The cell's value as the app signs it: income positive, everything else negative."""
         return self.cell.value if self.mapping.type == "income" else -self.cell.value
 
     @property
     def natural_key(self) -> str:
+        """The row's identity: its sheet and cell, hashed, so a reload replaces and never
+        doubles."""
         raw = f"excel_history|{self.cell.sheet}|{self.cell.cell}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
 
 @dataclass
 class Snapshot:
+    """A balance the workbook records for a day."""
+
     as_of: date
     name: str
     kind: str
@@ -113,6 +125,8 @@ class Snapshot:
 
 @dataclass
 class ParsedWorkbook:
+    """Everything read from the workbook: rows, unmapped cells, checks and balances."""
+
     cells: list[Cell]
     rows: list[HistoryRow]
     unmapped: list[Cell]
@@ -121,10 +135,12 @@ class ParsedWorkbook:
 
     @property
     def actual_rows(self) -> list[HistoryRow]:
+        """The rows of months that happened."""
         return [r for r in self.rows if not r.is_plan]
 
     @property
     def plan_rows(self) -> list[HistoryRow]:
+        """The rows of months the workbook only planned."""
         return [r for r in self.rows if r.is_plan]
 
 
@@ -168,6 +184,8 @@ def _end_of_month(d: date) -> date:
 
 
 def parse_workbook(data: bytes) -> ParsedWorkbook:
+    """Read every Cash Flow sheet: one row per month and labelled line, mapped to a category, with
+    each month checked against the workbook's own totals."""
     values_wb = load_workbook(BytesIO(data), data_only=True, read_only=False)
     formulas_wb = load_workbook(BytesIO(data), data_only=False, read_only=False)
     cells: list[Cell] = []
@@ -197,7 +215,7 @@ def parse_workbook(data: bytes) -> ParsedWorkbook:
     return ParsedWorkbook(cells, rows, unmapped, checks, _snapshots(cells))
 
 
-def _parse_sheet(
+def _parse_sheet(  # noqa: C901 - baseline, docs/refactors.md #15
     ws: Worksheet, fws: Worksheet, months: dict[int, date]
 ) -> tuple[list[Cell], list[MonthCheck]]:
     cells: list[Cell] = []
@@ -277,7 +295,7 @@ def _parse_sheet(
     return cells, _checks(ws, fws, months, cells, bounds)
 
 
-def _checks(
+def _checks(  # noqa: C901 - baseline, docs/refactors.md #15
     ws: Worksheet,
     fws: Worksheet,
     months: dict[int, date],

@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any
 
+from app import outside
 from app.config import get_settings
 from app.ops.backup import (
     BackupStore,
@@ -25,6 +26,8 @@ DRILL_EVERY = timedelta(days=40)
 
 @dataclass
 class BackupStatus:
+    """The last backup and restore drill, and whether either is late."""
+
     where: str  # azure or local
     backup: dict[str, Any] | None
     drill: dict[str, Any] | None
@@ -47,11 +50,13 @@ def get_backup_store() -> BackupStore:
 
 
 def status(store: BackupStore, now: datetime | None = None) -> BackupStatus:
+    """When the last backup and the last restore drill ran and whether either is late or failed;
+    an unreachable store is reported, not raised."""
     now = now or datetime.now(UTC)
     where = "azure" if get_settings().storage_account_url else "local"
     try:
         backup, drill = latest_backup(store), latest_drill(store)
-    except Exception as exc:  # storage unreachable: say so instead of failing the page
+    except outside.storage_errors() as exc:  # storage unreachable: say so, don't fail the page
         return BackupStatus(where, None, None, True, True, f"Backups can't be read: {exc}")
     if backup is not None:
         backup = {

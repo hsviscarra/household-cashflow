@@ -50,12 +50,15 @@ def check_in(db: Session, now: datetime | None = None) -> None:
 
 @dataclass
 class Script:
+    """A scheduled job's state and when it last ran."""
+
     state: str  # ok, silent, never
     last_seen: datetime | None
     note: str
 
 
 def script(db: Session, now: datetime | None = None) -> Script:
+    """Whether the Gmail script that forwards statements has checked in lately."""
     now = now or _now()
     row = db.get(AppSetting, SEEN_KEY)
     if row is None:
@@ -80,6 +83,8 @@ def script(db: Session, now: datetime | None = None) -> Script:
 
 @dataclass
 class Alert:
+    """Something a scheduled job needs attention for."""
+
     key: str
     title: str
     text: str
@@ -101,11 +106,13 @@ TRANSFER_DAYS = 10
 
 
 def off(db: Session) -> set[str]:
+    """The kinds of alert that are turned off."""
     row = db.get(AppSetting, OFF_KEY)
     return {k for k in (row.setting_value.split(",") if row else []) if k in KINDS}
 
 
 def set_off(db: Session, kinds: set[str], user: str) -> set[str]:
+    """Choose which kinds of alert are off; unknown kinds are dropped."""
     kinds = {k for k in kinds if k in KINDS}
     _put(db, OFF_KEY, ",".join(sorted(kinds)), user[:200])
     db.commit()

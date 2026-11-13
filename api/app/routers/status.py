@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ops.backup import BackupStore
 from app.schemas import (
@@ -38,6 +38,7 @@ def get_status(
     db: DB,
     today: Annotated[date | None, Query(description="For tests: the day to check up to")] = None,
 ) -> StatusOut:
+    """What data is in and what is missing: each account's coverage, months and things to do."""
     s = month_status.month_status(db, today)
     return StatusOut(
         today=s.today,
@@ -103,17 +104,23 @@ def backup_status(store: Annotated[BackupStore, Depends(get_backup_store)]) -> B
 
 
 class AlertKindOut(BaseModel):
+    """A kind of alert and whether it is on."""
+
     key: str
     label: str
     on: bool
 
 
 class AlertSettingsOut(BaseModel):
+    """Every kind of alert and what would be sent now."""
+
     kinds: list[AlertKindOut]
     now: list[str]  # what would be emailed today, sent already or not
 
 
 class AlertSettingsIn(BaseModel):
+    """The kinds of alert to turn off."""
+
     off: list[str]
 
 
@@ -133,6 +140,7 @@ def alert_settings(db: DB) -> AlertSettingsOut:
 
 @router.put("/alerts", response_model=AlertSettingsOut)
 def set_alert_settings(body: AlertSettingsIn, db: DB, request: Request) -> AlertSettingsOut:
-    who = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    """Choose which alerts are off."""
+    who = current_user(request)
     watchdog.set_off(db, set(body.off), who)
     return _alert_settings(db)

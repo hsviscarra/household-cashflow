@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import outside
 from app.ingestion.detect import PdfError, read_pages
 from app.ingestion.storage import StatementStore
 from app.models import (
@@ -44,6 +45,8 @@ def mask(text: str) -> str:
 
 @dataclass
 class TextLine:
+    """A line of a statement's text, and whether it is the one asked for."""
+
     line_no: int
     text: str
     is_line: bool
@@ -51,6 +54,8 @@ class TextLine:
 
 @dataclass
 class Similar:
+    """An earlier line from the same merchant."""
+
     txn_date: date
     amount: Decimal
     description: str
@@ -59,6 +64,8 @@ class Similar:
 
 @dataclass
 class Source:
+    """A line with the statement text around it and similar lines before it."""
+
     transaction_id: int
     txn_date: date
     post_date: date | None
@@ -87,12 +94,15 @@ class Source:
     unreadable: bool = False
 
 
+def _unreadable() -> tuple[type[Exception], ...]:
+    """What reading a stored statement can raise without it being a bug."""
+    return (PdfError, *outside.storage_errors())
+
+
 def _around(store: StatementStore, sf: StatementFile, raw: RawLine) -> tuple[list[TextLine], bool]:
     try:
         pages = read_pages(store.get(sf.blob_key))
-    except (PdfError, OSError, KeyError, ValueError):
-        return [], True
-    except Exception:  # Azure's not-found and auth errors: the facts still show
+    except _unreadable():  # missing, not a PDF, or storage said no: the facts still show
         log.warning("Statement %s could not be read for a line's context", sf.statement_file_id)
         return [], True
     if not 1 <= raw.page <= len(pages):
@@ -139,6 +149,7 @@ def _similar(db: Session, description: str, not_id: int) -> list[Similar]:
 
 
 def of_transaction(db: Session, store: StatementStore, t: Transaction) -> Source:
+    """Where an approved line came from: its statement, page and the text around it."""
     account = db.get(Account, t.account_id) if t.account_id else None
     out = Source(
         t.transaction_id,
@@ -168,6 +179,7 @@ def of_transaction(db: Session, store: StatementStore, t: Transaction) -> Source
 
 
 def of_staged(db: Session, store: StatementStore, s: StgTransaction) -> Source:
+    """Where a line waiting in a batch came from: its statement, page and the text around it."""
     account = db.get(Account, s.account_id)
     out = Source(
         s.stg_id,

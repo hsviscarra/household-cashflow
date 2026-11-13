@@ -1,3 +1,5 @@
+"""ORM sessions: one per request, from a factory tests can replace."""
+
 from collections.abc import Callable, Iterator
 
 from sqlalchemy.orm import Session, sessionmaker

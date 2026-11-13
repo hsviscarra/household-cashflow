@@ -46,6 +46,8 @@ Store = Annotated[StatementStore, Depends(get_store)]
 
 
 class InboxOut(BaseModel):
+    """What happened to one file the Gmail script sent."""
+
     file_name: str
     outcome: Literal["stored", "duplicate", "skipped", "rejected"]
     message: str
@@ -88,11 +90,15 @@ def _needs_ocr(data: bytes) -> bool:
 
 
 class DigestSectionOut(BaseModel):
+    """One section of the daily check-in."""
+
     title: str
     items: list[str]
 
 
 class DigestOut(BaseModel):
+    """The daily check-in, as data, text and HTML."""
+
     subject: str
     summary: str
     sections: list[DigestSectionOut]
@@ -102,11 +108,15 @@ class DigestOut(BaseModel):
 
 
 class AlertOut(BaseModel):
+    """One alert."""
+
     title: str
     text: str
 
 
 class AlertsOut(BaseModel):
+    """The alerts to send now, as an email."""
+
     alerts: list[AlertOut]
     subject: str
     text: str
@@ -222,6 +232,8 @@ async def receive(
 
 # ---------------------------------------------------------------- transfer notices (ADR-023)
 class TransferEmailIn(BaseModel):
+    """A bank's transfer notice as the Gmail script read it."""
+
     subject: str = Field(max_length=300)
     body: str = Field(max_length=100_000)
     sender: str = Field(default="", max_length=320)
@@ -229,6 +241,8 @@ class TransferEmailIn(BaseModel):
 
 
 class TransferEmailOut(BaseModel):
+    """What a transfer notice became."""
+
     status: Literal["noted", "matched", "duplicate", "skipped"]
     message: str
     note_id: int | None = None

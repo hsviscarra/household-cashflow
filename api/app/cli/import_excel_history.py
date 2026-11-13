@@ -19,6 +19,7 @@ from app.services.excel_history import parse_workbook
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Preview the workbook, and load it with --load. Returns the exit code."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("workbook", type=Path)
     parser.add_argument("--load", action="store_true", help="load after the preview")

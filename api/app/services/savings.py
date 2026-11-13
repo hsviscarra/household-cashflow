@@ -137,10 +137,12 @@ class Safe:
 
     @property
     def amount(self) -> Decimal:
+        """What is safe to spend: what is left, plus income to come, less bills and goals to go."""
         return self.left_so_far + self.income_to_come - self.bills_to_come - self.goals_to_go
 
     @property
     def a_day(self) -> Decimal:
+        """The same per day left in the month, never under zero."""
         return (max(ZERO, self.amount) / self.days_left).quantize(CENT)
 
 

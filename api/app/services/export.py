@@ -37,6 +37,8 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class ExportError(Exception):
+    """An export that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -44,6 +46,8 @@ class ExportError(Exception):
 
 @dataclass
 class Dataset:
+    """Something that can be downloaded, by month or by year."""
+
     key: str
     title: str
     by: str  # month or year: the finest period it can be cut to
@@ -64,6 +68,8 @@ DATASETS = {
 
 @dataclass
 class Table:
+    """Columns and rows, ready to write as CSV or Excel."""
+
     columns: list[str]
     rows: Sequence[Sequence[Any]]
 
@@ -83,6 +89,7 @@ def _view(q: Select[Any], column: Any, period: tuple[date, date] | None, order: 
 
 
 def table(db: Session, key: str, month: date | None = None, year: int | None = None) -> Table:
+    """A dataset's rows for a month or a year; ExportError when the dataset or period is wrong."""
     d = DATASETS.get(key)
     if d is None:
         raise ExportError(f"There is no export called {key}.", 404)
@@ -179,6 +186,7 @@ def _cell(name: str, v: Any) -> Any:
 
 
 def to_csv(t: Table) -> bytes:
+    """The table as CSV (UTF-8 with a BOM, so Excel opens it right)."""
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\r\n")
     w.writerow([_heading(c) for c in t.columns])
@@ -187,6 +195,7 @@ def to_csv(t: Table) -> bytes:
 
 
 def to_xlsx(t: Table, title: str) -> bytes:
+    """The table as an Excel workbook with typed cells."""
     wb = Workbook()
     ws = wb.active
     assert ws is not None
@@ -230,6 +239,7 @@ def _format(name: str, rows: Iterable[Sequence[Any]], i: int) -> str | None:
 
 
 def filename(key: str, fmt: str, month: date | None, year: int | None) -> str:
+    """The download's file name: the dataset, its period and the format."""
     d = DATASETS[key]
     if month is not None and d.by == "month":
         period = month.isoformat()[:7]

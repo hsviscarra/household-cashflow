@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.services import payoff, savings
 
@@ -230,8 +230,9 @@ def safe_to_spend(db: DB, today: Today = None) -> SafeOut:
 @router.put("/debts/{key}", status_code=status.HTTP_204_NO_CONTENT)
 def set_terms(key: str, body: TermsIn, db: DB, request: Request, today: Today = None) -> None:
     """Keep a debt's yearly rate and monthly payment as typed; both null forgets them."""
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()[:200]
     try:
-        savings.set_terms(db, key, body.rate, body.minimum, user, today or date.today())
+        savings.set_terms(
+            db, key, body.rate, body.minimum, current_user(request), today or date.today()
+        )
     except savings.SavingsError as e:
         raise HTTPException(e.status, str(e)) from e

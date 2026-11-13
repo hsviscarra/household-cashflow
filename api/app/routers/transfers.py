@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.models import Account
@@ -22,20 +22,17 @@ router = APIRouter(prefix="/api/transfers", tags=["transfers"])
 DB = Annotated[Session, Depends(get_session)]
 
 
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
-
-
 @router.post("/match", response_model=MatchOut)
 def match(db: DB, request: Request) -> MatchOut:
-    return MatchOut(pairs=transfers.match(db, _user(request)).pairs)
+    """Pair the two sides of transfers between own accounts; says how many pairs."""
+    return MatchOut(pairs=transfers.match(db, current_user(request)).pairs)
 
 
 @router.post("/{transaction_id}/one-sided", status_code=status.HTTP_204_NO_CONTENT)
 def one_sided(transaction_id: int, db: DB, request: Request) -> Response:
     """The other side is in an account the app doesn't follow: stop asking for it."""
     try:
-        transfers.one_sided(db, transaction_id, _user(request))
+        transfers.one_sided(db, transaction_id, current_user(request))
     except transfers.TransferError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -43,8 +40,9 @@ def one_sided(transaction_id: int, db: DB, request: Request) -> Response:
 
 @router.delete("/{group}", status_code=status.HTTP_204_NO_CONTENT)
 def unlink(group: int, db: DB, request: Request) -> Response:
+    """Undo a transfer pairing."""
     try:
-        transfers.unlink(db, group, _user(request))
+        transfers.unlink(db, group, current_user(request))
     except transfers.TransferError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -57,6 +55,7 @@ def unmatched(
         date | None, Query(description="Any day of the month; all if left out")
     ] = None,
 ) -> list[TransactionOut]:
+    """Transfer lines still without their other side."""
     names = {a.account_id: a.name for a in db.scalars(select(Account))}
     paths = category_paths(db)
     return [
@@ -66,6 +65,8 @@ def unmatched(
 
 
 class PairIn(BaseModel):
+    """The two lines that are one transfer."""
+
     a: int
     b: int
 
@@ -74,12 +75,14 @@ class PairIn(BaseModel):
 def pair(body: PairIn, db: DB, request: Request) -> dict[str, int]:
     """These two lines are the two sides of one transfer (ADR-075)."""
     try:
-        return {"group": transfers.pair(db, body.a, body.b, _user(request))}
+        return {"group": transfers.pair(db, body.a, body.b, current_user(request))}
     except transfers.TransferError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
 
 
 class OutsideIn(BaseModel):
+    """Transfer lines whose other side is somewhere the app doesn't follow, and where."""
+
     ids: list[int] = Field(min_length=1, max_length=200)
     place: str = Field(min_length=1, max_length=100)
 
@@ -87,7 +90,7 @@ class OutsideIn(BaseModel):
 @router.post("/outside")
 def outside(body: OutsideIn, db: DB, request: Request) -> dict[str, int]:
     """The other side is somewhere the app doesn't follow (ADR-075)."""
-    return {"settled": transfers.settle_outside(db, body.ids, body.place, _user(request))}
+    return {"settled": transfers.settle_outside(db, body.ids, body.place, current_user(request))}
 
 
 @router.get("/workbench")

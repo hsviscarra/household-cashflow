@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.schemas import (
     BalanceSheetOut,
@@ -64,12 +64,14 @@ def get_networth(
 
 @router.post("/holdings", status_code=status.HTTP_201_CREATED)
 def create_holding(body: HoldingIn, db: DB) -> dict[str, int]:
+    """Add something owned or owed to the balance sheet."""
     h = _run(lambda: networth.create_holding(db, body.model_dump()))
     return {"holding_id": h.holding_id}
 
 
 @router.patch("/holdings/{holding_id}")
 def update_holding(holding_id: int, body: HoldingPatch, db: DB) -> dict[str, int]:
+    """Change a balance-sheet item's details, or pause it."""
     changes = body.model_dump(exclude_unset=True)
     h = _run(lambda: networth.update_holding(db, holding_id, changes))
     return {"holding_id": h.holding_id}
@@ -77,12 +79,14 @@ def update_holding(holding_id: int, body: HoldingPatch, db: DB) -> dict[str, int
 
 @router.delete("/holdings/{holding_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_holding(holding_id: int, db: DB) -> Response:
+    """Remove a balance-sheet item with its values."""
     _run(lambda: networth.delete_holding(db, holding_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/holdings/{holding_id}/values", response_model=ValueOut)
 def set_value(holding_id: int, body: ValueIn, db: DB) -> ValueOut:
+    """Record what an item was worth on a day."""
     s = _run(lambda: networth.set_value(db, holding_id, body.as_of, body.amount, body.notes))
     return ValueOut(
         snapshot_id=s.snapshot_id, as_of=s.as_of, amount=s.amount, source=s.source, notes=s.notes
@@ -91,6 +95,7 @@ def set_value(holding_id: int, body: ValueIn, db: DB) -> ValueOut:
 
 @router.delete("/holdings/values/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_value(snapshot_id: int, db: DB) -> Response:
+    """Remove one recorded value of an item."""
     _run(lambda: networth.delete_value(db, snapshot_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -104,7 +109,7 @@ async def upload_schedule(
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "The file is larger than 10 MB.")
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    user = current_user(request)
     r = _run(lambda: loans.import_table(db, holding_id, data, user))
     return LoanImportOut(**asdict(r))
 
@@ -113,7 +118,7 @@ async def upload_schedule(
 def installment_paid(holding_id: int, number: int, request: Request, db: DB) -> dict[str, object]:
     """Confirm an installment was paid (ADR-053): it and every earlier one become paid and the
     loan's balance follows the table. No new table needed."""
-    user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
+    user = current_user(request)
     r = _run(lambda: loans.mark_paid(db, holding_id, number, user))
     return {"number": r.number, "period": r.period, "balance_after": r.balance_after}
 

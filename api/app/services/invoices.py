@@ -47,6 +47,8 @@ FACTURA = "01"  # SRI codDoc for an invoice; credit notes, retentions etc. are s
 
 
 class InvoiceError(Exception):
+    """An invoice can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -58,6 +60,8 @@ class NotAnInvoice(InvoiceError):
 
 @dataclass
 class Line:
+    """A product line of an invoice."""
+
     line_no: int
     code: str | None
     description: str
@@ -69,11 +73,14 @@ class Line:
 
     @property
     def total(self) -> Decimal:
+        """The line with its tax, to the cent."""
         return (self.subtotal + self.tax).quantize(CENT)
 
 
 @dataclass
 class Parsed:
+    """An electronic invoice as read from its XML."""
+
     access_key: str
     issuer_ruc: str
     issuer_name: str
@@ -128,6 +135,7 @@ def _load(xml: bytes) -> Element:
 
 
 def parse(xml: bytes) -> Parsed:
+    """Read an SRI electronic invoice (XML): issuer, buyer, totals and product lines."""
     if len(xml) > MAX_BYTES:
         raise InvoiceError("The file is larger than 2 MB.", 413)
     f = _load(xml)
@@ -346,11 +354,14 @@ def confirm_category(db: Session, key: str, category_id: int | None, user: str) 
 # ---------------------------------------------------------------- storing and matching
 @dataclass
 class Stored:
+    """An invoice, and whether it was already stored."""
+
     invoice: Invoice
     duplicate: bool
 
 
 def store(db: Session, p: Parsed, user: str) -> Stored:
+    """Store a parsed invoice; one already stored (same access key) is returned as it is."""
     existing = db.scalar(select(Invoice).where(Invoice.access_key == p.access_key))
     if existing is not None:
         return Stored(existing, True)
@@ -438,12 +449,15 @@ def link_pending(db: Session, since: date | None = None) -> int:
 # ---------------------------------------------------------------- reading back
 @dataclass
 class GroupTotal:
+    """A product group's total in a month."""
+
     group: str  # "Not grouped yet" when no group
     amount: Decimal
     lines: int
 
 
 def month_groups(db: Session, month: date) -> list[GroupTotal]:
+    """A month's invoiced amounts by product group, biggest first."""
     end = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
     rows = db.execute(
         select(
@@ -462,6 +476,7 @@ def month_groups(db: Session, month: date) -> list[GroupTotal]:
 
 
 def month_invoices(db: Session, month: date) -> list[Invoice]:
+    """A month's invoices with their lines, newest first."""
     end = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
     return list(
         db.scalars(

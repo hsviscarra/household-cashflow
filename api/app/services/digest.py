@@ -33,18 +33,24 @@ def _money(v: Decimal) -> str:
 
 @dataclass
 class Item:
+    """One thing to do, with where to do it."""
+
     text: str
     link: str  # a path in the app
 
 
 @dataclass
 class Section:
+    """A group of things to do."""
+
     title: str
     items: list[Item] = field(default_factory=list)
 
 
 @dataclass
 class Digest:
+    """The daily check-in: a summary and its sections."""
+
     today: date
     subject: str
     summary: str
@@ -52,6 +58,7 @@ class Digest:
 
     @property
     def actions(self) -> int:
+        """How many things the digest asks for."""
         return sum(len(s.items) for s in self.sections)
 
 
@@ -107,7 +114,8 @@ def _unusual(db: Session, today: date) -> list[Item]:
     return out[:5]
 
 
-def build(db: Session, today: date | None = None) -> Digest:
+def build(db: Session, today: date | None = None) -> Digest:  # noqa: C901 - baseline, docs/refactors.md #15
+    """The daily check-in: what needs a decision today, by section, with one summary line."""
     today = today or date.today()
     month = first(today)
     sections: list[Section] = []
@@ -212,6 +220,7 @@ def build(db: Session, today: date | None = None) -> Digest:
 
 
 def text(d: Digest, base_url: str) -> str:
+    """The digest as the plain text of its email, with links under `base_url`."""
     lines = [d.summary, ""]
     for s in d.sections:
         lines.append(s.title.upper())

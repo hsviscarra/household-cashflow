@@ -18,11 +18,21 @@ OPEN_PATHS = frozenset({"/api/health"})
 MCP_PATH = "/mcp"  # Claude's endpoint (F18): a bearer token instead of a signed-in person
 INBOX_PATH = "/api/inbox"  # the Gmail script's statement drop (F20): its own bearer token
 PRINCIPAL_HEADER = "x-ms-client-principal-name"
+LOCAL_USER = "local"  # who a change is recorded as when nobody is signed in (local runs, tests)
+USER_MAX = 200  # the narrowest "who did it" column
+
+
+def current_user(request: Request) -> str:
+    """Who is signed in, as recorded with every change: the email Container Apps passes, lower
+    case, or "local" when there is none."""
+    return (request.headers.get(PRINCIPAL_HEADER) or LOCAL_USER).strip().lower()[:USER_MAX]
 
 
 async def allow_list(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
+    """Let a request through when its endpoint's check passes: a bearer token for /mcp and the
+    inbox, the household's allow-list for everything else; health stays open."""
     settings = get_settings()
     path = request.url.path.rstrip("/")
     if path == MCP_PATH:

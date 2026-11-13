@@ -24,6 +24,8 @@ class _Out(BaseModel):
 
 # ---------- accounts ----------
 class AccountIn(BaseModel):
+    """A new bank account or card."""
+
     name: str = Field(min_length=1, max_length=100)
     institution: str = Field(min_length=1, max_length=100)
     kind: AccountKind
@@ -37,6 +39,8 @@ class AccountIn(BaseModel):
 
 
 class AccountPatch(BaseModel):
+    """The fields of an account to change."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     institution: str | None = Field(default=None, min_length=1, max_length=100)
     kind: AccountKind | None = None
@@ -49,6 +53,8 @@ class AccountPatch(BaseModel):
 
 
 class AccountOut(_Out):
+    """An account as the API returns it."""
+
     account_id: int
     name: str
     institution: str
@@ -63,6 +69,8 @@ class AccountOut(_Out):
 
 # ---------- categories ----------
 class CategoryIn(BaseModel):
+    """A new group (no parent, needs a kind) or a category under one."""
+
     name: str = Field(min_length=1, max_length=100)
     parent_id: int | None = None
     kind: CategoryKind | None = None  # required for a group; a subcategory takes its parent's
@@ -72,6 +80,8 @@ class CategoryIn(BaseModel):
 
 
 class CategoryPatch(BaseModel):
+    """The fields of a category to change."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     color: str | None = Field(default=None, pattern=HEX_COLOR)
     is_fixed: bool | None = None
@@ -83,6 +93,8 @@ class CategoryPatch(BaseModel):
 
 
 class CategoryOut(_Out):
+    """A category as the API returns it."""
+
     category_id: int
     parent_id: int | None
     name: str
@@ -110,11 +122,15 @@ class CategoryUsesOut(BaseModel):
 
 
 class CategoryGroup(CategoryOut):
+    """A group with the categories under it."""
+
     children: list[CategoryOut]
 
 
 # ---------- merchant rules ----------
 class RuleIn(BaseModel):
+    """A new merchant rule: a pattern, how it matches and the category it gives."""
+
     pattern: str = Field(min_length=1, max_length=200)
     match_type: MatchType = "contains"
     category_id: int
@@ -128,10 +144,13 @@ class RuleIn(BaseModel):
     @field_validator("pattern")
     @classmethod
     def strip_pattern(cls, v: str) -> str:
+        """A rule's pattern never starts or ends with spaces."""
         return v.strip()
 
 
 class RulePatch(BaseModel):
+    """The fields of a merchant rule to change."""
+
     pattern: str | None = Field(default=None, min_length=1, max_length=200)
     match_type: MatchType | None = None
     category_id: int | None = None
@@ -144,6 +163,8 @@ class RulePatch(BaseModel):
 
 
 class RuleOut(_Out):
+    """A merchant rule with its category's full name."""
+
     rule_id: int
     pattern: str
     match_type: MatchType
@@ -160,12 +181,16 @@ class RuleOut(_Out):
 
 
 class RuleTestOut(BaseModel):
+    """What a description would match: the rule, or none."""
+
     description: str
     rule: RuleOut | None
 
 
 # ---------------- F2: Excel history and cash flow ----------------
 class MonthCheckOut(BaseModel):
+    """One workbook month checked: what the rows add up to against the sheet's own totals."""
+
     month: date
     sheet: str
     income_rows: Decimal
@@ -178,6 +203,8 @@ class MonthCheckOut(BaseModel):
 
 
 class MappingReviewOut(BaseModel):
+    """How one workbook row is read: its type, category and person, and the months it has."""
+
     block: str
     group: str | None
     label: str
@@ -190,6 +217,8 @@ class MappingReviewOut(BaseModel):
 
 
 class SnapshotOut(BaseModel):
+    """A balance the workbook records for a day."""
+
     as_of: date
     name: str
     kind: str
@@ -198,6 +227,8 @@ class SnapshotOut(BaseModel):
 
 
 class YearTotalOut(BaseModel):
+    """A year of the workbook: months, income and outflows."""
+
     year: int
     months: int
     income: Decimal
@@ -205,6 +236,8 @@ class YearTotalOut(BaseModel):
 
 
 class UnmappedOut(BaseModel):
+    """A workbook row with no category mapping yet."""
+
     sheet: str
     cell: str
     block: str
@@ -214,6 +247,8 @@ class UnmappedOut(BaseModel):
 
 
 class HistoryPreviewOut(BaseModel):
+    """What loading the workbook would do, before doing it."""
+
     file_name: str
     file_sha256: str
     already_loaded: bool
@@ -232,6 +267,8 @@ class HistoryPreviewOut(BaseModel):
 
 
 class HistoryLoadOut(BaseModel):
+    """What loading the workbook did."""
+
     load_id: int
     transactions: int
     budget_rows: int
@@ -241,6 +278,8 @@ class HistoryLoadOut(BaseModel):
 
 
 class MonthlyCashflowOut(BaseModel):
+    """A month of cash flow: income, expenses, savings, debt payments and net."""
+
     cash_month: date
     income: Decimal
     expenses: Decimal
@@ -254,6 +293,8 @@ class MonthlyCashflowOut(BaseModel):
 
 
 class CategoryMonthOut(BaseModel):
+    """One category's amount in one month."""
+
     cash_month: date
     type: str
     group_id: int
@@ -266,6 +307,8 @@ class CategoryMonthOut(BaseModel):
 
 
 class PlanMonthOut(BaseModel):
+    """A month the workbook planned: income and outflows."""
+
     month: date
     income: Decimal
     outflows: Decimal
@@ -273,18 +316,24 @@ class PlanMonthOut(BaseModel):
 
 # ---------------- F3: statements ----------------
 class BatchRef(BaseModel):
+    """A statement's latest batch, briefly."""
+
     batch_id: int
     status: str
     tieout_ok: bool
 
 
 class StatementAccountOut(_Out):
+    """An account a statement belongs to."""
+
     account_id: int
     name: str
     last4: str | None
 
 
 class StatementOut(_Out):
+    """A stored statement with its accounts and latest batch."""
+
     statement_file_id: int
     file_name: str
     source: str
@@ -304,6 +353,8 @@ class StatementOut(_Out):
 
 
 class UploadResultOut(BaseModel):
+    """What happened to one uploaded file: stored, duplicate or rejected, and why."""
+
     file_name: str
     outcome: Literal["stored", "duplicate", "rejected"]
     message: str
@@ -311,11 +362,15 @@ class UploadResultOut(BaseModel):
 
 
 class StatementPatch(BaseModel):
+    """The accounts a statement belongs to."""
+
     account_ids: list[int] = Field(min_length=1, max_length=4)
 
 
 # ---------------- F4: import batches and transactions ----------------
 class CheckOut(BaseModel):
+    """One tie-out check: what the statement printed against what the lines add up to."""
+
     name: str
     expected: Decimal
     actual: Decimal
@@ -323,6 +378,8 @@ class CheckOut(BaseModel):
 
 
 class StgLineOut(BaseModel):
+    """A line waiting in a batch, with its proposed category and matches."""
+
     stg_id: int
     txn_date: date
     post_date: date | None
@@ -346,6 +403,8 @@ class StgLineOut(BaseModel):
 
 
 class CategoryTotalOut(BaseModel):
+    """What a batch adds to one category."""
+
     category_path: str
     type: str
     lines: int
@@ -353,6 +412,8 @@ class CategoryTotalOut(BaseModel):
 
 
 class RejectOut(BaseModel):
+    """A statement line that couldn't be read, and why."""
+
     page: int
     line_no: int
     text: str
@@ -360,6 +421,8 @@ class RejectOut(BaseModel):
 
 
 class BatchOut(BaseModel):
+    """A batch as the Import page shows it."""
+
     batch_id: int
     status: str
     tieout_ok: bool
@@ -381,6 +444,8 @@ class BatchOut(BaseModel):
 
 
 class ApproveOut(BaseModel):
+    """What approving a batch loaded and skipped."""
+
     batch_id: int
     loaded: int
     skipped_duplicates: int
@@ -395,6 +460,8 @@ class LearnedOut(BaseModel):
 
 
 class TransactionOut(BaseModel):
+    """An approved line as the API returns it."""
+
     transaction_id: int
     txn_date: date
     post_date: date | None
@@ -426,6 +493,8 @@ class TransactionOut(BaseModel):
 
 # ---------------- F9: classification ----------------
 class SuggestionOut(BaseModel):
+    """Claude's suggested category for a merchant, with its confidence and reason."""
+
     category_id: int
     category_path: str
     confidence: Decimal
@@ -434,6 +503,8 @@ class SuggestionOut(BaseModel):
 
 
 class ReviewLineOut(BaseModel):
+    """A line waiting for a category."""
+
     transaction_id: int  # on a statement's page (F23), the staged line's id
     txn_date: date
     amount: Decimal
@@ -446,6 +517,8 @@ class ReviewLineOut(BaseModel):
 
 
 class ReviewGroupOut(BaseModel):
+    """A merchant's waiting lines with their total and any suggestion."""
+
     merchant_key: str
     lines: list[ReviewLineOut]
     total: Decimal
@@ -453,6 +526,8 @@ class ReviewGroupOut(BaseModel):
 
 
 class ReviewOut(BaseModel):
+    """Everything waiting for a category, grouped by merchant."""
+
     month: date | None
     groups: list[ReviewGroupOut]
     uncategorized_lines: int
@@ -460,6 +535,8 @@ class ReviewOut(BaseModel):
 
 
 class ResolveIn(BaseModel):
+    """The category to give a merchant's lines, and the rule to keep, if any."""
+
     merchant_key: str = Field(min_length=1, max_length=200)
     category_id: int
     transaction_ids: list[int] | None = None
@@ -472,6 +549,8 @@ class ResolveIn(BaseModel):
 
 
 class ResolveOut(BaseModel):
+    """What a resolve categorized, here and through the saved rule."""
+
     categorized: int
     rule_id: int | None
     also_by_rule: int
@@ -479,11 +558,15 @@ class ResolveOut(BaseModel):
 
 
 class ApplyRulesOut(BaseModel):
+    """What applying the rules to a batch categorized."""
+
     categorized: int
     batch: BatchOut
 
 
 class TransactionPatch(BaseModel):
+    """The fields of a line to change; only the fields sent are changed."""
+
     category_id: int | None = None
     notes: str | None = Field(default=None, max_length=1000)
     person: Owner | None = None
@@ -493,16 +576,22 @@ class TransactionPatch(BaseModel):
 
 
 class PartIn(BaseModel):
+    """One part of a split: its amount and category."""
+
     amount: Decimal
     category_id: int
     notes: str | None = Field(default=None, max_length=1000)
 
 
 class SplitIn(BaseModel):
+    """The parts to split a line into."""
+
     parts: list[PartIn] = Field(min_length=2, max_length=20)
 
 
 class ChangeOut(_Out):
+    """One logged change to a line."""
+
     change_id: int
     column_name: str
     old_value: str | None
@@ -513,12 +602,16 @@ class ChangeOut(_Out):
 
 
 class AcceptedOut(BaseModel):
+    """What accepting suggestions categorized."""
+
     merchants: int  # suggestions accepted (each saved as a rule)
     lines: int
     also_by_rule: int  # more lines those rules categorized, loaded or waiting
 
 
 class SuggestOut(BaseModel):
+    """How many merchants were asked about and how many got a suggestion."""
+
     asked: int
     suggested: int
     model: str
@@ -526,6 +619,8 @@ class SuggestOut(BaseModel):
 
 # ---------------- F10: transfers ----------------
 class TransferLegOut(BaseModel):
+    """The other side of a transfer."""
+
     transaction_id: int
     txn_date: date
     amount: Decimal
@@ -536,11 +631,15 @@ class TransferLegOut(BaseModel):
 
 
 class MatchOut(BaseModel):
+    """How many transfer pairs were made."""
+
     pairs: int
 
 
 # ---------------- F11: recurring entries ----------------
 class TemplateIn(BaseModel):
+    """A new recurring item (a bill or an income)."""
+
     name: str = Field(min_length=1, max_length=100)
     category_id: int
     type: Literal["income", "expense", "savings", "transfer", "debt_payment", "fee_interest"]
@@ -558,6 +657,8 @@ class TemplateIn(BaseModel):
 
 
 class TemplatePatch(BaseModel):
+    """The fields of a recurring item to change."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     category_id: int | None = None
     type: (
@@ -576,6 +677,8 @@ class TemplatePatch(BaseModel):
 
 
 class TemplateOut(BaseModel):
+    """A recurring item with its amounts over time."""
+
     template_id: int
     name: str
     category_id: int
@@ -600,20 +703,28 @@ class TemplateOut(BaseModel):
 
 
 class AmountOut(BaseModel):
+    """An amount and the month it applies from."""
+
     from_month: date
     amount: Decimal
 
 
 class ChangeAmountIn(BaseModel):
+    """A new amount from a month on."""
+
     from_month: date
     amount: Decimal = Field(gt=0, max_digits=15, decimal_places=4)
 
 
 class MonthIn(BaseModel):
+    """A month."""
+
     month: date
 
 
 class CopyIn(BaseModel):
+    """The month to copy and the months to copy it to."""
+
     from_month: date
     to_start: date
     to_end: date
@@ -621,6 +732,8 @@ class CopyIn(BaseModel):
 
 
 class EntryPatch(BaseModel):
+    """The fields of one month's entry to change."""
+
     amount: Decimal | None = Field(default=None, gt=0, max_digits=15, decimal_places=4)
     reset: bool = False
     status: Literal["planned", "skipped"] | None = None
@@ -628,25 +741,35 @@ class EntryPatch(BaseModel):
 
 
 class LinkIn(BaseModel):
+    """The line that paid an entry."""
+
     transaction_id: int
 
 
 class CountOut(BaseModel):
+    """How many were made or changed."""
+
     count: int
 
 
 class FromExcelIn(BaseModel):
+    """The workbook rows to turn into recurring items."""
+
     year: int = Field(ge=2019, le=2100)
     names: list[str] = Field(min_length=1, max_length=200)
 
 
 class FromExcelOut(BaseModel):
+    """What turning workbook rows into recurring items made."""
+
     templates: int
     entries: int
     linked: int
 
 
 class ExcelRowOut(BaseModel):
+    """A workbook row that could become a recurring item."""
+
     name: str
     group: str | None
     label: str
@@ -661,6 +784,8 @@ class ExcelRowOut(BaseModel):
 
 
 class CellOut(BaseModel):
+    """One recurring item in one month: expected, paid and its status."""
+
     month: date
     entry_id: int | None
     expected: Decimal | None
@@ -672,6 +797,8 @@ class CellOut(BaseModel):
 
 
 class GridRowOut(BaseModel):
+    """A recurring item across the year's months."""
+
     template_id: int
     name: str
     type: str
@@ -682,6 +809,8 @@ class GridRowOut(BaseModel):
 
 
 class GridOut(BaseModel):
+    """A year of recurring items by month."""
+
     year: int
     months: list[date]
     excel_months: list[date]
@@ -689,6 +818,8 @@ class GridOut(BaseModel):
 
 
 class EntryOut(BaseModel):
+    """One month of a recurring item with the lines that paid it."""
+
     entry_id: int
     template_id: int
     template_name: str
@@ -705,6 +836,8 @@ class EntryOut(BaseModel):
 
 # ---------------- F12: month status ----------------
 class StatusItemOut(BaseModel):
+    """One thing to do for a month, with where to do it."""
+
     kind: Literal[
         "statement", "import", "uncategorized", "transfer", "recurring", "balance", "note"
     ]
@@ -714,6 +847,8 @@ class StatusItemOut(BaseModel):
 
 
 class CoverageOut(BaseModel):
+    """How much of a month an account's data covers."""
+
     account_id: int
     state: Literal["full", "partial", "none"]
     covered_days: int
@@ -721,6 +856,8 @@ class CoverageOut(BaseModel):
 
 
 class MonthStatusOut(BaseModel):
+    """A month's data: its source, what covers it and what is missing."""
+
     month: date
     source: Literal["excel", "statements"]
     complete: bool
@@ -729,6 +866,8 @@ class MonthStatusOut(BaseModel):
 
 
 class StatusAccountOut(BaseModel):
+    """An account, as the status page names it."""
+
     account_id: int
     name: str
     kind: str
@@ -736,6 +875,8 @@ class StatusAccountOut(BaseModel):
 
 
 class LoadOut(BaseModel):
+    """One load: when, what, how many rows and by whom."""
+
     loaded_at: datetime
     source: str
     file_name: str | None
@@ -744,6 +885,8 @@ class LoadOut(BaseModel):
 
 
 class TimelineStatementOut(BaseModel):
+    """A statement on an account's timeline."""
+
     statement_file_id: int
     file_name: str
     start: date
@@ -753,6 +896,8 @@ class TimelineStatementOut(BaseModel):
 
 
 class GapOut(BaseModel):
+    """Days of an account no statement covers, and when the missing one is due."""
+
     start: date
     end: date
     due: date | None  # the current cycle: the bank issues its statement around this day
@@ -761,6 +906,8 @@ class GapOut(BaseModel):
 
 
 class AccountTimelineOut(BaseModel):
+    """An account's statements over time and the gaps between them."""
+
     account_id: int
     name: str
     closed_on: date | None
@@ -771,6 +918,8 @@ class AccountTimelineOut(BaseModel):
 
 
 class SourceOut(BaseModel):
+    """How an account's data arrives and how fresh it is."""
+
     account_id: int
     name: str
     how: Literal["bank_sync", "email", "upload"]
@@ -789,6 +938,8 @@ class ScriptOut(BaseModel):
 
 
 class StatusOut(BaseModel):
+    """Everything the Data status page shows."""
+
     today: date
     excel_through: date | None
     accounts: list[StatusAccountOut]
@@ -803,6 +954,8 @@ class StatusOut(BaseModel):
 
 # ---------------- F13: spending analytics ----------------
 class SpendCategoryOut(BaseModel):
+    """A category's spending in a month against the month and the year before."""
+
     category_id: int
     name: str
     amount: Decimal
@@ -812,6 +965,8 @@ class SpendCategoryOut(BaseModel):
 
 
 class SpendGroupOut(BaseModel):
+    """A group's spending with its categories."""
+
     group_id: int
     name: str
     color: str | None
@@ -823,6 +978,8 @@ class SpendGroupOut(BaseModel):
 
 
 class SpendTotalOut(BaseModel):
+    """The month's spending against the month and the year before."""
+
     amount: Decimal
     prev: Decimal
     last_year: Decimal
@@ -830,12 +987,16 @@ class SpendTotalOut(BaseModel):
 
 
 class SpendSliceOut(BaseModel):
+    """Spending for one value of a dimension (a person, a country, fixed or variable)."""
+
     key: str
     amount: Decimal
     transactions: int
 
 
 class SpendMerchantOut(BaseModel):
+    """A merchant's spending in the month."""
+
     merchant: str
     group_name: str
     amount: Decimal
@@ -843,11 +1004,15 @@ class SpendMerchantOut(BaseModel):
 
 
 class SpendMonthOut(BaseModel):
+    """A month's spending, for the trend."""
+
     month: date
     amount: Decimal
 
 
 class SpendSeriesOut(BaseModel):
+    """One series of the spending chart: a value per month."""
+
     key: str
     label: str
     color: str | None
@@ -863,6 +1028,8 @@ class SpendSeriesSetOut(BaseModel):
 
 
 class SpendingOut(BaseModel):
+    """Everything the Spending page shows for a month."""
+
     month: date
     months: list[date]
     source: Literal["excel", "statements", "none"]
@@ -876,6 +1043,8 @@ class SpendingOut(BaseModel):
 
 
 class SpendLineOut(BaseModel):
+    """One spending line."""
+
     transaction_id: int
     txn_date: date
     merchant: str
@@ -890,6 +1059,8 @@ class SpendLineOut(BaseModel):
 
 # ---------------- F14: subscriptions and cost of debt ----------------
 class ChargeOut(BaseModel):
+    """One charge of a subscription."""
+
     transaction_id: int
     txn_date: date
     amount: Decimal
@@ -898,6 +1069,8 @@ class ChargeOut(BaseModel):
 
 
 class SubscriptionOut(BaseModel):
+    """A recurring charge: its cadence, what it costs and its charges."""
+
     merchant: str
     cadence: Literal["weekly", "monthly", "quarterly", "yearly", "possible"]
     typical: Decimal
@@ -913,12 +1086,16 @@ class SubscriptionOut(BaseModel):
 
 
 class SubscriptionsOut(BaseModel):
+    """Every subscription and what the active ones cost a month."""
+
     monthly_cost: Decimal  # active subscriptions with a known cadence
     weekly_monthly_cost: Decimal  # the weekly ones (app billing)
     subscriptions: list[SubscriptionOut]
 
 
 class DebtAccountOut(BaseModel):
+    """An account's interest and fees."""
+
     account_id: int | None
     name: str
     kind: str | None
@@ -933,6 +1110,8 @@ class DebtAccountOut(BaseModel):
 
 
 class DebtOut(BaseModel):
+    """A year's cost of debt by account."""
+
     year: int
     years: list[int]
     through: date
@@ -958,6 +1137,8 @@ Positive = Annotated[Decimal, Field(ge=0, max_digits=15, decimal_places=4)]
 
 
 class HoldingIn(BaseModel):
+    """Something new on the balance sheet, owned or owed."""
+
     name: str = Field(min_length=1, max_length=100)
     holding_class: HoldingClass
     side: Literal["asset", "liability"] | None = None
@@ -972,6 +1153,8 @@ class HoldingIn(BaseModel):
 
 
 class HoldingPatch(BaseModel):
+    """The fields of a balance-sheet item to change."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     holding_class: HoldingClass | None = None
     side: Literal["asset", "liability"] | None = None
@@ -985,12 +1168,16 @@ class HoldingPatch(BaseModel):
 
 
 class ValueIn(BaseModel):
+    """What an item was worth on a day."""
+
     as_of: date
     amount: Positive
     notes: str | None = Field(default=None, max_length=400)
 
 
 class ValueOut(BaseModel):
+    """A recorded value of an item."""
+
     snapshot_id: int | None
     as_of: date
     amount: Decimal
@@ -999,6 +1186,8 @@ class ValueOut(BaseModel):
 
 
 class PurchaseOut(BaseModel):
+    """A purchase in progress: paid, remaining and what is due at delivery."""
+
     target: Decimal
     paid: Decimal
     remaining: Decimal
@@ -1010,6 +1199,8 @@ class PurchaseOut(BaseModel):
 
 
 class LoanScheduleOut(BaseModel):
+    """A loan's amortization table in summary."""
+
     installments: int
     paid: int
     left: int
@@ -1023,6 +1214,8 @@ class LoanScheduleOut(BaseModel):
 
 
 class LoanOut(BaseModel):
+    """A loan's payment and what was paid this year."""
+
     monthly_payment: Decimal | None
     paid_this_year: Decimal
     payments_this_year: int
@@ -1030,6 +1223,8 @@ class LoanOut(BaseModel):
 
 
 class LoanImportOut(BaseModel):
+    """What reading a loan's table loaded."""
+
     installments: int
     paid: int
     due: int
@@ -1038,6 +1233,8 @@ class LoanImportOut(BaseModel):
 
 
 class LoanPaymentOut(BaseModel):
+    """One installment against the bank line that paid it."""
+
     number: int
     period: date
     total: Decimal
@@ -1050,6 +1247,8 @@ class LoanPaymentOut(BaseModel):
 
 
 class SheetItemOut(BaseModel):
+    """One item of the balance sheet."""
+
     key: str
     name: str
     side: Literal["asset", "liability"]
@@ -1070,6 +1269,8 @@ class SheetItemOut(BaseModel):
 
 
 class SheetPointOut(BaseModel):
+    """A month's assets, liabilities and net worth."""
+
     month: date
     assets: Decimal
     liabilities: Decimal
@@ -1077,6 +1278,8 @@ class SheetPointOut(BaseModel):
 
 
 class BalanceSheetOut(BaseModel):
+    """The balance sheet on a day with the trend of net worth."""
+
     as_of: date
     assets: Decimal
     liabilities: Decimal
@@ -1088,6 +1291,8 @@ class BalanceSheetOut(BaseModel):
 
 # ---------------- F15: projections ----------------
 class ProjectionEventOut(BaseModel):
+    """Something expected on a day: income, a bill, an installment or a what-if."""
+
     day: date
     name: str
     amount: Decimal
@@ -1096,6 +1301,8 @@ class ProjectionEventOut(BaseModel):
 
 
 class ProjectionMonthOut(BaseModel):
+    """A month of the forecast."""
+
     month: date
     income: Decimal
     fixed: Decimal
@@ -1111,22 +1318,30 @@ class ProjectionMonthOut(BaseModel):
 
 
 class SeasonalNoteOut(BaseModel):
+    """A group that makes a month heavier than usual, and by how much."""
+
     group_name: str
     extra: Decimal  # more than a usual month; negative is less
 
 
 class ProjectionBandOut(BaseModel):
+    """A day's likely range of cash."""
+
     day: date
     low: Decimal
     high: Decimal
 
 
 class ProjectionDayOut(BaseModel):
+    """A day's expected cash."""
+
     day: date
     balance: Decimal
 
 
 class ProjectionAlertOut(BaseModel):
+    """A group that spent well over its average."""
+
     month: date
     group_id: int
     group_name: str
@@ -1136,6 +1351,8 @@ class ProjectionAlertOut(BaseModel):
 
 
 class ProjectionOut(BaseModel):
+    """The cash forecast."""
+
     today: date
     start_cash: Decimal
     cash_as_of: date | None
@@ -1165,6 +1382,8 @@ class ProjectionOut(BaseModel):
 
 
 class ProjectionAccountOut(BaseModel):
+    """One bank account day by day, and what to move in to stay over the floor."""
+
     account_id: int
     name: str
     start: Decimal
@@ -1176,12 +1395,16 @@ class ProjectionAccountOut(BaseModel):
 
 
 class ScenarioBaseOut(BaseModel):
+    """The forecast without the what-ifs, to compare against."""
+
     lowest: ProjectionDayOut | None
     first_short: date | None
     end_cash: Decimal
 
 
 class ChangeIn(BaseModel):
+    """A what-if: an amount each month from a day, or once on a date."""
+
     name: str = Field(min_length=1, max_length=100)
     amount: Decimal = Field(max_digits=15, decimal_places=2)  # money in positive
     every: Literal["month", "once"] = "month"
@@ -1191,6 +1414,8 @@ class ChangeIn(BaseModel):
 
 
 class ScenarioIn(BaseModel):
+    """The forecast's choices and the what-ifs to add."""
+
     horizon: Literal[1, 3, 12] = 3
     average_over: Literal[3, 6, 12] = 3
     floor: Decimal = Field(default=Decimal(0), ge=0, max_digits=15, decimal_places=2)
@@ -1206,12 +1431,16 @@ ProjectionOut.model_rebuild()
 
 # ---------------- F16: monthly report and export ----------------
 class FindingOut(BaseModel):
+    """One finding of a monthly report."""
+
     title: str
     text: str
     tone: Literal["good", "bad", "neutral"]
 
 
 class ReportOut(BaseModel):
+    """A month's report: its facts and findings."""
+
     month: date
     written_by: Literal["claude", "rules"]
     model: str | None
@@ -1223,11 +1452,15 @@ class ReportOut(BaseModel):
 
 
 class ReportMonthsOut(BaseModel):
+    """The months with or without a report."""
+
     months: list[date]
     claude: bool
 
 
 class ExportDatasetOut(BaseModel):
+    """A dataset that can be downloaded."""
+
     key: str
     title: str
     by: Literal["month", "year"]
@@ -1235,6 +1468,8 @@ class ExportDatasetOut(BaseModel):
 
 # ---------------- F17: backups ----------------
 class BackupStatusOut(BaseModel):
+    """When the last backup and restore drill ran."""
+
     where: Literal["azure", "local"]
     backup: dict[str, Any] | None
     drill: dict[str, Any] | None
@@ -1245,10 +1480,14 @@ class BackupStatusOut(BaseModel):
 
 # ---------------- F19: statements from a chosen month ----------------
 class SourcesIn(BaseModel):
+    """The first month whose statements count in place of the workbook."""
+
     statements_from: date | None  # any day of the month; null = the workbook wins every month
 
 
 class GroupGapOut(BaseModel):
+    """A group where workbook and statements disagree in a month."""
+
     group: str
     workbook: Decimal
     statements: Decimal
@@ -1256,6 +1495,8 @@ class GroupGapOut(BaseModel):
 
 
 class SourceMonthOut(BaseModel):
+    """A month both the workbook and the statements cover, side by side."""
+
     month: date
     workbook_income: Decimal
     statements_income: Decimal
@@ -1266,6 +1507,8 @@ class SourceMonthOut(BaseModel):
 
 
 class SourcesOut(BaseModel):
+    """Where each month's numbers come from, and the months to check."""
+
     statements_from: date | None
     workbook_first: date | None
     workbook_last: date | None
@@ -1274,6 +1517,8 @@ class SourcesOut(BaseModel):
 
 # ---------------- F22: Interactive Brokers ----------------
 class PositionOut(BaseModel):
+    """One investment position."""
+
     symbol: str
     description: str | None
     asset_class: str
@@ -1286,6 +1531,8 @@ class PositionOut(BaseModel):
 
 
 class PortfolioOut(BaseModel):
+    """The investment account as the page shows it."""
+
     holding_id: int | None
     as_of: date | None
     total: Decimal | None
@@ -1297,6 +1544,8 @@ class PortfolioOut(BaseModel):
 
 
 class PortfolioReadOut(BaseModel):
+    """A portfolio as saved from the broker's report."""
+
     holding_id: int
     as_of: date
     total: Decimal
@@ -1306,6 +1555,8 @@ class PortfolioReadOut(BaseModel):
 
 # ---------------- F21: electronic invoices ----------------
 class InvoiceLineOut(BaseModel):
+    """A product on an invoice."""
+
     line_no: int
     description: str
     product_key: str
@@ -1319,6 +1570,8 @@ class InvoiceLineOut(BaseModel):
 
 
 class PaidWithOut(BaseModel):
+    """The bank or card line that paid an invoice."""
+
     transaction_id: int
     txn_date: date
     account: str | None
@@ -1326,6 +1579,8 @@ class PaidWithOut(BaseModel):
 
 
 class InvoiceOut(BaseModel):
+    """An electronic invoice with its products and payment."""
+
     invoice_id: int
     issuer_name: str
     number: str
@@ -1339,12 +1594,16 @@ class InvoiceOut(BaseModel):
 
 
 class GroupTotalOut(BaseModel):
+    """A product group's total in the month."""
+
     group: str
     amount: Decimal
     lines: int
 
 
 class UngroupedOut(BaseModel):
+    """A product without a category yet."""
+
     product_key: str
     description: str
     lines: int
@@ -1353,6 +1612,8 @@ class UngroupedOut(BaseModel):
 
 
 class PurchasesOut(BaseModel):
+    """A month's purchases from invoices."""
+
     month: str
     total: Decimal
     matched_total: Decimal
@@ -1364,6 +1625,8 @@ class PurchasesOut(BaseModel):
 
 
 class InvoiceUploadOut(BaseModel):
+    """What happened to one uploaded invoice file."""
+
     file_name: str
     outcome: Literal["stored", "duplicate", "skipped", "rejected"]
     message: str
@@ -1379,6 +1642,8 @@ class ProductGroupIn(BaseModel):
 
 
 class ProductGroupOut(BaseModel):
+    """A product's category after it was set, and how many lines changed."""
+
     product_key: str
     product_group: str | None
     category_id: int | None = None
@@ -1386,17 +1651,23 @@ class ProductGroupOut(BaseModel):
 
 
 class SuggestedOut(BaseModel):
+    """How many products got a suggested group."""
+
     products: int
 
 
 # ---------------- where a line came from (ADR-034) ----------------
 class SourceTextOut(BaseModel):
+    """A line of the statement's text near the line shown."""
+
     line_no: int
     text: str
     is_line: bool
 
 
 class SimilarOut(BaseModel):
+    """An earlier line like this one, with its category."""
+
     txn_date: date
     amount: Decimal
     description: str
@@ -1405,6 +1676,8 @@ class SimilarOut(BaseModel):
 
 
 class LineSourceOut(BaseModel):
+    """Where a line came from: its statement, page and surrounding text."""
+
     transaction_id: int
     txn_date: date
     post_date: date | None

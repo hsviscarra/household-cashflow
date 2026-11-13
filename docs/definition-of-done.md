@@ -22,3 +22,6 @@ A roadmap feature (F0 to F19) is Done only when every item holds. The next featu
   - Public functions, classes and modules have docstrings that say why.
   - Shortfalls found in existing code are logged in `docs/refactors.md` as proposed refactors,
     not silently rewritten.
+  - Enforced in CI where a tool can (ADR-102): docstrings, no blind `except`, at most 10 branches
+    and 50 statements a function (ruff); at most 400 lines a web source file (ESLint). The
+    baselines are in `docs/refactors.md` (#15, #16) and only shrink.

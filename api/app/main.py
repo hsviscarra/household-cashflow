@@ -1,3 +1,5 @@
+"""The FastAPI app: its routers, its start-up and the built web app it serves."""
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -56,6 +58,8 @@ class SPAStaticFiles(StaticFiles):
     """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
+        """Serve the file asked for, or the web app's index for any path that isn't a file or the
+        API."""
         try:
             resp = await super().get_response(path, scope)
         except HTTPException as exc:
@@ -71,6 +75,8 @@ class SPAStaticFiles(StaticFiles):
 
 def create_app() -> FastAPI:
     # Claude's read-only MCP endpoint (F18): its session manager runs with the app.
+    """Build the app: the API's routers, the allow-list, Claude's MCP endpoint and the built web
+    app."""
     mcp_route, mcp_manager = http_endpoint()
 
     @asynccontextmanager

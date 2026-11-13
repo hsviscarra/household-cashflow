@@ -21,6 +21,8 @@ INVOICE_LINK_DAYS = 60  # how far back a new line may pay an invoice still waiti
 
 @dataclass
 class Refreshed:
+    """What a refresh did: suggestions added and lines categorized."""
+
     added: int = 0
     merchants: int = 0  # merchants Claude categorized by itself (ADR-077)
     lines: int = 0

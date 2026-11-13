@@ -68,6 +68,8 @@ SECTION_TYPES = {
 
 
 class StageError(Exception):
+    """A statement can't be read or a batch can't change; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -84,6 +86,8 @@ def _paths(db: Session) -> tuple[dict[str, Category], dict[int, Category]]:
 
 
 def natural_key(account_id: int, line: Line, occurrence: int) -> str:
+    """A line's identity for deduplication: account, date, amount, normalized description and its
+    position among identical lines of the statement."""
     desc = rule_engine.normalize(line.description)
     raw = f"statement|{account_id}|{line.txn_date}|{line.amount}|{desc}|{occurrence}"
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -208,9 +212,11 @@ def _account_again(db: Session, sf: StatementFile, text: str) -> None:
         sf.account_match = res.match
 
 
-def parse_statement(
+def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
     db: Session, store: StatementStore, sf: StatementFile, user: str
 ) -> ImportBatch:
+    """Read a stored statement with its bank's parser into a batch in preview: raw lines, tie-out
+    and continuity checks, normalized lines with proposed categories."""
     parser = PARSERS.get(sf.source)
     if parser is None:
         raise StageError("This statement's format isn't recognized, so it can't be read.", 422)
@@ -525,6 +531,7 @@ def read_and_approve(
 
 
 def reject(db: Session, batch: ImportBatch, user: str) -> None:
+    """Mark a batch in preview as rejected; nothing reaches the approved lines."""
     if batch.status != "preview":
         raise StageError(f"This batch is already {batch.status}.", 409)
     batch.status = "rejected"

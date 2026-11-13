@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import PRINCIPAL_HEADER
+from app.auth import current_user
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.services import month_close
@@ -20,18 +20,24 @@ Today = Annotated[date | None, Query(include_in_schema=False)]
 
 
 class OpenOut(BaseModel):
+    """Something still open for the month, with where to settle it."""
+
     kind: str
     text: str
     link: str
 
 
 class UnusualOut(BaseModel):
+    """A group that spent well over its average."""
+
     group: str
     amount: Decimal
     average: Decimal
 
 
 class DecidedOut(BaseModel):
+    """A rule the app made on its own this month, to look over."""
+
     rule_id: int
     pattern: str
     category_path: str
@@ -40,6 +46,8 @@ class DecidedOut(BaseModel):
 
 
 class CloseOut(BaseModel):
+    """A month's close: when it is ready, what is missing and whether it was closed."""
+
     month: date
     ready_on: date
     ready: bool
@@ -51,10 +59,6 @@ class CloseOut(BaseModel):
     invoices: int
     has_report: bool
     sri_url: str
-
-
-def _user(request: Request) -> str:
-    return (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()
 
 
 def _month(text: str) -> date:
@@ -104,7 +108,7 @@ def get_close(month: str, db: DB, today: Today = None) -> CloseOut:
 def close_month(month: str, db: DB, request: Request, today: Today = None) -> CloseOut:
     """Close the month: its report is written if it has none, and who closed it is recorded."""
     try:
-        return _out(db, month_close.close(db, _month(month), _user(request), today))
+        return _out(db, month_close.close(db, _month(month), current_user(request), today))
     except month_close.CloseError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
 

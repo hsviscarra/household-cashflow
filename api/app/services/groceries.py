@@ -39,6 +39,8 @@ FOOD = set(PRODUCT_GROUPS[:9])
 
 @dataclass
 class MonthPoint:
+    """A month's groceries: spent and invoiced."""
+
     month: date
     spent: Decimal
     invoiced: Decimal
@@ -46,6 +48,8 @@ class MonthPoint:
 
 @dataclass
 class Aisle:
+    """An aisle's amount against its usual."""
+
     name: str
     amount: Decimal
     lines: int
@@ -54,6 +58,8 @@ class Aisle:
 
 @dataclass
 class Store:
+    """A supermarket's invoices and amount."""
+
     name: str
     invoices: int
     amount: Decimal
@@ -61,6 +67,8 @@ class Store:
 
 @dataclass
 class Charge:
+    """A supermarket charge on a card or account."""
+
     transaction_id: int
     txn_date: date
     merchant: str
@@ -70,6 +78,8 @@ class Charge:
 
 @dataclass
 class Groceries:
+    """A month of groceries as the page shows it."""
+
     month: date
     spent: Decimal
     usual: Decimal  # average of the three months before
@@ -111,6 +121,7 @@ def _grocery_txns(db: Session, gid: int | None, start: date, end: date) -> set[i
 
 
 def is_store(name: str) -> bool:
+    """Whether a merchant is one of the supermarkets."""
     return bool(STORES.search(name.upper()))
 
 
@@ -137,6 +148,8 @@ def _invoices(db: Session, start: date, end_exclusive: date, txns: set[int]) -> 
 
 
 def build(db: Session, month: date) -> Groceries:
+    """A month of groceries: spent, trips, stores, aisles and top products, with the recent
+    trend."""
     m = first(month)
     start = add_months(m, -(TREND_MONTHS - 1))
     nxt = add_months(m, 1)
@@ -240,6 +253,8 @@ REGULAR_OF = 3  # bought in at least this many of the months before → a regula
 
 @dataclass
 class TrendMonth:
+    """A month of groceries by aisle, with trips and basket."""
+
     month: date
     spent: Decimal  # statements
     invoiced: Decimal
@@ -262,6 +277,8 @@ class Cell:
 
 @dataclass
 class Weekday:
+    """Trips and amount by day of the week."""
+
     day: int  # 0 = Monday
     trips: int
     amount: Decimal
@@ -269,6 +286,8 @@ class Weekday:
 
 @dataclass
 class Mover:
+    """A product whose price moved between two months."""
+
     product_key: str
     description: str
     aisle: str
@@ -282,6 +301,8 @@ class Mover:
 
 @dataclass
 class Regular:
+    """A product usually bought that is missing this month."""
+
     product_key: str
     description: str
     aisle: str
@@ -291,6 +312,8 @@ class Regular:
 
 @dataclass
 class Trends:
+    """Groceries over the last months: aisles, weekdays, price moves and what is missing."""
+
     month: date
     months: list[TrendMonth]
     aisles: list[str]  # most spent first
@@ -306,7 +329,9 @@ def _unit(total: Decimal, qty: Decimal) -> Decimal:
     return (total / qty).quantize(Decimal("0.01")) if qty > 0 else ZERO
 
 
-def trends(db: Session, month: date, months: int = TREND_YEAR) -> Trends:
+def trends(db: Session, month: date, months: int = TREND_YEAR) -> Trends:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
+    """Groceries by aisle for each of the last months (2 to 36), with what changed and what is
+    missing."""
     m = first(month)
     n = max(2, min(months, 36))
     start = add_months(m, -(n - 1))

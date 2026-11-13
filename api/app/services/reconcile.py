@@ -22,6 +22,8 @@ ZERO = Decimal(0)
 
 @dataclass
 class AccountChange:
+    """An account's balance at the start and end of a period."""
+
     account_id: int
     name: str
     kind: str  # "cash" | "card"
@@ -34,6 +36,8 @@ class AccountChange:
 
 @dataclass
 class Cause:
+    """Something that explains part of the gap, with where to fix it."""
+
     key: str
     title: str
     detail: str
@@ -43,6 +47,8 @@ class Cause:
 
 @dataclass
 class Reconcile:
+    """What was kept against how the balances changed, and the gap between them."""
+
     start: date  # first month
     end: date  # last month
     money_in: Decimal
@@ -60,6 +66,8 @@ def _value(items: list[networth.Item], account_id: int) -> networth.Item | None:
 
 
 def build(db: Session, start: date, end: date) -> Reconcile:
+    """For each bank account over a period: opening balance plus its lines against the closing
+    balance, with what doesn't add up."""
     start, end = first(start), first(end)
     last_day = add_months(end, 1) - timedelta(days=1)
     before = start - timedelta(days=1)

@@ -38,6 +38,8 @@ ZERO = Decimal(0)
 
 
 class IbkrError(Exception):
+    """The portfolio can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 502) -> None:
         super().__init__(message)
         self.status = status
@@ -45,6 +47,8 @@ class IbkrError(Exception):
 
 @dataclass
 class Position:
+    """One investment position."""
+
     symbol: str
     description: str | None
     asset_class: str
@@ -58,6 +62,8 @@ class Position:
 
 @dataclass
 class Report:
+    """A portfolio on a day: total, cash and positions."""
+
     as_of: date
     total: Decimal
     cash: Decimal
@@ -85,7 +91,7 @@ def _date(text: str | None) -> date | None:
     return None
 
 
-def parse(xml: bytes) -> Report:
+def parse(xml: bytes) -> Report:  # noqa: C901 - baseline, docs/refactors.md #15
     """Read an Activity Flex report (XML)."""
     try:
         root = ElementTree.fromstring(xml)
@@ -224,6 +230,8 @@ def holding(db: Session, create: bool = False) -> Holding | None:
 
 @dataclass
 class Imported:
+    """What saving a portfolio stored."""
+
     holding_id: int
     as_of: date
     total: Decimal
@@ -232,6 +240,7 @@ class Imported:
 
 
 def store(db: Session, report: Report, user: str) -> Imported:
+    """Save a portfolio report: its positions and its total as the holding's value for that day."""
     h = holding(db, create=True)
     assert h is not None
     db.execute(
@@ -288,6 +297,8 @@ def store(db: Session, report: Report, user: str) -> Imported:
 # ---------------------------------------------------------------- reading
 @dataclass
 class Portfolio:
+    """The investment account as the page shows it."""
+
     holding_id: int | None
     as_of: date | None
     total: Decimal | None
@@ -301,6 +312,7 @@ class Portfolio:
 def latest_positions(
     db: Session, holding_id: int, as_of: date | None = None
 ) -> list[InvestmentPosition]:
+    """The positions of the latest day on or before `as_of`."""
     q = select(func.max(InvestmentPosition.as_of)).where(
         InvestmentPosition.holding_id == holding_id
     )
@@ -319,6 +331,7 @@ def latest_positions(
 
 
 def portfolio(db: Session, now: datetime | None = None) -> Portfolio:
+    """The investment account as the page shows it: total, positions, change and how stale it is."""
     now = now or datetime.now()
     h = holding(db)
     if h is None:

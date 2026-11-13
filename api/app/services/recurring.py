@@ -49,6 +49,8 @@ CENT = Decimal("0.01")
 
 
 class RecurringError(Exception):
+    """A recurring change that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -56,15 +58,18 @@ class RecurringError(Exception):
 
 # ---------------------------------------------------------------- months
 def first(d: date) -> date:
+    """The first day of a date's month."""
     return d.replace(day=1)
 
 
 def add_months(d: date, n: int) -> date:
+    """The first day of the month `n` months after (or before) a date's."""
     i = d.year * 12 + d.month - 1 + n
     return date(i // 12, i % 12 + 1, 1)
 
 
 def months(start: date, end: date) -> list[date]:
+    """Every month from one date's month to another's, both included."""
     out, m = [], first(start)
     while m <= first(end):
         out.append(m)
@@ -91,6 +96,7 @@ def _log(
 
 # ---------------------------------------------------------------- templates and amounts
 def amounts(db: Session, template_ids: list[int] | None = None) -> dict[int, list[RecurringAmount]]:
+    """Each recurring item's amounts over time (from which month each applies), oldest first."""
     q = select(RecurringAmount).order_by(RecurringAmount.from_month)
     if template_ids is not None:
         q = q.where(RecurringAmount.template_id.in_(template_ids))
@@ -123,6 +129,7 @@ def due_in(t: RecurringTemplate, month: date) -> bool:
 
 
 def active_in(t: RecurringTemplate, month: date) -> bool:
+    """Whether a recurring item is due in a month: active, within its dates and on its frequency."""
     return (
         t.is_active
         and t.start_month <= month
@@ -158,6 +165,7 @@ def create_template(
     every_months: int = 1,
     due_day: int | None = None,
 ) -> RecurringTemplate:
+    """Add a recurring item with its first amount; names are unique."""
     name = name.strip()
     if not name:
         raise RecurringError("Give the template a name.")
@@ -202,6 +210,7 @@ def create_template(
 
 
 def get_template(db: Session, template_id: int) -> RecurringTemplate:
+    """The recurring item, or RecurringError 404."""
     t = db.get(RecurringTemplate, template_id)
     if t is None:
         raise RecurringError(f"Template {template_id} not found.", 404)
@@ -225,7 +234,8 @@ EDITABLE = (
 )
 
 
-def update_template(db: Session, template_id: int, changes: dict[str, object], user: str) -> None:
+def update_template(db: Session, template_id: int, changes: dict[str, object], user: str) -> None:  # noqa: C901 - baseline, docs/refactors.md #15
+    """Change a recurring item's details, logging each change."""
     t = get_template(db, template_id)
     if "name" in changes:
         name = str(changes["name"] or "").strip()
@@ -335,6 +345,7 @@ def stop(db: Session, template_id: int, month: date, user: str) -> int:
 
 
 def delete_template(db: Session, template_id: int, user: str) -> None:
+    """Remove a recurring item with its months; lines that paid them are unlinked, not deleted."""
     t = get_template(db, template_id)
     entry_ids = list(
         db.scalars(select(RecurringEntry.entry_id).where(RecurringEntry.template_id == template_id))
@@ -414,7 +425,7 @@ def generate(db: Session, month: date, user: str) -> int:
     return created
 
 
-def copy(
+def copy(  # noqa: C901 - baseline, docs/refactors.md #15
     db: Session,
     from_month: date,
     to_start: date,
@@ -465,6 +476,7 @@ def copy(
 
 
 def get_entry(db: Session, entry_id: int) -> RecurringEntry:
+    """One month of a recurring item, or RecurringError 404."""
     e = db.get(RecurringEntry, entry_id)
     if e is None:
         raise RecurringError(f"Entry {entry_id} not found.", 404)
@@ -511,6 +523,7 @@ def edit_entry(
 
 
 def delete_entry(db: Session, entry_id: int, user: str) -> None:
+    """Remove one month of a recurring item, unlinking the lines that paid it."""
     e = get_entry(db, entry_id)
     _unlink_lines(db, [entry_id], user, "Entry removed")
     _log(db, "core.recurring_entry", entry_id, "amount", e.amount, None, "Removed", user)
@@ -553,6 +566,7 @@ def _unlink_lines(db: Session, entry_ids: list[int], user: str, why: str) -> int
 
 
 def unlink_line(db: Session, transaction_id: int, user: str) -> None:
+    """Undo a line's link to the entry it paid."""
     t = db.get(Transaction, transaction_id)
     if t is None or t.recurring_entry_id is None:
         raise RecurringError("That line isn't linked to a recurring entry.", 404)
@@ -561,6 +575,7 @@ def unlink_line(db: Session, transaction_id: int, user: str) -> None:
 
 
 def link_line(db: Session, entry_id: int, transaction_id: int, user: str) -> None:
+    """Say a line paid an entry; they must be in the same month."""
     e = get_entry(db, entry_id)
     t = db.get(Transaction, transaction_id)
     if t is None:
@@ -612,6 +627,8 @@ def _free_lines(db: Session, month: date) -> list[Transaction]:
 
 # ---------------------------------------------------------------- matching
 def tolerance(t: RecurringTemplate, expected: Decimal) -> Decimal:
+    """How far a line's amount may be from the expected one and still match: the item's
+    percentage, at least MIN_TOLERANCE."""
     return max(abs(expected) * t.tolerance_pct / 100, MIN_TOLERANCE)
 
 
@@ -653,7 +670,7 @@ def excel_months(db: Session) -> set[date]:
     return set(db.scalars(select(v_excel_month.c.cash_month)))
 
 
-def match(db: Session, month: date, user: str = "system") -> int:
+def match(db: Session, month: date, user: str = "system") -> int:  # noqa: C901 - baseline, docs/refactors.md #15
     """Link the month's free lines to its planned entries that have no lines yet."""
     month = first(month)
     linked = _linked_entry_ids(db)
@@ -782,6 +799,7 @@ def recategorized(db: Session, t: Transaction, user: str = "system") -> int:
 
 
 def match_all(db: Session, user: str = "system") -> int:
+    """Match every month that still has planned entries; returns how many matched."""
     found = db.scalars(
         select(RecurringEntry.month).where(RecurringEntry.status == "planned").distinct()
     )
@@ -791,6 +809,8 @@ def match_all(db: Session, user: str = "system") -> int:
 # ---------------------------------------------------------------- grid
 @dataclass
 class Cell:
+    """A recurring item's month: expected, actual and its status."""
+
     month: date
     entry_id: int | None
     expected: Decimal | None
@@ -803,6 +823,8 @@ class Cell:
 
 @dataclass
 class Row:
+    """A recurring item across the year."""
+
     template: RecurringTemplate
     group: str
     cells: list[Cell]
@@ -810,6 +832,8 @@ class Row:
 
 @dataclass
 class Grid:
+    """The year's recurring grid."""
+
     year: int
     months: list[date]
     rows: list[Row]
@@ -817,6 +841,7 @@ class Grid:
 
 
 def grid(db: Session, year: int) -> Grid:
+    """A year of recurring items by month with their entries and the year's totals."""
     ms = months(date(year, 1, 1), date(year, 12, 1))
     entries = list(
         db.scalars(
@@ -908,6 +933,8 @@ def plan_by_month(db: Session) -> dict[date, tuple[Decimal, Decimal]]:
 # ---------------------------------------------------------------- from the workbook
 @dataclass
 class ExcelRow:
+    """A workbook row that could become a recurring item."""
+
     block: str
     group: str | None
     label: str
@@ -1048,6 +1075,8 @@ def _unique_name(db: Session, name: str) -> str:
 # ---------------------------------------------------------------- bills (ADR-031)
 @dataclass
 class Bill:
+    """A bill in a month: what is expected, when, and whether it was paid."""
+
     template_id: int
     entry_id: int | None  # this month's entry, when the month was generated
     name: str
@@ -1080,7 +1109,7 @@ def _usual_day(days: list[int]) -> int | None:
     return s[len(s) // 2]
 
 
-def bills(db: Session, month: date, today: date | None = None) -> list[Bill]:
+def bills(db: Session, month: date, today: date | None = None) -> list[Bill]:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
     """Every recurring item due in `month` (by how often it repeats), with whether a line paid
     it, the day it's due, the three months before and its latest price change."""
     month = first(month)

@@ -60,6 +60,8 @@ SEASON_HISTORY_MONTHS = 96  # how far back the season of all spending is read (8
 
 @dataclass
 class Event:
+    """Something expected on a day: income, a bill, a purchase or everyday spending."""
+
     day: date
     name: str
     amount: Decimal  # signed: money in positive
@@ -100,6 +102,8 @@ class AccountRun:
 
 @dataclass
 class MonthPlan:
+    """A month ahead: income, bills, everyday spending and the cash it ends with."""
+
     month: date
     income: Decimal = ZERO
     fixed: Decimal = ZERO  # positive: money out
@@ -115,11 +119,14 @@ class MonthPlan:
 
     @property
     def net(self) -> Decimal:
+        """Income less everything going out in the month."""
         return self.income - self.fixed - self.variable - self.purchases
 
 
 @dataclass
 class Alert:
+    """A group already spending over its average this month."""
+
     month: date
     group_id: int
     group_name: str
@@ -128,6 +135,7 @@ class Alert:
 
     @property
     def change(self) -> Decimal | None:
+        """How far over its average the group was, as a fraction; None without an average."""
         if not self.average:
             return None
         return ((self.amount - self.average) / self.average).quantize(Decimal("0.0001"))
@@ -135,6 +143,8 @@ class Alert:
 
 @dataclass
 class Projection:
+    """The forecast: cash today, the months ahead and each day's cash."""
+
     today: date
     start_cash: Decimal
     cash_as_of: date | None
@@ -565,6 +575,155 @@ def _change_events(changes: list[Change], today: date, end: date) -> list[Event]
     return out
 
 
+def _is_month_end(day: date) -> bool:
+    return day == recurring.add_months(recurring.first(day), 1) - timedelta(days=1)
+
+
+def _cash_today(
+    db: Session, today: date, include_held: bool
+) -> tuple[list[networth.Item], Decimal, Decimal]:
+    """The cash accounts, the cash the forecast starts with and what is held for other people.
+    Money held for a person sits in the bank accounts but isn't yours to spend, so it is left
+    out unless asked for."""
+    cash_items = [
+        i for i in networth.accounts(db, today) if i.holding_class == "cash" and i.is_active
+    ]
+    start_cash = sum((i.value or ZERO for i in cash_items), ZERO)
+    linked = people.linked_holdings(db)
+    held = sum(
+        (
+            i.value or ZERO
+            for i in networth.holdings(db, today)
+            if i.is_active and i.holding_id in linked and i.side == "liability"
+        ),
+        ZERO,
+    )
+    return cash_items, start_cash if include_held else start_cash - held, held
+
+
+def _events(
+    db: Session,
+    today: date,
+    months: list[date],
+    end: date,
+    paid_categories: set[int],
+    changes: list[Change],
+) -> list[Event]:
+    """Everything expected from today to `end`: what is left of this month, then `months`."""
+    current = recurring.first(today)
+    days = _usual_days(db)
+    due = loans.due_by_month(db)
+    events = [e for e in _recurring_events(db, current, days, due) if e.day >= today]
+    for m in months:
+        events += _recurring_events(db, m, days, due)
+    # The salary of the month after the last one arrives inside it (ADR-084): cash, not plan.
+    if months:
+        after = recurring.add_months(months[-1], 1)
+        events += [e for e in _recurring_events(db, after, days, due) if e.month is not None]
+    events += _purchase_events(db, today, [current, *months], paid_categories)
+    events += _change_events(changes, today, end)
+    # The income tax each person is projected to pay with the return (ADR-088).
+    events += [
+        Event(day, name, -amount, "fixed")
+        for day, name, amount in tax_projection.payments(db, today, end)
+    ]
+    return events
+
+
+def _month_plans(months: list[date], events: list[Event], spend: Everyday) -> dict[date, MonthPlan]:
+    """Each month ahead with its events added up by kind and its everyday spending."""
+    plans = {m: MonthPlan(m) for m in months}
+    for e in events:
+        plan = plans.get(e.month or recurring.first(e.day))
+        if plan is None:
+            continue
+        plan.items.append(e)
+        if e.kind == "income" or (e.kind == "change" and e.amount > 0):
+            plan.income += e.amount
+        elif e.kind == "purchase":
+            plan.purchases -= e.amount
+        else:
+            plan.fixed -= e.amount
+    for plan in plans.values():
+        plan.variable = spend.by_month[plan.month]
+        plan.seasonal = spend.notes.get(plan.month, [])
+        plan.items.sort(key=lambda e: (e.day, e.name))
+    return plans
+
+
+def _daily(
+    events: list[Event], start_cash: Decimal, today: date, end: date, spend: Everyday
+) -> list[tuple[date, Decimal]]:
+    """Cash at the end of each day: the events of the day, and a day's share of the month's
+    everyday spending."""
+    by_day: dict[date, Decimal] = defaultdict(Decimal)
+    for e in events:
+        by_day[e.day] += e.amount
+    daily: list[tuple[date, Decimal]] = []
+    balance = start_cash
+    day = today
+    while day <= end:
+        month = recurring.first(day)
+        balance += by_day.get(day, ZERO) - spend.by_month[month] / _month_days(month)
+        daily.append((day, balance.quantize(CENT)))
+        day += timedelta(days=1)
+    return daily
+
+
+def _mark_month_ends(
+    plans: dict[date, MonthPlan],
+    daily: list[tuple[date, Decimal]],
+    band: list[tuple[date, Decimal, Decimal]],
+) -> None:
+    """Write each month's closing cash, and its likely range, on its plan."""
+    for day, balance in daily:
+        plan = plans.get(recurring.first(day))
+        if plan is not None and _is_month_end(day):
+            plan.end_cash = balance
+    for day, worst, best in band:
+        plan = plans.get(recurring.first(day))
+        if plan is not None and _is_month_end(day):
+            plan.end_cash_low, plan.end_cash_high = worst, best
+
+
+def _account_run(
+    item: networth.Item, events: list[Event], today: date, end: date, floor: Decimal
+) -> AccountRun | None:
+    """One bank account day by day, with its own items only; None when nothing is planned on
+    it."""
+    mine: dict[date, Decimal] = defaultdict(Decimal)
+    for e in events:
+        if e.account_id == item.account_id:
+            mine[e.day] += e.amount
+    if item.account_id is None or not mine:
+        return None
+    balance = item.value or ZERO
+    run = []
+    day = today
+    while day <= end:
+        balance += mine.get(day, ZERO)
+        run.append((day, balance.quantize(CENT)))
+        day += timedelta(days=1)
+    lowest = min(run, key=lambda x: (x[1], x[0]))
+    under = next((d for d, b in run if b < floor), None)
+    return AccountRun(
+        item.account_id,
+        item.name,
+        (item.value or ZERO).quantize(CENT),
+        item.as_of,
+        run,
+        lowest,
+        under,
+        max(ZERO, floor - lowest[1]).quantize(CENT) if under else ZERO,
+    )
+
+
+def _income_after(events: list[Event], day: date) -> Event | None:
+    """The first income after a day: the payday that follows the lowest point."""
+    later = sorted((e for e in events if e.kind == "income" and e.day > day), key=lambda e: e.day)
+    return later[0] if later else None
+
+
 def project(
     db: Session,
     today: date | None = None,
@@ -582,24 +741,7 @@ def project(
     current = recurring.first(today)
     months = [recurring.add_months(current, i) for i in range(1, horizon + 1)]
     end = recurring.add_months(months[-1], 1) - timedelta(days=1)
-
-    cash_items = [
-        i for i in networth.accounts(db, today) if i.holding_class == "cash" and i.is_active
-    ]
-    start_cash = sum((i.value or ZERO for i in cash_items), ZERO)
-    cash_as_of = min((i.as_of for i in cash_items if i.as_of), default=None)
-    # Money held for a person sits in the bank accounts but isn't yours to spend.
-    linked = people.linked_holdings(db)
-    held = sum(
-        (
-            i.value or ZERO
-            for i in networth.holdings(db, today)
-            if i.is_active and i.holding_id in linked and i.side == "liability"
-        ),
-        ZERO,
-    )
-    if not include_held:
-        start_cash -= held
+    cash_items, start_cash, held = _cash_today(db, today, include_held)
 
     paid_categories = {t.category_id for t in db.scalars(select(RecurringTemplate))}
     history, group_names = spending_history(db, current, paid_categories)
@@ -616,121 +758,28 @@ def project(
         paid_categories,
         spent_before if follow_seasons else None,
     )
-    variable, avg_months = spend.average, spend.average_months
-    days = _usual_days(db)
+    events = _events(db, today, months, end, paid_categories, changes or [])
+    plans = _month_plans(months, events, spend)
+    daily = _daily(events, start_cash, today, end, spend)
 
-    # Events from today to the end of the third month: what is left of this month, then the
-    # three months.
-    due = loans.due_by_month(db)
-    events = [e for e in _recurring_events(db, current, days, due) if e.day >= today]
-    for m in months:
-        events += _recurring_events(db, m, days, due)
-    # The salary of the month after the last one arrives inside it (ADR-084): cash, not plan.
-    after = recurring.add_months(months[-1], 1) if months else None
-    if after is not None:
-        events += [e for e in _recurring_events(db, after, days, due) if e.month is not None]
-    events += _purchase_events(db, today, [current, *months], paid_categories)
-    events += _change_events(changes or [], today, end)
-    # The income tax each person is projected to pay with the return (ADR-088).
-    events += [
-        Event(day, name, -amount, "fixed")
-        for day, name, amount in tax_projection.payments(db, today, end)
-    ]
-
-    plans = {m: MonthPlan(m) for m in months}
-    for e in events:
-        plan = plans.get(e.month or recurring.first(e.day))
-        if plan is None:
-            continue
-        plan.items.append(e)
-        if e.kind == "income" or (e.kind == "change" and e.amount > 0):
-            plan.income += e.amount
-        elif e.kind == "purchase":
-            plan.purchases -= e.amount
-        else:
-            plan.fixed -= e.amount
-    for plan in plans.values():
-        plan.variable = spend.by_month[plan.month]
-        plan.seasonal = spend.notes.get(plan.month, [])
-        plan.items.sort(key=lambda e: (e.day, e.name))
-
-    # Day by day.
-    by_day: dict[date, Decimal] = defaultdict(Decimal)
-    for e in events:
-        by_day[e.day] += e.amount
-    daily: list[tuple[date, Decimal]] = []
-    balance = start_cash
-    day = today
-    while day <= end:
-        month = recurring.first(day)
-        balance += by_day.get(day, ZERO) - spend.by_month[month] / _month_days(month)
-        daily.append((day, balance.quantize(CENT)))
-        if day == recurring.add_months(recurring.first(day), 1) - timedelta(days=1):
-            p = plans.get(recurring.first(day))
-            if p is not None:
-                p.end_cash = balance.quantize(CENT)
-        day += timedelta(days=1)
-
-    lowest = min(daily, key=lambda d: (d[1], d[0])) if daily else None
-    first_short = next((d for d, b in daily if b < floor), None)
     since = recurring.add_months(current, -likely_range.HISTORY_MONTHS)
     recent = {m: amount for m, amount in spent_before.items() if m >= since}
     band, chance = likely(daily, recent, spend, floor)
-    for band_day, worst, best in band:
-        if band_day == recurring.add_months(recurring.first(band_day), 1) - timedelta(days=1):
-            p = plans.get(recurring.first(band_day))
-            if p is not None:
-                p.end_cash_low, p.end_cash_high = worst, best
+    _mark_month_ends(plans, daily, band)
 
-    # Each bank account: its own items only.
-    runs = []
-    for item in cash_items:
-        if item.account_id is None:
-            continue
-        mine: dict[date, Decimal] = defaultdict(Decimal)
-        for e in events:
-            if e.account_id == item.account_id:
-                mine[e.day] += e.amount
-        if not mine:
-            continue
-        bal = item.value or ZERO
-        run = []
-        d = today
-        while d <= end:
-            bal += mine.get(d, ZERO)
-            run.append((d, bal.quantize(CENT)))
-            d += timedelta(days=1)
-        low = min(run, key=lambda x: (x[1], x[0]))
-        under = next((d for d, b in run if b < floor), None)
-        runs.append(
-            AccountRun(
-                item.account_id,
-                item.name,
-                (item.value or ZERO).quantize(CENT),
-                item.as_of,
-                run,
-                low,
-                under,
-                max(ZERO, floor - low[1]).quantize(CENT) if under else ZERO,
-            )
-        )
+    runs = [r for i in cash_items if (r := _account_run(i, events, today, end, floor)) is not None]
     runs.sort(key=lambda r: (r.under_floor is None, r.lowest[1]))
-    payday = None
-    if lowest is not None:
-        later = sorted(
-            (e for e in events if e.kind == "income" and e.day > lowest[0]), key=lambda e: e.day
-        )
-        payday = later[0] if later else None
+    lowest = min(daily, key=lambda d: (d[1], d[0])) if daily else None
     return Projection(
         today,
         start_cash,
-        cash_as_of,
-        variable,
-        avg_months,
+        min((i.as_of for i in cash_items if i.as_of), default=None),
+        spend.average,
+        spend.average_months,
         list(plans.values()),
         daily,
         lowest,
-        payday,
+        _income_after(events, lowest[0]) if lowest is not None else None,
         alerts(db, today),
         horizon=horizon,
         average_over=average_over,
@@ -738,7 +787,7 @@ def project(
         held=held.quantize(CENT),
         include_held=include_held,
         accounts=runs,
-        first_short=first_short,
+        first_short=next((d for d, b in daily if b < floor), None),
         end_cash=daily[-1][1] if daily else start_cash,
         band=band,
         chance_under_floor=chance,

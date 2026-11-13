@@ -10,6 +10,8 @@ CENT = Decimal("0.01")
 
 @dataclass
 class Line:
+    """A statement line as read: where it was, its dates, amount and text."""
+
     page: int
     line_no: int
     section: str  # payment, purchase, fee, interest, ...
@@ -29,6 +31,8 @@ class Line:
 
 @dataclass
 class Reject:
+    """A line that couldn't be read, and why."""
+
     page: int
     line_no: int
     text: str
@@ -37,17 +41,22 @@ class Reject:
 
 @dataclass
 class Check:
+    """One tie-out check: what the statement printed against what was read."""
+
     name: str
     expected: Decimal
     actual: Decimal
 
     @property
     def ok(self) -> bool:
+        """Whether what the statement printed and what the lines add up to agree to the cent."""
         return abs(self.expected - self.actual) < CENT / 2
 
 
 @dataclass
 class ParsedStatement:
+    """A statement as a parser read it: period, balances, totals, lines, rejects and checks."""
+
     parser: str
     period_start: date
     period_end: date
@@ -62,6 +71,7 @@ class ParsedStatement:
 
     @property
     def tieout_ok(self) -> bool:
+        """Whether the statement ties out: it has checks, all pass, and no line was rejected."""
         return bool(self.checks) and all(c.ok for c in self.checks) and not self.rejects
 
 
@@ -70,6 +80,7 @@ class ParseError(Exception):
 
 
 def money(text: str) -> Decimal:
+    """A printed amount ("$1,234.56") as a Decimal."""
     return Decimal(text.replace("$", "").replace(",", "").strip())
 
 
