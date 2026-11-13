@@ -17,6 +17,7 @@ import TaxProjectionPage from "./pages/TaxProjection";
 import TaxesPage from "./pages/Taxes";
 import BudgetPage from "./pages/Budget";
 import GoalsPage from "./pages/Goals";
+import NetWorthAheadPage from "./pages/NetWorthAhead";
 import SavingsPage from "./pages/Savings";
 import PurchasesPage from "./pages/Purchases";
 import GroceriesPage from "./pages/Groceries";
@@ -146,6 +147,7 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
     tabs: [
       ["/debt", "Overview"],
       ["/debt/manage", "Manage"],
+      ["/debt/ahead", "Years ahead"],
     ],
   },
   {
@@ -341,6 +343,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/subscriptions": <BillsPage start="found" />,
   "/debt": <DebtPage />,
   "/debt/manage": <NetWorthManagePage />,
+  "/debt/ahead": <NetWorthAheadPage />,
   "/projections": <ProjectionsPage />,
   "/budget": <BudgetPage />,
   "/goals": <GoalsPage />,

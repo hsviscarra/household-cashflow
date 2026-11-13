@@ -133,6 +133,15 @@ export const PAGES: PageDef[] = [
     hidden: true, // a tab of Net worth (ADR-090)
   },
   {
+    path: "/debt/ahead",
+    label: "Net worth, years ahead",
+    group: "Wealth",
+    feature: "F14",
+    summary:
+      "Net worth five to ten years ahead: loans by their tables, investments at a return range, milestones.",
+    hidden: true, // a tab of Net worth (ADR-098)
+  },
+  {
     path: "/projections",
     label: "Forecast",
     group: "Plan",

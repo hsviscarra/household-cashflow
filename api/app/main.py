@@ -29,6 +29,7 @@ from app.routers import (
     iva,
     me,
     networth,
+    outlook,
     people,
     projections,
     reconcile,
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(tax_projection.router)
     app.include_router(reconcile.router)
     app.include_router(savings.router)
+    app.include_router(outlook.router)
 
     app.router.routes.append(mcp_route)
 

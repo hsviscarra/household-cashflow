@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.108.0] — Net worth, years ahead
+
+### Added
+- **Years ahead** (Net worth → Years ahead): net worth at the end of each of the next 5 or 10
+  years. What you keep a year pays the loans by their tables and builds cash or investments;
+  investments grow at a low, an expected and a high return you choose; property and vehicles
+  change by yearly rates you choose. Loans' last installments, your goals' dates and your own
+  milestones show in their year (ADR-098).
+
 ## [0.107.0] — Saving, safe to spend, and which debt to pay first
 
 ### Added

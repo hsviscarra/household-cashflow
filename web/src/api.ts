@@ -2162,3 +2162,51 @@ export const fetchSavings = (extra = 0) =>
 export const fetchSafeToSpend = () => send<SafeToSpend>("GET", "/api/savings/safe-to-spend");
 export const setDebtTerms = (key: string, body: { rate: string | null; minimum: string | null }) =>
   send<void>("PUT", `/api/savings/debts/${encodeURIComponent(key)}`, body);
+
+// ---------- net worth, years ahead (ADR-098) ----------
+export type AheadYear = {
+  year: number;
+  end: string;
+  cash: Money;
+  investments_low: Money;
+  investments: Money;
+  investments_high: Money;
+  property: Money;
+  vehicles: Money;
+  other_assets: Money;
+  loans: Money;
+  other_debts: Money;
+  kept: Money;
+  net_low: Money;
+  net: Money;
+  net_high: Money;
+  milestones: string[];
+};
+export type Ahead = {
+  today: string;
+  kept_a_year: Money;
+  net_today: Money;
+  loans: { name: string; balance: Money; from_table: boolean; paid_off: string | null }[];
+  years: AheadYear[];
+};
+/** Yearly rates as fractions (0.05 is 5%); what is left out takes the server's default. */
+export type AheadChoices = {
+  years: number;
+  low: number;
+  expected: number;
+  high: number;
+  property_growth: number;
+  vehicle_growth: number;
+  invest_share: number;
+};
+export const DEFAULT_AHEAD: AheadChoices = {
+  years: 5,
+  low: 0.02,
+  expected: 0.05,
+  high: 0.08,
+  property_growth: 0,
+  vehicle_growth: -0.1,
+  invest_share: 0,
+};
+export const fetchAhead = (c: AheadChoices = DEFAULT_AHEAD) =>
+  send<Ahead>("GET", `/api/networth/ahead${query(c)}`);
