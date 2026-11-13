@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.102.0] — Transactions on the shared table
+
+### Changed
+- **Transactions**: click a header to sort, group by month, account, who, category, merchant or
+  the month a line counts in (with subtotals), a totals row, and columns you can reorder. The
+  columns you had chosen are kept. "Counts in" is a new column.
+
 ## [0.101.0] — The shared table on By category and Groceries
 
 ### Changed

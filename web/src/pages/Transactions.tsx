@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import {
@@ -20,9 +20,10 @@ import {
 } from "../api";
 import CategoryPicker from "../components/CategoryPicker";
 import { LineDetails } from "../components/MerchantReview";
-import { PersonNote, SaveView, TableSettings } from "../components/Personalize";
+import DataTable, { type Column } from "../components/DataTable";
+import { PersonNote, SaveView } from "../components/Personalize";
 import { addMonths, money, monthLong, num, showAmount } from "../money";
-import { personParam, useColumns, usePerson, useSavedViews, type Person } from "../prefs";
+import { personParam, usePerson, useSavedViews, useTableLayout, type Person } from "../prefs";
 
 /** The second time a merchant gets the same category by hand, the app saves the rule (ADR-079). */
 export function learnedMessage(saved: Txn, undo: () => void): { text: string; undo: () => void } {
@@ -58,17 +59,7 @@ function thisMonth() {
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-// Columns a person can choose (ADR-026, ADR-030); the description and the amount always show.
-const COLUMNS: Record<string, string> = {
-  date: "Date",
-  account: "Account",
-  who: "Who",
-  category: "Category",
-  note: "Note / person",
-  merchant: "Merchant (cleaned)",
-  post: "Posted date",
-  country: "Country",
-};
+// Columns shown until a person chooses (ADR-026, ADR-030); the description and the amount always show.
 const DEFAULT_COLUMNS = ["date", "account", "who", "category", "note"];
 
 export type Filters = {
@@ -176,8 +167,9 @@ export default function TransactionsPage() {
     note: params.get("note") === "1",
   };
   const [person, , ready] = usePerson();
-  const [cols] = useColumns("transactions", Object.keys(COLUMNS), DEFAULT_COLUMNS);
-  const show = (c: string) => cols.includes(c);
+  // The note shows under the description while its own column is hidden.
+  const [layout] = useTableLayout("transactions", ["note"], DEFAULT_COLUMNS);
+  const show = (c: string) => layout.columns.includes(c);
   const { data: loaded, error } = useQuery({
     queryKey: ["transactions", month, person, months, cp],
     queryFn: () =>
@@ -214,6 +206,97 @@ export default function TransactionsPage() {
     months > 1
       ? `${monthLong(addMonths(`${month}-01`, 1 - months))} to ${monthLong(`${month}-01`)}`
       : monthLong(`${month}-01`);
+
+  const account = (t: Txn) => t.account_name ?? SOURCE_LABEL[t.source] ?? t.source;
+  // The shared table (ADR-091): the description first, the amount and Edit last, the rest chosen.
+  const columns: Column<Txn>[] = [
+    {
+      id: "description",
+      label: "Description",
+      fixed: true,
+      sort: (t) => t.description,
+      cell: (t) => (
+        <span className={t.parent_transaction_id ? "block pl-4" : ""}>
+          {t.parent_transaction_id && <span aria-hidden>↳ </span>}
+          <span className={t.parts ? "line-through" : ""}>{t.description}</span>
+          {!show("note") && t.notes && <span className="block text-xs text-muted">{t.notes}</span>}
+        </span>
+      ),
+    },
+    {
+      id: "date",
+      label: "Date",
+      sort: (t) => t.txn_date,
+      group: (t) => monthLong(`${t.txn_date.slice(0, 7)}-01`),
+      cell: (t) => <span className="num whitespace-nowrap">{day(t.txn_date)}</span>,
+    },
+    {
+      id: "account",
+      label: "Account",
+      sort: account,
+      group: account,
+      cell: (t) => <span className="text-muted">{account(t)}</span>,
+    },
+    {
+      id: "who",
+      label: "Who",
+      sort: (t) => t.person ?? "",
+      group: (t) => t.person ?? "Nobody",
+      cell: (t) => t.person,
+    },
+    {
+      id: "category",
+      label: "Category",
+      sort: (t) => t.category_path ?? "",
+      group: (t) => t.category_path ?? "No category yet",
+      cell: (t) => <CategoryCell t={t} />,
+    },
+    { id: "note", label: "Note / person", cell: (t) => <NoteCell t={t} names={names} /> },
+    {
+      id: "merchant",
+      label: "Merchant (cleaned)",
+      sort: (t) => t.merchant ?? "",
+      group: (t) => t.merchant ?? "No merchant",
+      cell: (t) => <span className="text-muted">{t.merchant}</span>,
+    },
+    {
+      id: "post",
+      label: "Posted date",
+      sort: (t) => t.post_date ?? "",
+      cell: (t) => <span className="num whitespace-nowrap">{t.post_date ? day(t.post_date) : ""}</span>,
+    },
+    {
+      id: "month",
+      label: "Counts in",
+      sort: (t) => t.cash_month,
+      group: (t) => monthLong(t.cash_month),
+      cell: (t) => <span className="whitespace-nowrap">{monthLong(t.cash_month)}</span>,
+    },
+    {
+      id: "country",
+      label: "Country",
+      sort: (t) => t.country ?? "",
+      group: (t) => t.country ?? "No country",
+      cell: (t) => <span className="text-muted">{t.country}</span>,
+    },
+    {
+      id: "amount",
+      label: "Amount",
+      fixed: "end",
+      align: "right",
+      sort: (t) => num(t.amount),
+      total: (t) => (counted(t) ? num(t.amount) : 0), // a split line's parts count, not the line
+      cell: (t) => <span className={t.parts ? "line-through" : ""}>{showAmount(t.amount)}</span>,
+    },
+    {
+      id: "edit",
+      label: "Edit",
+      fixed: "end",
+      align: "right",
+      header: <span className="sr-only">Edit</span>,
+      cell: (t) => <EditToggle t={t} open={open} setOpen={setOpen} />,
+    },
+  ];
 
   return (
     <section>
@@ -340,7 +423,6 @@ export default function TransactionsPage() {
         </label>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SaveView month={monthLong(`${month}-01`)} />
-          <TableSettings table="transactions" columns={COLUMNS} defaults={DEFAULT_COLUMNS} />
         </div>
       </div>
       {cp && (
@@ -416,81 +498,19 @@ export default function TransactionsPage() {
         </ul>
       )}
       {data && data.length > 0 && (
-        <div className="mt-6 hidden overflow-x-auto rounded-2xl border border-line md:block">
-          <table className="w-full text-sm">
-            <caption className="sr-only">Transactions in {period}</caption>
-            <thead className="bg-surface text-muted">
-              <tr>
-                {show("date") && <Th>Date</Th>}
-                {show("post") && <Th>Posted</Th>}
-                <Th>Description</Th>
-                {show("merchant") && <Th>Merchant</Th>}
-                {show("category") && <Th>Category</Th>}
-                {show("account") && <Th>Account</Th>}
-                {show("who") && <Th>Who</Th>}
-                {show("note") && <Th>Note / person</Th>}
-                {show("country") && <Th>Country</Th>}
-                <th scope="col" className="px-4 py-2 text-right font-semibold">
-                  Amount
-                </th>
-                <th scope="col" className="px-4 py-2">
-                  <span className="sr-only">Edit</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.map((t) => (
-                <Fragment key={t.transaction_id}>
-                  <tr className={t.parts ? "text-muted" : ""}>
-                    {show("date") && <td className="num whitespace-nowrap px-4 py-2">{day(t.txn_date)}</td>}
-                    {show("post") && (
-                      <td className="num whitespace-nowrap px-4 py-2">
-                        {t.post_date ? day(t.post_date) : ""}
-                      </td>
-                    )}
-                    <td className={`px-4 py-2 ${t.parent_transaction_id ? "pl-8" : ""}`}>
-                      {t.parent_transaction_id && <span aria-hidden>↳ </span>}
-                      <span className={t.parts ? "line-through" : ""}>{t.description}</span>
-                      {!show("note") && t.notes && (
-                        <span className="block text-xs text-muted">{t.notes}</span>
-                      )}
-                    </td>
-                    {show("merchant") && <td className="px-4 py-2 text-muted">{t.merchant}</td>}
-                    {show("category") && (
-                      <td className="px-4 py-2">
-                        <CategoryCell t={t} />
-                      </td>
-                    )}
-                    {show("account") && (
-                      <td className="px-4 py-2 text-muted">
-                        {t.account_name ?? SOURCE_LABEL[t.source] ?? t.source}
-                      </td>
-                    )}
-                    {show("who") && <td className="px-4 py-2">{t.person}</td>}
-                    {show("note") && (
-                      <td className="px-4 py-2">
-                        <NoteCell t={t} names={names} />
-                      </td>
-                    )}
-                    {show("country") && <td className="px-4 py-2 text-muted">{t.country}</td>}
-                    <td className={`num px-4 py-2 text-right ${t.parts ? "line-through" : ""}`}>
-                      {showAmount(t.amount)}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <EditToggle t={t} open={open} setOpen={setOpen} />
-                    </td>
-                  </tr>
-                  {open === t.transaction_id && (
-                    <tr>
-                      <td colSpan={3 + cols.length} className="bg-surface px-4 py-4">
-                        <TxnEditor t={t} onDone={() => setOpen(null)} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-6 hidden md:block">
+          <DataTable
+            table="transactions"
+            caption={`Transactions in ${period}`}
+            columns={columns}
+            rows={rows}
+            rowKey={(t) => t.transaction_id}
+            defaults={DEFAULT_COLUMNS}
+            rowClass={(t) => (t.parts ? "text-muted" : "")}
+            expanded={(t) =>
+              open === t.transaction_id ? <TxnEditor t={t} onDone={() => setOpen(null)} /> : null
+            }
+          />
         </div>
       )}
       {data && data.length > 0 && (
@@ -505,14 +525,6 @@ export default function TransactionsPage() {
         </p>
       )}
     </section>
-  );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th scope="col" className="px-4 py-2 text-left font-semibold">
-      {children}
-    </th>
   );
 }
 
