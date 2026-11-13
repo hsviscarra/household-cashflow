@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.101.0] — The shared table on By category and Groceries
+
+### Changed
+- **Transactions → By category**: a category's lines can be sorted by any column, grouped by
+  month, account, who or merchant with subtotals, and Who, Counts in and Note added as columns.
+- **Groceries → Top products**: sort by price change, quantity or unit price; group by type of
+  product.
+
 ## [0.100.0] — One table for every page: Deductions
 
 ### Added

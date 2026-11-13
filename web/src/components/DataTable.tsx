@@ -18,6 +18,8 @@ export type Column<T> = {
   /** What to group by; a column without it isn't offered in "Group by". */
   group?: (row: T) => string;
   align?: "right";
+  /** Drawn in the header instead of the label (a "tick all" box); the label still names it. */
+  header?: ReactNode;
   /** Always shown, first, and not in the column list (the row's name). */
   fixed?: boolean;
 };
@@ -79,10 +81,15 @@ export default function DataTable<T>({
 
   const toggleSort = (id: string) =>
     setLayout({ sort: { id, dir: sort?.id === id && sort.dir === "asc" ? "desc" : "asc" } });
+  // The group's or the table's name goes in the first column that holds text, not a tick box.
+  const named = Math.max(
+    shown.findIndex((c) => !c.header),
+    0,
+  );
   const sums = (list: T[], first: ReactNode) =>
     shown.map((c, i) => (
       <td key={c.id} className={`num px-3 py-2 ${c.align === "right" ? "text-right" : ""}`}>
-        {i === 0 ? first : c.total ? money(list.reduce((t, r) => t + c.total!(r), 0)) : ""}
+        {i === named ? first : c.total ? money(list.reduce((t, r) => t + c.total!(r), 0)) : ""}
       </td>
     ));
 
@@ -128,7 +135,9 @@ export default function DataTable<T>({
                   }
                   className={`px-3 py-2 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}
                 >
-                  {c.sort ? (
+                  {c.header ? (
+                    c.header
+                  ) : c.sort ? (
                     <button
                       type="button"
                       className="font-semibold hover:text-ink"
