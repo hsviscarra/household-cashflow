@@ -73,8 +73,10 @@ describe("Grocery products", () => {
     expect(within(list).queryByText("QSO MOZZ KIOSKO")).not.toBeInTheDocument();
 
     fireEvent.click(within(list).getByRole("button", { name: "Edit YOG TONI" }));
-    fireEvent.change(within(list).getByLabelText("Brand"), { target: { value: "Toni Light" } });
-    fireEvent.click(within(list).getByRole("button", { name: "Save for every purchase" }));
+    // The editor opens under the row, on the shared table (ADR-091).
+    const editor = within(list).getByRole("form", { name: "Labels of YOG TONI" });
+    fireEvent.change(within(editor).getByLabelText("Brand"), { target: { value: "Toni Light" } });
+    fireEvent.click(within(editor).getByRole("button", { name: "Save for every purchase" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     expect(calls.find((c) => c.method === "PUT")!.body).toEqual({
       product_key: "YOG TONI",
@@ -82,6 +84,8 @@ describe("Grocery products", () => {
       product_type: "Yogurt",
       brand: "Toni Light",
     });
+
+    expect(within(list).getByRole("columnheader", { name: /^Spent/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("radio", { name: "3 months" }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("start=2026-08-01"))).toBe(true));

@@ -847,6 +847,21 @@ class SpendMonthOut(BaseModel):
     amount: Decimal
 
 
+class SpendSeriesOut(BaseModel):
+    key: str
+    label: str
+    color: str | None
+    values: list[Decimal]
+
+
+class SpendSeriesSetOut(BaseModel):
+    """Spending by month, split by a dimension (ADR-094)."""
+
+    months: list[date]
+    by: str
+    series: list[SpendSeriesOut]
+
+
 class SpendingOut(BaseModel):
     month: date
     months: list[date]
@@ -894,6 +909,7 @@ class SubscriptionOut(BaseModel):
     last: date
     next_expected: date | None
     active: bool
+    price_up: Decimal | None = None
 
 
 class SubscriptionsOut(BaseModel):
@@ -1088,6 +1104,21 @@ class ProjectionMonthOut(BaseModel):
     net: Decimal
     end_cash: Decimal
     items: list[ProjectionEventOut]
+    # ADR-096: the likely range, and why the month differs from a usual one.
+    end_cash_low: Decimal | None = None
+    end_cash_high: Decimal | None = None
+    seasonal: list["SeasonalNoteOut"] = []
+
+
+class SeasonalNoteOut(BaseModel):
+    group_name: str
+    extra: Decimal  # more than a usual month; negative is less
+
+
+class ProjectionBandOut(BaseModel):
+    day: date
+    low: Decimal
+    high: Decimal
 
 
 class ProjectionDayOut(BaseModel):
@@ -1125,6 +1156,11 @@ class ProjectionOut(BaseModel):
     first_short: date | None = None
     end_cash: Decimal = Decimal(0)
     base: "ScenarioBaseOut | None" = None  # with what-ifs: the same without them
+    # ADR-096
+    band: list[ProjectionBandOut] = []
+    chance_under_floor: Decimal | None = None
+    seasons: bool = True
+    seasonal_groups: int = 0
 
 
 class ProjectionAccountOut(BaseModel):
@@ -1158,6 +1194,7 @@ class ScenarioIn(BaseModel):
     average_over: Literal[3, 6, 12] = 3
     floor: Decimal = Field(default=Decimal(0), ge=0, max_digits=15, decimal_places=2)
     include_held: bool = False
+    seasons: bool = True
     changes: list[ChangeIn] = Field(default_factory=list, max_length=20)
 
 

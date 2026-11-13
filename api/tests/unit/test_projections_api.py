@@ -284,3 +284,87 @@ def test_accounts_floor_held_horizon_and_what_ifs(client: TestClient, db: Sessio
     assert Decimal(w["accounts"][0]["lowest"]["balance"]) == Decimal(-1000)  # 3,000 in, before
     plain = client.post("/api/projections/scenario", params={"today": TODAY}, json={}).json()
     assert plain["base"] is None
+
+
+def _history(db: Session, pay_doctor_with: str) -> None:
+    """Three years of everyday spending: about 100 of groceries a month from the bank, and 600
+    at the doctor every August."""
+    bank = _account(db, "Produbanco Ahorros Hernan")
+    doctor_account = _account(db, pay_doctor_with)
+    groceries, doctors = _cat(db, "Supermarket"), _cat(db, "Doctors")
+    n = 1000
+    for year in (2024, 2025, 2026):
+        for month in range(1, 13):
+            if (year, month) >= (2026, 10):
+                break
+            # 2024 and 2025 swing by 20 in opposite months: variation, but not a season.
+            swing = 0 if year == 2026 else (20 if (month + year) % 2 else -20)
+            _line(db, bank, date(year, month, 5), str(-(100 + swing)), groceries, n := n + 1)
+            if month == 8:
+                _line(db, doctor_account, date(year, 8, 10), "-600", doctors, n := n + 1)
+    db.commit()
+
+
+def _year_ahead(client: TestClient, **params: Any) -> dict[str, Any]:
+    out: dict[str, Any] = client.get(
+        "/api/projections", params={"today": TODAY, "horizon": 12, **params}
+    ).json()
+    return out
+
+
+def test_seasons_and_the_likely_range(client: TestClient, db: Session) -> None:
+    """ADR-096: August's doctor is forecast in August, and cash has a range around it."""
+    _history(db, "Produbanco Ahorros Hernan")
+    p = _year_ahead(client)
+    assert p["seasons"] is True and p["seasonal_groups"] == 1
+    # The plain average of July to September says 300 a month; it is 100, and 700 in August.
+    assert Decimal(p["variable_per_month"]) == Decimal("300.00")
+    everyday = {m["month"]: Decimal(m["variable"]) for m in p["months"]}
+    assert everyday["2026-11-01"] == Decimal("100.00") and everyday["2027-08-01"] == Decimal(700)
+    assert sum(everyday.values()) == Decimal(1800)  # a year: 12 x 100 and one 600
+    august = next(m for m in p["months"] if m["month"] == "2027-08-01")
+    assert august["seasonal"] == [{"group_name": "Health", "extra": "550.00"}]
+    assert p["months"][0]["seasonal"] == []
+
+    # The range: built from the swings of 20, around the expected cash, wider further out.
+    assert len(p["band"]) == len(p["daily"]) and p["band"][0]["day"] == TODAY
+    first, last = p["months"][0], p["months"][-1]
+    for m in (first, last):
+        assert Decimal(m["end_cash_low"]) < Decimal(m["end_cash"]) < Decimal(m["end_cash_high"])
+    width = lambda m: Decimal(m["end_cash_high"]) - Decimal(m["end_cash_low"])  # noqa: E731
+    assert width(last) > width(first)
+    assert Decimal(p["band"][-1]["low"]) == Decimal(last["end_cash_low"])
+    # No money in the bank and only spending ahead: under a floor of zero for sure.
+    assert Decimal(p["chance_under_floor"]) == 1
+
+    # Without seasons every month is the average, and August's 600 counts as a surprise.
+    flat = _year_ahead(client, seasons=False)
+    assert flat["seasons"] is False and flat["seasonal_groups"] == 0
+    assert {Decimal(m["variable"]) for m in flat["months"]} == {Decimal("300.00")}
+    assert all(m["seasonal"] == [] for m in flat["months"])
+    assert width(flat["months"][-1]) > width(last)
+
+    # What-ifs keep the choice.
+    what_if = client.post(
+        "/api/projections/scenario",
+        params={"today": TODAY},
+        json={"horizon": 12, "seasons": False, "changes": []},
+    ).json()
+    assert what_if["seasons"] is False
+
+
+def test_a_season_on_a_card_is_paid_the_month_after(client: TestClient, db: Session) -> None:
+    _history(db, "Capital One Venture")
+    p = _year_ahead(client)
+    everyday = {m["month"]: Decimal(m["variable"]) for m in p["months"]}
+    # The bank pays 100 of groceries every month. The doctor goes on the card: what August
+    # spends over a usual month (600 less 50) leaves the bank in September, with the card.
+    assert everyday["2027-08-01"] == Decimal("100.00")
+    assert everyday["2027-09-01"] == Decimal("650.00")
+    assert everyday["2026-11-01"] == Decimal("100.00")
+
+
+def test_too_little_history_has_no_range(client: TestClient) -> None:
+    p = _get(client)
+    assert p["band"] == [] and p["chance_under_floor"] is None and p["seasonal_groups"] == 0
+    assert p["months"][0]["end_cash_low"] is None

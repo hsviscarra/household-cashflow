@@ -46,10 +46,12 @@ const TXNS: Txn[] = [
 ];
 
 let urls: string[];
+let patches: { url: string; body: unknown }[];
 let settings: Record<string, unknown>;
 
 beforeEach(() => {
   urls = [];
+  patches = [];
   settings = {};
   vi.stubGlobal(
     "fetch",
@@ -60,6 +62,10 @@ beforeEach(() => {
           settings = { ...settings, [key]: JSON.parse(String(init.body)).value };
         }
         return Promise.resolve(new Response(JSON.stringify({ user: "local", settings })));
+      }
+      if (init?.method === "PATCH") {
+        patches.push({ url, body: JSON.parse(String(init.body)) });
+        return Promise.resolve(new Response(JSON.stringify(TXNS[0])));
       }
       urls.push(url);
       if (url.startsWith("/api/transactions")) {
@@ -139,6 +145,15 @@ describe("Transactions page", () => {
     expect(bar).toHaveTextContent("In 0.00");
     expect(within(bar).getByText("Categorize as")).toBeInTheDocument();
     fireEvent.click(within(bar).getByRole("button", { name: "Clear" }));
+
+    // …and can be given to a person together (ADR-095): one change per line, then the ticks go.
+    fireEvent.click(within(table).getByLabelText("Tick every row shown"));
+    fireEvent.change(screen.getByLabelText("Who the ticked lines belong to"), {
+      target: { value: "Lauren" },
+    });
+    await waitFor(() => expect(patches).toHaveLength(2));
+    expect(patches.map((p) => p.body)).toEqual([{ person: "Lauren" }, { person: "Lauren" }]);
+    await waitFor(() => expect(screen.queryByText("2 ticked")).not.toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "uber" } });
     expect(within(table).getAllByRole("row")).toHaveLength(3);

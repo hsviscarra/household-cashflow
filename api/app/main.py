@@ -35,6 +35,7 @@ from app.routers import (
     recurring,
     reference,
     report,
+    savings,
     spending,
     statements,
     status,
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(close.router)
     app.include_router(tax_projection.router)
     app.include_router(reconcile.router)
+    app.include_router(savings.router)
 
     app.router.routes.append(mcp_route)
 

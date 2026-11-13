@@ -258,14 +258,28 @@ export type CashSeries = {
   dashed?: boolean;
 };
 
-/** Cash day by day (ADR-033): the total and each account as lines, the floor dashed. */
-export function CashLines({ series, floor, title }: { series: CashSeries[]; floor: number; title: string }) {
+/** Cash day by day (ADR-033): the total and each account as lines, the floor dashed. With a
+ * band (ADR-096), the likely range is shaded behind the total. */
+export function CashLines({
+  series,
+  floor,
+  title,
+  band = [],
+}: {
+  series: CashSeries[];
+  floor: number;
+  title: string;
+  band?: { day: string; low: string; high: string }[];
+}) {
   const W = 900;
   const H = 260;
   const pad = { l: 56, r: 12, t: 12, b: 26 };
   const days = series[0]?.points.map((p) => p.day) ?? [];
   if (!days.length) return null;
-  const values = series.flatMap((s) => s.points.map((p) => Number(p.balance)));
+  const values = [
+    ...series.flatMap((s) => s.points.map((p) => Number(p.balance))),
+    ...band.flatMap((b) => [Number(b.low), Number(b.high)]),
+  ];
   const max = Math.max(floor, 0, ...values);
   const min = Math.min(floor, 0, ...values);
   const span = max - min || 1;
@@ -306,6 +320,17 @@ export function CashLines({ series, floor, title }: { series: CashSeries[]; floo
             {new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short" })}
           </text>
         ) : null,
+      )}
+      {band.length > 1 && (
+        <polygon
+          data-testid="likely-range"
+          fill="var(--color-primary)"
+          fillOpacity={0.14}
+          points={[
+            ...band.map((b, i) => `${x(i)},${y(Number(b.high))}`),
+            ...band.map((b, i) => `${x(i)},${y(Number(b.low))}`).reverse(),
+          ].join(" ")}
+        />
       )}
       {series.map((s) => (
         <polyline

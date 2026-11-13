@@ -5,9 +5,7 @@ import { expect, test } from "@playwright/test";
 // A synthetic SRI invoice (api/tests/fixtures/invoices.py: factura): 4 products, 15.98, Oct 28 2026.
 const XML = fileURLToPath(new URL("./fixtures/sample-invoice.xml", import.meta.url));
 
-test("purchases: an invoice XML becomes products, and a product gets an app category", async ({
-  page,
-}) => {
+test("purchases: an invoice XML becomes products, and a product gets an app category", async ({ page }) => {
   await page.goto("/purchases?month=2026-10");
   await page.getByLabel("Invoice XML files").setInputFiles(XML);
   const results = page.getByRole("list", { name: "Upload results" });
@@ -28,7 +26,7 @@ test("purchases: an invoice XML becomes products, and a product gets an app cate
 
   const list = page.getByRole("region", { name: "Invoices" });
   await list.getByRole("button", { name: /SUPER PRUEBA/ }).click();
-  const products = list.getByRole("table");
+  const products = list.getByRole("table", { name: /^Products on invoice/ });
   await expect(products).toContainText("DETERGENTE POLVO 2KG");
   await expect(products.getByRole("row", { name: /YOG TONI FRUT 1L/ })).toContainText("Supermarket");
 });

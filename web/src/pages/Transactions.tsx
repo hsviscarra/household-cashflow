@@ -16,6 +16,7 @@ import {
   unlinkTransfer,
   updateRule,
   updateTransaction,
+  type Owner,
   type Txn,
 } from "../api";
 import CategoryPicker from "../components/CategoryPicker";
@@ -58,6 +59,8 @@ function thisMonth() {
 
 const day = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+const OWNERS: Owner[] = ["Hernan", "Lauren", "Joint"];
 
 // Columns shown until a person chooses (ADR-026, ADR-030); the description and the amount always show.
 const DEFAULT_COLUMNS = ["date", "account", "who", "category", "note"];
@@ -193,8 +196,8 @@ export default function TransactionsPage() {
   const [ticked, setTicked] = useState<Set<number>>(new Set());
   const qc = useQueryClient();
   const bulk = useMutation({
-    mutationFn: async ({ ids, category_id }: { ids: number[]; category_id: number }) => {
-      for (const id of ids) await updateTransaction(id, { category_id });
+    mutationFn: async ({ ids, ...change }: { ids: number[]; category_id?: number; person?: Owner }) => {
+      for (const id of ids) await updateTransaction(id, change);
     },
     onSuccess: () => {
       setTicked(new Set());
@@ -544,6 +547,26 @@ export default function TransactionsPage() {
                       }
                     />
                   </span>
+                  <label className="flex items-center gap-2">
+                    Whose
+                    <select
+                      className="field !w-32"
+                      aria-label="Who the ticked lines belong to"
+                      value=""
+                      onChange={(e) =>
+                        e.target.value &&
+                        bulk.mutate({
+                          ids: lines.map((t) => t.transaction_id),
+                          person: e.target.value as Owner,
+                        })
+                      }
+                    >
+                      <option value="">Choose</option>
+                      {OWNERS.map((o) => (
+                        <option key={o}>{o}</option>
+                      ))}
+                    </select>
+                  </label>
                   {bulk.isPending && <span className="text-muted">Saving…</span>}
                   {bulk.error && (
                     <span role="alert" className="text-danger-ink">

@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Projection } from "../api";
-import ProjectionsPage, { projectionHeadline } from "./Projections";
+import ProjectionsPage, { projectionHeadline, rangeLine } from "./Projections";
 
 const month = (m: string, net: string, end: string) => ({
   month: m,
@@ -46,7 +46,12 @@ const P: Projection = {
 function renderWith(body: unknown, status = 200) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status }))),
+    vi.fn((url: string) => {
+      if (url === "/api/accounts") return Promise.resolve(new Response("[]"));
+      if (url.startsWith("/api/me/settings"))
+        return Promise.resolve(new Response(JSON.stringify({ user: "h", settings: {} })));
+      return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    }),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -227,5 +232,52 @@ describe("Projections", () => {
     expect(added).toHaveTextContent("Bonus: +500.00 on Dec 10");
     for (let i = 0; i < 3; i++) fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]);
     expect(screen.queryByRole("list", { name: "What-ifs added" })).toBeNull();
+  });
+
+  it("shows the likely range, the seasons ahead and the choice to follow them (ADR-096)", async () => {
+    const ranged: Projection = {
+      ...P,
+      floor: "500",
+      chance_under_floor: "0.15",
+      seasons: true,
+      seasonal_groups: 1,
+      months: [
+        { ...P.months[0], end_cash_low: "2500", end_cash_high: "3300" },
+        {
+          ...P.months[1],
+          end_cash_low: "3200",
+          end_cash_high: "4600",
+          seasonal: [{ group_name: "Gifts", extra: "400.00" }],
+        },
+        { ...P.months[2], end_cash_low: "-200", end_cash_high: "4800" },
+      ],
+      band: P.daily.map((d) => ({ day: d.day, low: String(Number(d.balance) - 100), high: d.balance })),
+    };
+    expect(rangeLine(ranged)).toBe(
+      "In 8 of 10 cases cash ends January 2027 between −200.00 and 4,800.00. About a 15% chance it goes under your 500.00 floor on the way.",
+    );
+    expect(rangeLine({ ...ranged, floor: "0", chance_under_floor: "0" })).toMatch(
+      /It stays over zero in every case tried\.$/,
+    );
+    expect(rangeLine({ ...ranged, chance_under_floor: "1" })).toMatch(/in every case tried\.$/);
+    expect(rangeLine(P)).toBe(""); // not enough history: no range
+
+    renderWith(ranged);
+    expect(await screen.findByLabelText("Likely range")).toHaveTextContent("About a 15% chance");
+    const table = screen.getByRole("table", { name: /^Projection for the next/ });
+    expect(within(table).getByRole("row", { name: /^Likely range/ })).toHaveTextContent(
+      "2,500.00 to 3,300.003,200.00 to 4,600.00−200.00 to 4,800.00",
+    );
+    expect(within(table).getByRole("row", { name: /^Everyday spending \(with seasons\)/ })).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Seasons ahead" })).toHaveTextContent(
+      "December 2026: Gifts about 400.00 more than a usual month.",
+    );
+    expect(screen.getByTestId("likely-range")).toBeInTheDocument();
+    expect(screen.getByText("Shaded: where cash is in 8 of 10 cases")).toBeInTheDocument();
+
+    // Turning the seasons off asks again, without them.
+    const calls = vi.mocked(fetch).mock.calls;
+    fireEvent.click(screen.getByLabelText("Follow the seasons"));
+    await vi.waitFor(() => expect(calls.some(([url]) => String(url).includes("seasons=false"))).toBe(true));
   });
 });

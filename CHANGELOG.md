@@ -5,6 +5,53 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.107.0] — Saving, safe to spend, and which debt to pay first
+
+### Added
+- **Saving** (Budget & goals → Saving): your savings rate by month, what your goals need each
+  month against what you plan, and your debts with the two payoff orders compared: highest
+  rate first and smallest balance first, with the months and the interest of each (ADR-097).
+  Type a debt's rate and monthly payment where the app can only estimate them.
+- **Safe to spend** on Home: what is left for the rest of the month after the bills still due
+  and your goals, and how much that is a day.
+- **Subscriptions that went up**: an active subscription whose last charge is over its earlier
+  ones says by how much.
+
+## [0.106.0] — The forecast as a range, with seasons and saved scenarios
+
+### Added
+- **A likely range.** Forecast shows where cash is in 8 of 10 cases, day by day and at each
+  month's end, and the chance of going under your floor. It comes from how much your everyday
+  spending really varied in the last 24 months (ADR-096).
+- **Seasons.** A group that moves the same way every year (school, December, a yearly payment)
+  is forecast in its month, not spread as an average; what goes on cards is paid the month
+  after. It needs two complete years of history, and can be turned off.
+- **Saved scenarios.** Name a set of what-ifs, keep it, and compare up to three with the
+  forecast as it is: lowest cash, cash by month and the difference at the end.
+
+## [0.105.0] — Compare with last year, bulk "Whose", invoices as a table
+
+### Added
+- **Compare with a year earlier** on Spending over time: last year's same months as a line over
+  the columns, and beside each month in the table and the CSV with the change (ADR-095).
+- **Give ticked lines to a person** on Transactions ("Whose"), next to "Categorize as".
+
+### Changed
+- **Purchases' invoices are on the shared table**: sort, group by supplier, payment or person
+  with subtotals, and find an invoice by a product on it. The products open under the row.
+
+## [0.104.0] — A chart with controls
+
+### Added
+- **Spending over time has controls**: the period (3 to 24 months, or this year), what to split
+  by (group, category, who, account or country) and how to show it (amounts, share of each
+  month, or the numbers as a table). Your choice is remembered, and Download CSV gives the same
+  numbers as a file (ADR-094).
+
+### Changed
+- **Groceries → Products is on the shared table**: choose and order the columns, sort by any,
+  group by aisle, type or brand with subtotals. Edit opens under the row.
+
 ## [0.103.0] — Ticked totals, find in a table, one search box
 
 ### Added

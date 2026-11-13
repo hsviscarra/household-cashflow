@@ -998,6 +998,7 @@ export type Subscription = {
   last: string;
   next_expected: string | null;
   active: boolean;
+  price_up?: string | null; // how much the last charge is over the earlier ones (ADR-097)
 };
 export type Subscriptions = {
   monthly_cost: string;
@@ -1178,6 +1179,10 @@ export type ProjectionMonth = {
   net: string;
   end_cash: string;
   items: ProjectionEvent[];
+  // ADR-096: where cash likely ends, and the groups that make the month heavier than usual.
+  end_cash_low?: string | null;
+  end_cash_high?: string | null;
+  seasonal?: { group_name: string; extra: string }[];
 };
 export type Projection = {
   today: string;
@@ -1211,9 +1216,20 @@ export type Projection = {
     first_short: string | null;
     end_cash: string;
   } | null;
+  // ADR-096: the likely range day by day and the chance of going under the floor.
+  band?: { day: string; low: string; high: string }[];
+  chance_under_floor?: string | null;
+  seasons?: boolean;
+  seasonal_groups?: number;
 };
 // ADR-033: choices, per-account runs and what-ifs.
-export type ForecastOptions = { horizon: number; average_over: number; floor: number; include_held: boolean };
+export type ForecastOptions = {
+  horizon: number;
+  average_over: number;
+  floor: number;
+  include_held: boolean;
+  seasons: boolean; // everyday spending follows the seasons (ADR-096)
+};
 export type ForecastChange = {
   name: string;
   amount: string; // money in positive
@@ -1237,6 +1253,7 @@ export const DEFAULT_FORECAST: ForecastOptions = {
   average_over: 3,
   floor: 0,
   include_held: false,
+  seasons: true,
 };
 export const fetchProjection = (o: ForecastOptions = DEFAULT_FORECAST) => {
   const same = (Object.keys(DEFAULT_FORECAST) as (keyof ForecastOptions)[]).every(
@@ -1244,7 +1261,7 @@ export const fetchProjection = (o: ForecastOptions = DEFAULT_FORECAST) => {
   );
   return send<Projection>(
     "GET",
-    `/api/projections${same ? "" : query({ horizon: o.horizon, average_over: o.average_over, floor: o.floor, include_held: String(o.include_held) })}`,
+    `/api/projections${same ? "" : query({ horizon: o.horizon, average_over: o.average_over, floor: o.floor, include_held: String(o.include_held), seasons: String(o.seasons) })}`,
   );
 };
 export const runScenario = (o: ForecastOptions, changes: ForecastChange[]) =>
@@ -2061,3 +2078,87 @@ export type PersonTax = {
 export const fetchTaxProjection = (year: number) => send<PersonTax[]>("GET", `/api/taxes/${year}/projection`);
 export const saveTaxProfile = (year: number, person: string, body: TaxProfile) =>
   send<PersonTax>("PUT", `/api/taxes/${year}/projection/${person}`, body);
+
+// ---------------- ADR-094: spending by month, split by a dimension ----------------
+export type SeriesBy = "none" | "group" | "category" | "person" | "account" | "country";
+export type SpendSeries = {
+  months: string[];
+  by: SeriesBy;
+  series: { key: string; label: string; color: string | null; values: string[] }[];
+};
+export const fetchSpendSeries = (month: string, months: number, by: SeriesBy, person?: string) =>
+  send<SpendSeries>("GET", `/api/spending/series${query({ month, months: String(months), by, person })}`);
+
+// ---------- saving (ADR-097) ----------
+export type SafeToSpend = {
+  month: string;
+  left_so_far: Money;
+  income_to_come: Money;
+  bills_to_come: Money;
+  goals_to_go: Money;
+  days_left: number;
+  amount: Money;
+  a_day: Money;
+};
+export type DebtLine = {
+  key: string;
+  name: string;
+  kind: "card" | "loan";
+  balance: Money;
+  as_of: string | null;
+  rate: string | null; // a year, as a fraction
+  minimum: Money | null;
+  rate_from: "typed" | "table" | "interest" | null;
+  minimum_from: "typed" | "table" | "payment" | "assumed" | null;
+  interest_12: Money;
+  planned: boolean;
+};
+export type PayoffPlan = {
+  months: number | null;
+  interest: Money;
+  order: string[];
+  paid_in: Record<string, number>;
+};
+export type Savings = {
+  today: string;
+  months: {
+    month: string;
+    money_in: Money;
+    spent: Money;
+    set_aside: Money;
+    kept: Money;
+    rate: string | null;
+    running: boolean;
+  }[];
+  rate_12: string | null;
+  goals: {
+    needed: Money;
+    planned: Money;
+    saved: Money;
+    to_go: Money;
+    short: Money;
+    goals: {
+      goal_id: number;
+      name: string;
+      target_date: string | null;
+      left: Money;
+      needed_monthly: Money | null;
+      monthly_amount: Money | null;
+      status: string;
+    }[];
+  };
+  safe: SafeToSpend;
+  debts: DebtLine[];
+  payoff: {
+    extra: Money;
+    minimums: PayoffPlan;
+    avalanche: PayoffPlan;
+    snowball: PayoffPlan;
+    saved: Money;
+  } | null;
+};
+export const fetchSavings = (extra = 0) =>
+  send<Savings>("GET", `/api/savings${extra > 0 ? query({ extra }) : ""}`);
+export const fetchSafeToSpend = () => send<SafeToSpend>("GET", "/api/savings/safe-to-spend");
+export const setDebtTerms = (key: string, body: { rate: string | null; minimum: string | null }) =>
+  send<void>("PUT", `/api/savings/debts/${encodeURIComponent(key)}`, body);

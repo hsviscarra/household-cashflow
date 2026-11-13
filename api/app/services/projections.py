@@ -11,6 +11,8 @@ For each of the next three months:
   installment for the month, and nothing once the loan is paid off;
 - purchase installments are each purchase in progress's installment (F14) while installments are
   left, unless a recurring item already pays its category.
+Everyday spending follows the seasons when the history shows them, and the cash has a likely
+range around it built from how much spending really varied (ADR-096: `seasons`, `likely_range`).
 Cash starts from the bank accounts' latest statement balances. Day by day, each recurring item
 lands on the day of the month it was last paid (the 1st when it never was), installments on the
 day of their last payment, and variable spending is spread evenly over the days.
@@ -26,7 +28,16 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, RecurringEntry, RecurringTemplate, Transaction
 from app.models import v_spending_line as v
-from app.services import loans, networth, payday, people, recurring, tax_projection
+from app.services import (
+    likely_range,
+    loans,
+    networth,
+    payday,
+    people,
+    recurring,
+    seasons,
+    tax_projection,
+)
 
 MONTHS_AHEAD = 3
 AVERAGE_OVER = 3
@@ -37,6 +48,8 @@ ALERT_MIN = Decimal(25)
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
 INCOME = ("income", "refund")
+NOTES_PER_MONTH = 3  # the seasonal reasons shown for a month
+NO_GROUP = 0  # spending without a category yet
 
 
 @dataclass
@@ -88,6 +101,11 @@ class MonthPlan:
     purchases: Decimal = ZERO
     end_cash: Decimal = ZERO
     items: list[Event] = field(default_factory=list)
+    # ADR-096: where cash likely ends (None without enough history), and the groups that make
+    # the month's everyday spending differ from a usual month (name, how much more).
+    end_cash_low: Decimal | None = None
+    end_cash_high: Decimal | None = None
+    seasonal: list[tuple[str, Decimal]] = field(default_factory=list)
 
     @property
     def net(self) -> Decimal:
@@ -130,6 +148,25 @@ class Projection:
     accounts: list[AccountRun] = field(default_factory=list)
     first_short: date | None = None  # the first day total cash is under the floor
     end_cash: Decimal = ZERO
+    # ADR-096: the likely range day by day (day, low, high), the chance cash goes under the
+    # floor in the period, and whether everyday spending follows the seasons.
+    band: list[tuple[date, Decimal, Decimal]] = field(default_factory=list)
+    chance_under_floor: Decimal | None = None
+    seasons: bool = True
+    seasonal_groups: int = 0  # groups whose pattern through the year is being followed
+
+
+@dataclass
+class Everyday:
+    """Everyday spending ahead: the plain average, and what each month is expected to take."""
+
+    average: Decimal
+    average_months: list[date]
+    by_month: dict[date, Decimal]
+    notes: dict[date, list[tuple[str, Decimal]]]
+    # The seasons it follows: each seasonal group's usual month and its index (ADR-096).
+    level: dict[int, Decimal] = field(default_factory=dict)
+    idx: dict[int, seasons.Index] = field(default_factory=dict)
 
 
 def _usual_days(db: Session) -> dict[int, int]:
@@ -178,6 +215,153 @@ def variable_average(
     if not have:
         return ZERO, []
     return (Decimal(str(total or 0)) / len(have)).quantize(CENT), sorted(have)
+
+
+def _not_paid(paid_categories: set[int]):  # type: ignore[no-untyped-def]
+    """Lines in a category no recurring item pays: everyday spending, in the old sheets too."""
+    return v.c.category_id.is_(None) | v.c.category_id.not_in(sorted(paid_categories))
+
+
+def spending_history(
+    db: Session, before: date, paid_categories: set[int]
+) -> tuple[seasons.History, dict[int, str]]:
+    """Everyday spending by group and month before a month: what the seasons and the likely
+    range are read from. Categories a recurring item pays are left out (bills are planned, not
+    forecast), which reads statements and the old sheets on the same terms."""
+    rows = db.execute(
+        select(v.c.group_id, v.c.group_name, v.c.cash_month, func.sum(v.c.amount))
+        .where(v.c.cash_month < before, _not_paid(paid_categories))
+        .group_by(v.c.group_id, v.c.group_name, v.c.cash_month)
+    ).all()
+    history: seasons.History = {}
+    names: dict[int, str] = {}
+    for gid, name, month, total in rows:
+        history[(gid or NO_GROUP, month)] = Decimal(str(total))
+        names[gid or NO_GROUP] = name or "Uncategorized"
+    return history, names
+
+
+def card_shares(db: Session, months: list[date], paid_categories: set[int]) -> dict[int, Decimal]:
+    """The share of each group's everyday spending that went on credit cards in `months`, from
+    statement lines (the old sheets don't say what paid). That part leaves the bank a month
+    later, inside the card payment."""
+    a = Account.__table__
+    cards: dict[int, Decimal] = defaultdict(Decimal)
+    spent: dict[int, Decimal] = defaultdict(Decimal)
+    for gid, kind, total in db.execute(
+        select(v.c.group_id, a.c.kind, func.sum(v.c.amount))
+        .select_from(v.outerjoin(a, a.c.account_id == v.c.account_id))
+        .where(
+            v.c.cash_month.in_(months),
+            v.c.source != "excel_history",
+            _not_paid(paid_categories),
+        )
+        .group_by(v.c.group_id, a.c.kind)
+    ).all():
+        spent[gid or NO_GROUP] += Decimal(str(total))
+        if kind == "credit_card":
+            cards[gid or NO_GROUP] += Decimal(str(total))
+    return {g: min(Decimal(1), max(ZERO, cards[g] / spent[g])) for g in spent if spent[g] > 0}
+
+
+def everyday(
+    db: Session,
+    today: date,
+    over: int,
+    ahead: list[date],
+    history: seasons.History,
+    names: dict[int, str],
+    paid_categories: set[int],
+) -> Everyday:
+    """Everyday spending for each month in `ahead` (ADR-096). Without seasons (an empty
+    `history`, or one too short to show any) it is the average of the last months. With them, a
+    seasonal group is forecast by its own year in place of its share of that average:
+    - what it pays from the bank: its usual month times the month's index;
+    - what it puts on cards: only what the month before spent over a usual month, because the
+      usual part is already inside the card payments (recurring items)."""
+    average, months = variable_average(db, today, over)
+    idx = seasons.indices(history)
+    if not idx or not months:
+        return Everyday(average, months, dict.fromkeys(ahead, average), {})
+    current = recurring.first(today)
+    year = [recurring.add_months(current, -i) for i in range(1, seasons.MONTHS_IN_YEAR + 1)]
+    level = seasons.usual(history, year, idx)
+    on_cards = card_shares(db, year, paid_categories)
+
+    def bank(month: date) -> Decimal:
+        return sum(
+            (
+                (1 - on_cards.get(g, ZERO)) * amount * seasons.of(idx[g], month)
+                for g, amount in level.items()
+            ),
+            ZERO,
+        )
+
+    def cards(month: date) -> Decimal:
+        before = seasons.over_usual(level, idx, recurring.add_months(month, -1))
+        return sum((on_cards.get(g, ZERO) * max(ZERO, more) for g, more in before.items()), ZERO)
+
+    # The average was taken over months that had these groups in them: take them out first.
+    rest = max(ZERO, average - sum((bank(m) for m in months), ZERO) / len(months))
+    return Everyday(
+        average,
+        months,
+        {m: (rest + bank(m) + cards(m)).quantize(CENT) for m in ahead},
+        {
+            m: [
+                (names.get(g, "Uncategorized"), more.quantize(CENT))
+                for g, more in seasons.notes(level, idx, m)[:NOTES_PER_MONTH]
+            ]
+            for m in ahead
+        },
+        level=level,
+        idx=idx,
+    )
+
+
+def _month_days(month: date) -> int:
+    return (recurring.add_months(month, 1) - month).days
+
+
+def likely(
+    daily: list[tuple[date, Decimal]],
+    history: seasons.History,
+    spend: Everyday,
+    floor: Decimal,
+) -> tuple[list[tuple[date, Decimal, Decimal]], Decimal | None]:
+    """The likely range around the expected cash, day by day, and the chance of going under the
+    floor (ADR-096). Nothing when the history is too short to say."""
+    spent = seasons.total(history)
+    past = likely_range.surprises(
+        spent,
+        {m: sum(seasons.over_usual(spend.level, spend.idx, m).values(), ZERO) for m in spent},
+    )
+    if not past or not daily:
+        return [], None
+    by_month: dict[date, list[tuple[date, Decimal]]] = defaultdict(list)
+    for day, balance in daily:
+        by_month[recurring.first(day)].append((day, balance))
+    months = sorted(by_month)
+    runs = likely_range.replay(past, [Decimal(len(by_month[m])) / _month_days(m) for m in months])
+    ends = likely_range.band(runs)
+    out: list[tuple[date, Decimal, Decimal]] = []
+    lows: list[tuple[Decimal, Decimal]] = []
+    before = (ZERO, ZERO)
+    for m, after in zip(months, ends, strict=True):
+        days = by_month[m]
+        for i, (day, balance) in enumerate(days):
+            share = Decimal(i + 1) / len(days)
+            out.append(
+                (
+                    day,
+                    (balance - likely_range.between(before[1], after[1], share)).quantize(CENT),
+                    (balance - likely_range.between(before[0], after[0], share)).quantize(CENT),
+                )
+            )
+        at = min(range(len(days)), key=lambda i: (days[i][1], i))
+        lows.append((days[at][1], Decimal(at + 1) / len(days)))
+        before = after
+    return out, likely_range.chance_under(runs, lows, floor)
 
 
 def _recurring_events(
@@ -265,6 +449,26 @@ def _purchase_events(
     return out
 
 
+def rest_of_month(db: Session, today: date) -> list[Event]:
+    """What the plan still expects this month, from today to its last day: income, bills, loan
+    and purchase installments and the income tax (ADR-097). A salary that arrives this month
+    for the next one isn't in it: it counts in its own month (ADR-084)."""
+    current = recurring.first(today)
+    end = recurring.add_months(current, 1) - timedelta(days=1)
+    events = [
+        e
+        for e in _recurring_events(db, current, _usual_days(db), loans.due_by_month(db))
+        if e.day >= today and e.month is None
+    ]
+    paid_categories = {t.category_id for t in db.scalars(select(RecurringTemplate))}
+    events += [e for e in _purchase_events(db, today, [current], paid_categories) if e.day <= end]
+    events += [
+        Event(day, name, -amount, "fixed")
+        for day, name, amount in tax_projection.payments(db, today, end)
+    ]
+    return sorted(events, key=lambda e: (e.day, e.name))
+
+
 def alerts(db: Session, today: date) -> list[Alert]:
     """Groups that spent more than 30% (and at least 25.00) above their average of the three
     months before, in the last complete month. The average counts the months that have any
@@ -318,6 +522,7 @@ def project(
     floor: Decimal = ZERO,
     include_held: bool = False,
     changes: list[Change] | None = None,
+    follow_seasons: bool = True,
 ) -> Projection:
     """The next `horizon` months (ADR-013, ADR-033): every day's cash in total and in each bank
     account, with what-if changes added on top."""
@@ -344,9 +549,19 @@ def project(
     if not include_held:
         start_cash -= held
 
-    variable, avg_months = variable_average(db, today, average_over)
-    days = _usual_days(db)
     paid_categories = {t.category_id for t in db.scalars(select(RecurringTemplate))}
+    history, group_names = spending_history(db, current, paid_categories)
+    spend = everyday(
+        db,
+        today,
+        average_over,
+        [current, *months],
+        history if follow_seasons else {},
+        group_names,
+        paid_categories,
+    )
+    variable, avg_months = spend.average, spend.average_months
+    days = _usual_days(db)
 
     # Events from today to the end of the third month: what is left of this month, then the
     # three months.
@@ -379,7 +594,8 @@ def project(
         else:
             plan.fixed -= e.amount
     for plan in plans.values():
-        plan.variable = variable
+        plan.variable = spend.by_month[plan.month]
+        plan.seasonal = spend.notes.get(plan.month, [])
         plan.items.sort(key=lambda e: (e.day, e.name))
 
     # Day by day.
@@ -390,8 +606,8 @@ def project(
     balance = start_cash
     day = today
     while day <= end:
-        month_days = (recurring.add_months(recurring.first(day), 1) - recurring.first(day)).days
-        balance += by_day.get(day, ZERO) - variable / month_days
+        month = recurring.first(day)
+        balance += by_day.get(day, ZERO) - spend.by_month[month] / _month_days(month)
         daily.append((day, balance.quantize(CENT)))
         if day == recurring.add_months(recurring.first(day), 1) - timedelta(days=1):
             p = plans.get(recurring.first(day))
@@ -401,6 +617,12 @@ def project(
 
     lowest = min(daily, key=lambda d: (d[1], d[0])) if daily else None
     first_short = next((d for d, b in daily if b < floor), None)
+    band, chance = likely(daily, history, spend, floor)
+    for band_day, worst, best in band:
+        if band_day == recurring.add_months(recurring.first(band_day), 1) - timedelta(days=1):
+            p = plans.get(recurring.first(band_day))
+            if p is not None:
+                p.end_cash_low, p.end_cash_high = worst, best
 
     # Each bank account: its own items only.
     runs = []
@@ -460,4 +682,8 @@ def project(
         accounts=runs,
         first_short=first_short,
         end_cash=daily[-1][1] if daily else start_cash,
+        band=band,
+        chance_under_floor=chance,
+        seasons=follow_seasons,
+        seasonal_groups=len(spend.level),
     )

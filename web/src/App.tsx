@@ -17,6 +17,7 @@ import TaxProjectionPage from "./pages/TaxProjection";
 import TaxesPage from "./pages/Taxes";
 import BudgetPage from "./pages/Budget";
 import GoalsPage from "./pages/Goals";
+import SavingsPage from "./pages/Savings";
 import PurchasesPage from "./pages/Purchases";
 import GroceriesPage from "./pages/Groceries";
 import IvaPage from "./pages/Iva";
@@ -153,6 +154,7 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
     tabs: [
       ["/budget", "Budget"],
       ["/goals", "Goals"],
+      ["/savings", "Saving"],
     ],
   },
   {
@@ -342,6 +344,7 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/projections": <ProjectionsPage />,
   "/budget": <BudgetPage />,
   "/goals": <GoalsPage />,
+  "/savings": <SavingsPage />,
   "/taxes": <TaxesPage />,
   "/taxes/income": <TaxProjectionPage />,
   "/taxes/iva": <IvaPage />,

@@ -154,6 +154,13 @@ export const PAGES: PageDef[] = [
     summary: "What you're saving for and what each goal needs a month.",
   },
   {
+    path: "/savings",
+    label: "Saving",
+    group: "Plan",
+    feature: "P2",
+    summary: "Savings rate by month, safe to spend, what goals need, and which debt to pay first.",
+  },
+  {
     path: "/taxes",
     label: "Tax deductions",
     group: "Taxes & reports",

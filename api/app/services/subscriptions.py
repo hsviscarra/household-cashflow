@@ -39,6 +39,9 @@ CADENCES: list[tuple[str, int, int, Decimal]] = [
     ("yearly", 350, 380, Decimal(1) / 12),
 ]
 SIMILAR = Decimal("0.25")
+# A price increase worth saying (ADR-097): the last charge over the earlier ones by 3% and 0.50.
+PRICE_UP_SHARE = Decimal("0.03")
+PRICE_UP_MIN = Decimal("0.50")
 CENT = Decimal("0.01")
 
 
@@ -63,6 +66,7 @@ class Subscription:
     charges: list[Charge] = field(default_factory=list)
     next_expected: date | None = None
     active: bool = True
+    price_up: Decimal | None = None  # how much the last charge is over the earlier ones
 
     @property
     def last(self) -> date:
@@ -154,6 +158,16 @@ def _similar(amounts: list[Decimal]) -> bool:
     return all(abs(a - mid) <= mid * SIMILAR for a in amounts)
 
 
+def price_up(amounts: list[Decimal]) -> Decimal | None:
+    """How much the last charge is over what the earlier ones typically were, when that is a
+    real increase and not a few cents of exchange rate."""
+    if len(amounts) < 2:
+        return None
+    before = Decimal(str(median(amounts[:-1])))
+    more = amounts[-1] - before
+    return more.quantize(CENT) if more >= max(PRICE_UP_MIN, before * PRICE_UP_SHARE) else None
+
+
 def find(db: Session, today: date | None = None) -> list[Subscription]:
     today = today or date.today()
     paths, subs, costs = _paths(db)
@@ -202,6 +216,7 @@ def find(db: Session, today: date | None = None) -> list[Subscription]:
                     charges,
                     nxt,
                     active,
+                    price_up(amounts) if active else None,
                 )
             )
         elif category in subs:
