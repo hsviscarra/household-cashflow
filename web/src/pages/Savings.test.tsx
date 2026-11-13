@@ -85,9 +85,9 @@ const S: Savings = {
       balance: "2000",
       as_of: "2026-09-30",
       rate: null,
-      minimum: "60",
+      minimum: null,
       rate_from: null,
-      minimum_from: "assumed",
+      minimum_from: null,
       interest_12: "55.17",
       planned: false,
     },
@@ -178,10 +178,12 @@ describe("Saving", () => {
 
     const owed = screen.getByRole("table", { name: "What is owed" });
     expect(within(owed).getAllByRole("row")[1]).toHaveTextContent("Car loan5,000.0024.0%typed150.00typed—");
+    // A card isn't a debt to plan until its rate is typed (it may just be this month's purchases).
     expect(within(owed).getAllByRole("row")[2]).toHaveTextContent(
-      "Visa2,000.00not known60.00assumed: 3% of the balance55.17",
+      "Visa2,000.00type it if you carry a balance—55.17",
     );
-    expect(screen.getByText(/Not in the comparison until its rate/)).toHaveTextContent("Visa");
+    expect(screen.getByText(/^Cards are left out/)).toBeInTheDocument();
+    expect(screen.queryByText(/Not in the comparison until its rate/)).not.toBeInTheDocument();
     const orders = screen.getByRole("table", { name: "Payoff orders compared" });
     expect(within(orders).getAllByRole("row")[2]).toHaveTextContent(
       "Highest rate first17 months (February 2028)900.00Car loan (9)",

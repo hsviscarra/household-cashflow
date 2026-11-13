@@ -16,12 +16,15 @@ import ProjectionsPage from "./pages/Projections";
 import TaxProjectionPage from "./pages/TaxProjection";
 import TaxesPage from "./pages/Taxes";
 import BudgetPage from "./pages/Budget";
+import ExplorePage from "./pages/Explore";
 import GoalsPage from "./pages/Goals";
+import NetWorthAheadPage from "./pages/NetWorthAhead";
 import SavingsPage from "./pages/Savings";
 import PurchasesPage from "./pages/Purchases";
 import GroceriesPage from "./pages/Groceries";
 import IvaPage from "./pages/Iva";
 import CategoryCheckPage from "./pages/CategoryCheck";
+import AskClaude from "./components/AskClaude";
 import SearchBox from "./components/SearchBox";
 import ClosePage from "./pages/Close";
 import BillsPage from "./pages/Bills";
@@ -122,6 +125,7 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
       ["/spending", "Categories"],
       ["/groceries", "Groceries"],
       ["/purchases", "Purchases (invoices)"],
+      ["/explore", "Explore"],
     ],
   },
   {
@@ -146,6 +150,7 @@ export const FAMILIES: { home: string; label: string; tabs: [string, string][] }
     tabs: [
       ["/debt", "Overview"],
       ["/debt/manage", "Manage"],
+      ["/debt/ahead", "Years ahead"],
     ],
   },
   {
@@ -254,6 +259,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <SavedViewLinks onNavigate={onNavigate} />
       <div className="mt-auto flex flex-col gap-2 px-0 pt-6">
         <SearchBox />
+        <AskClaude />
         <Link
           to="/import"
           onClick={onNavigate}
@@ -341,9 +347,11 @@ const PAGE_ELEMENTS: Record<string, JSX.Element> = {
   "/subscriptions": <BillsPage start="found" />,
   "/debt": <DebtPage />,
   "/debt/manage": <NetWorthManagePage />,
+  "/debt/ahead": <NetWorthAheadPage />,
   "/projections": <ProjectionsPage />,
   "/budget": <BudgetPage />,
   "/goals": <GoalsPage />,
+  "/explore": <ExplorePage />,
   "/savings": <SavingsPage />,
   "/taxes": <TaxesPage />,
   "/taxes/income": <TaxProjectionPage />,

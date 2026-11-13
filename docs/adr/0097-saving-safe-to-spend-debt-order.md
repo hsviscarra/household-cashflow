@@ -41,6 +41,15 @@ now records which widgets it knew), so nobody has to find it under Customize.
 An active subscription whose last charge is over its earlier ones by 3% and at least 0.50 says
 "Went up" with the amount.
 
+## Corrected after the first look at real data (0.110.0, Nov 13 2026)
+
+A card's statement balance is this month's purchases unless it is carried, and the app can't
+tell which. The first version estimated a rate from the year's interest (0.3% to 4%) and
+assumed a 3% payment, which made five cards look like debts that take three years to pay. Now a
+card has no rate and no payment, and isn't compared, until its rate is typed; with a rate
+typed, its payment is assumed at 3% of the balance (25.00 at least) until that is typed too.
+What a card cost in interest and fees over twelve months is still shown.
+
 ## Assumptions (constants in `services/savings.py`, `payoff.py`, `subscriptions.py`)
 
 `RATE_MONTHS` 12; `CARD_MINIMUM_SHARE` 3%, `CARD_MINIMUM_FLOOR` 25; `MAX_RATE` 200%;

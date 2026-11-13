@@ -13,12 +13,14 @@ from app.auth import allow_list
 from app.config import get_settings
 from app.mcp_server import http_endpoint
 from app.routers import (
+    ask,
     bank_sync,
     batches,
     budget,
     classify,
     close,
     costs,
+    explore,
     gastos,
     goals,
     health,
@@ -29,6 +31,7 @@ from app.routers import (
     iva,
     me,
     networth,
+    outlook,
     people,
     projections,
     reconcile,
@@ -106,6 +109,9 @@ def create_app() -> FastAPI:
     app.include_router(tax_projection.router)
     app.include_router(reconcile.router)
     app.include_router(savings.router)
+    app.include_router(outlook.router)
+    app.include_router(explore.router)
+    app.include_router(ask.router)
 
     app.router.routes.append(mcp_route)
 

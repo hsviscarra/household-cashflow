@@ -31,6 +31,7 @@ from app.models import v_spending_line as v
 from app.services import (
     likely_range,
     loans,
+    measures,
     networth,
     payday,
     people,
@@ -325,13 +326,14 @@ def _month_days(month: date) -> int:
 
 def likely(
     daily: list[tuple[date, Decimal]],
-    history: seasons.History,
+    spent: dict[date, Decimal],
     spend: Everyday,
     floor: Decimal,
 ) -> tuple[list[tuple[date, Decimal, Decimal]], Decimal | None]:
     """The likely range around the expected cash, day by day, and the chance of going under the
-    floor (ADR-096). Nothing when the history is too short to say."""
-    spent = seasons.total(history)
+    floor (ADR-096). `spent` is everything spent in each of the last months: the workbook's
+    months and the statements' on the same terms, so a change of source isn't read as a
+    surprise. Nothing when the history is too short to say."""
     past = likely_range.surprises(
         spent,
         {m: sum(seasons.over_usual(spend.level, spend.idx, m).values(), ZERO) for m in spent},
@@ -617,7 +619,10 @@ def project(
 
     lowest = min(daily, key=lambda d: (d[1], d[0])) if daily else None
     first_short = next((d for d, b in daily if b < floor), None)
-    band, chance = likely(daily, history, spend, floor)
+    last_months = [
+        recurring.add_months(current, -i) for i in range(1, likely_range.HISTORY_MONTHS + 1)
+    ]
+    band, chance = likely(daily, measures.spent_by_month(db, last_months), spend, floor)
     for band_day, worst, best in band:
         if band_day == recurring.add_months(recurring.first(band_day), 1) - timedelta(days=1):
             p = plans.get(recurring.first(band_day))

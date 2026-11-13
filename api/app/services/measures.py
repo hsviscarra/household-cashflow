@@ -92,14 +92,35 @@ def window(
         q = q.where(or_(t.txn_date <= cut, t.source == "excel_history"))
     m = Measures()
     for typ, cname, total in db.execute(counted(q, person)):
-        amount = Decimal(str(total or 0))
-        if typ == "income":
-            m.money_in += amount
-        elif typ in SPENT or (typ == "debt_payment" and cname == CARD_PAYMENT):
-            m.spent -= amount
-        elif typ in ("savings", "debt_payment"):
-            m.set_aside -= amount
+        _count(m, typ, cname, Decimal(str(total or 0)))
     return m
+
+
+def _count(m: Measures, typ: str, category: str | None, amount: Decimal) -> None:
+    """Add one total to the measure it belongs to (the rules at the top of this module)."""
+    if typ == "income":
+        m.money_in += amount
+    elif typ in SPENT or (typ == "debt_payment" and category == CARD_PAYMENT):
+        m.spent -= amount
+    elif typ in ("savings", "debt_payment"):
+        m.set_aside -= amount
+
+
+def spent_by_month(db: Session, months: list[date]) -> dict[date, Decimal]:
+    """What was spent in each of `months`, on the same terms as `window`, in one query. The
+    workbook's months and the statements' read alike (a card payment there, its purchases
+    here), which is what makes them comparable month to month (ADR-096)."""
+    t = Transaction
+    q = (
+        select(t.cash_month, t.type, Category.name, func.sum(t.amount))
+        .outerjoin(Category, Category.category_id == t.category_id)
+        .where(t.cash_month.in_(months))
+        .group_by(t.cash_month, t.type, Category.name)
+    )
+    found: dict[date, Measures] = {}
+    for month, typ, cname, total in db.execute(counted(q, None)).all():
+        _count(found.setdefault(month, Measures()), typ, cname, Decimal(str(total or 0)))
+    return {month: m.spent for month, m in found.items()}
 
 
 def month(db: Session, m: date, today: date, person: str | None = None, months: int = 12) -> Month:

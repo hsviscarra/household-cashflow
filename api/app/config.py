@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-haiku-5-5"
     # The monthly report's findings (F16): a few careful sentences once a month.
     anthropic_report_model: str = "claude-sonnet-5-5"
+    # Ask Claude inside the app (ADR-100): what a month of questions may cost at most, in USD,
+    # until someone changes it on the panel; 0 turns the panel off.
+    ask_monthly_cap: Decimal = Decimal(10)
 
     @property
     def allowed_email_set(self) -> frozenset[str]:

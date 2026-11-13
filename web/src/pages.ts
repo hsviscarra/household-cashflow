@@ -56,6 +56,14 @@ export const PAGES: PageDef[] = [
     summary: "Product by product, from electronic invoices.",
   },
   {
+    path: "/explore",
+    label: "Explore",
+    group: "Money",
+    feature: "F13",
+    summary:
+      "Build your own view of spending: a measure, rows, columns and a period; save it and pin it to Home.",
+  },
+  {
     path: "/transactions",
     label: "Transactions",
     group: "Money",
@@ -131,6 +139,15 @@ export const PAGES: PageDef[] = [
     feature: "F14",
     summary: "Update values, add or pause items, load a loan's table.",
     hidden: true, // a tab of Net worth (ADR-090)
+  },
+  {
+    path: "/debt/ahead",
+    label: "Net worth, years ahead",
+    group: "Wealth",
+    feature: "F14",
+    summary:
+      "Net worth five to ten years ahead: loans by their tables, investments at a return range, milestones.",
+    hidden: true, // a tab of Net worth (ADR-098)
   },
   {
     path: "/projections",

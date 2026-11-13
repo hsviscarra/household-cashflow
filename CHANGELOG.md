@@ -5,6 +5,40 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.110.0] — Ask Claude inside the app
+
+### Added
+- **Ask Claude** (in the menu, on every page): ask in plain words ("why was October higher than
+  September?") and get an answer from your own numbers. Claude reads the same cash flow,
+  spending, bills and net worth it reads today from the Claude app, and can't change anything.
+  "Think harder" uses the larger model. Each question costs a fraction of a cent to a few
+  cents; the month has a limit, $10.00 until you change it on the panel (ADR-100).
+
+### Fixed
+- **The forecast's range was too wide.** It read the change from the workbook's months (card
+  payments as one amount) to the statements' (each purchase) as if spending had jumped. It now
+  compares everything spent month by month, which reads both alike (ADR-096, corrected).
+- **Cards aren't debts to pay off unless you say so.** Saving listed each card's statement
+  balance with an estimated rate and an assumed payment, as if it were carried for years. A
+  card is now left out of the comparison until you type its rate (ADR-097, corrected).
+
+## [0.109.0] — Explore
+
+### Added
+- **Explore** (Spending → Explore): build your own view of spending. Pick what to measure
+  (amount, number of lines, average line), what goes in the rows and the columns, a period and
+  a filter; see it as a table or a chart, download it, keep it by name and pin it to Home,
+  where it shows in "Your views" (ADR-099).
+
+## [0.108.0] — Net worth, years ahead
+
+### Added
+- **Years ahead** (Net worth → Years ahead): net worth at the end of each of the next 5 or 10
+  years. What you keep a year pays the loans by their tables and builds cash or investments;
+  investments grow at a low, an expected and a high return you choose; property and vehicles
+  change by yearly rates you choose. Loans' last installments, your goals' dates and your own
+  milestones show in their year (ADR-098).
+
 ## [0.107.0] — Saving, safe to spend, and which debt to pay first
 
 ### Added
