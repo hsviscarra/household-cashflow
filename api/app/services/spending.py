@@ -19,6 +19,7 @@ from app.services.recurring import add_months, first
 
 TOP_MERCHANTS = 10
 TREND_MONTHS = 12
+MAX_SERIES_MONTHS = 36  # the longest period the chart with controls can ask for
 ZERO = Decimal(0)
 
 
@@ -211,6 +212,67 @@ def trend(
     for m, total in db.execute(_who(q, person)):
         totals[m] = Decimal(str(total))
     return [(add_months(start, i), totals[add_months(start, i)]) for i in range(count)]
+
+
+SERIES_BY = ("none", "group", "category", "person", "account", "country")
+MAX_SERIES = 7  # the chart's palette; what is left goes together as "Everything else"
+REST = "Everything else"
+
+
+@dataclass
+class Series:
+    key: str
+    label: str
+    color: str | None  # the group's color when the split is by group
+    values: list[Decimal]  # one per month, oldest first
+
+
+@dataclass
+class SeriesSet:
+    months: list[date]
+    by: str
+    series: list[Series]
+
+
+def series(
+    db: Session, month: date, count: int, by: str = "none", person: str | None = None
+) -> SeriesSet:
+    """Spending for each of `count` months up to `month`, split by a dimension (ADR-094): the
+    chart with controls reads this. The MAX_SERIES largest over the period keep their own
+    series, the rest add up into one. Grouped by the database; the same lines as `trend`."""
+    if by not in SERIES_BY:
+        raise ValueError(f"by must be one of {', '.join(SERIES_BY)}")
+    start = add_months(first(month), -(count - 1))
+    months = [add_months(start, i) for i in range(count)]
+    at = {m: i for i, m in enumerate(months)}
+    label = {
+        "none": None,
+        "group": v.c.group_name,
+        "category": v.c.category_name,
+        "person": v.c.person,
+        "account": v.c.account_name,
+        "country": v.c.country,
+    }[by]
+    cols = [v.c.cash_month, func.sum(v.c.amount)]
+    if label is not None:
+        cols += [label, func.max(v.c.group_color)]
+    q = select(*cols).where(v.c.cash_month >= start, v.c.cash_month <= first(month))
+    q = q.group_by(v.c.cash_month) if label is None else q.group_by(v.c.cash_month, label)
+    found: dict[str, Series] = {}
+    for row in db.execute(_who(q, person)).all():
+        name = "Spending" if label is None else (row[2] or "Not set")
+        one = found.setdefault(
+            name,
+            Series(name, name, row[3] if by == "group" else None, [ZERO] * count),
+        )
+        one.values[at[row[0]]] += Decimal(str(row[1]))
+    ranked = sorted(found.values(), key=lambda x: (-sum(x.values, ZERO), x.label))
+    kept, rest = ranked[:MAX_SERIES], ranked[MAX_SERIES:]
+    if rest:
+        kept.append(
+            Series(REST, REST, None, [sum((r.values[i] for r in rest), ZERO) for i in range(count)])
+        )
+    return SeriesSet(months, by, kept)
 
 
 @dataclass

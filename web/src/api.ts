@@ -2061,3 +2061,13 @@ export type PersonTax = {
 export const fetchTaxProjection = (year: number) => send<PersonTax[]>("GET", `/api/taxes/${year}/projection`);
 export const saveTaxProfile = (year: number, person: string, body: TaxProfile) =>
   send<PersonTax>("PUT", `/api/taxes/${year}/projection/${person}`, body);
+
+// ---------------- ADR-094: spending by month, split by a dimension ----------------
+export type SeriesBy = "none" | "group" | "category" | "person" | "account" | "country";
+export type SpendSeries = {
+  months: string[];
+  by: SeriesBy;
+  series: { key: string; label: string; color: string | null; values: string[] }[];
+};
+export const fetchSpendSeries = (month: string, months: number, by: SeriesBy, person?: string) =>
+  send<SpendSeries>("GET", `/api/spending/series${query({ month, months: String(months), by, person })}`);

@@ -5,6 +5,18 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.104.0] — A chart with controls
+
+### Added
+- **Spending over time has controls**: the period (3 to 24 months, or this year), what to split
+  by (group, category, who, account or country) and how to show it (amounts, share of each
+  month, or the numbers as a table). Your choice is remembered, and Download CSV gives the same
+  numbers as a file (ADR-094).
+
+### Changed
+- **Groceries → Products is on the shared table**: choose and order the columns, sort by any,
+  group by aisle, type or brand with subtotals. Edit opens under the row.
+
 ## [0.103.0] — Ticked totals, find in a table, one search box
 
 ### Added

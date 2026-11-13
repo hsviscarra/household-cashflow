@@ -847,6 +847,21 @@ class SpendMonthOut(BaseModel):
     amount: Decimal
 
 
+class SpendSeriesOut(BaseModel):
+    key: str
+    label: str
+    color: str | None
+    values: list[Decimal]
+
+
+class SpendSeriesSetOut(BaseModel):
+    """Spending by month, split by a dimension (ADR-094)."""
+
+    months: list[date]
+    by: str
+    series: list[SpendSeriesOut]
+
+
 class SpendingOut(BaseModel):
     month: date
     months: list[date]

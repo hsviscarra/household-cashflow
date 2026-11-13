@@ -11,7 +11,7 @@ export type SavedView = { id: string; name: string; path: string; search: string
 
 const KEY = ["settings"];
 
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};

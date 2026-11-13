@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -167,3 +168,36 @@ def test_a_statement_month_with_breakdowns_and_drill_down(client: TestClient, db
     assert Decimal(hernan["total"]["amount"]) == Decimal("217.12")
     assert Decimal(hernan["total"]["prev"]) == Decimal("107.12")
     assert client.get("/api/spending", params={"person": "Rubén"}).status_code == 422
+
+
+def test_series_by_month_split_and_folded(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-094: the chart with controls. The split adds up to the trend, month by month."""
+    from app.services import spending
+
+    client.post(
+        "/api/history/excel/load", files={"file": ("Cash Flow.xlsx", build(), XLSX)}, headers=USER
+    )
+    whole = client.get("/api/spending/series", params={"months": 3}).json()
+    assert whole["months"] == ["2025-11-01", "2025-12-01", "2026-01-01"] and whole["by"] == "none"
+    assert [s["label"] for s in whole["series"]] == ["Spending"]
+    trend = {t["month"]: Decimal(t["amount"]) for t in _get(client)["trend"]}
+    assert [Decimal(x) for x in whole["series"][0]["values"]] == [trend[m] for m in whole["months"]]
+
+    groups = client.get("/api/spending/series", params={"months": 3, "by": "group"}).json()
+    health = next(s for s in groups["series"] if s["label"] == "Health")
+    assert Decimal(health["values"][-1]) == Decimal("60.10") and health["color"]
+    for i, m in enumerate(groups["months"]):
+        assert sum(Decimal(s["values"][i]) for s in groups["series"]) == trend[m]
+
+    # More than seven: the smallest go together, and the sum is still the whole.
+    monkeypatch.setattr(spending, "MAX_SERIES", 1)
+    cats = spending.series(db, date(2026, 1, 1), 12, "category")
+    assert len(cats.series) == 2 and cats.series[-1].label == spending.REST
+    year = spending.trend(db, date(2026, 1, 1), 12)
+    assert [sum((s.values[i] for s in cats.series), Decimal(0)) for i in range(12)] == [
+        a for _, a in year
+    ]
+    assert client.get("/api/spending/series", params={"by": "merchant"}).status_code == 422
+    assert client.get("/api/spending/series", params={"months": 99}).status_code == 422

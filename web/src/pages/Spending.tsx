@@ -10,7 +10,7 @@ import {
   type Spending,
   type SpendSlice,
 } from "../api";
-import { MonthBars } from "../components/charts";
+import SpendingChart from "../components/SpendingChart";
 import { localToday, money, monthLong, monthShort, num, parts } from "../money";
 import { ExportLinks } from "../components/ExportLinks";
 import LinesPanel from "../components/LinesPanel";
@@ -322,40 +322,9 @@ export default function SpendingPage() {
 
           <Ideas month={s.month} person={who} />
 
-          <h2 className="mt-10 font-display text-2xl font-bold">The last 12 months</h2>
+          <h2 className="mt-10 font-display text-2xl font-bold">Spending over time</h2>
           <div className="mt-3 rounded-2xl bg-surface p-4 md:p-6">
-            <MonthBars
-              title={`Spending by month, ${monthLong(s.trend[0].month)} to ${monthLong(s.month)}`}
-              data={s.trend.map((t) => ({
-                key: t.month,
-                label: monthShort(t.month),
-                value: num(t.amount),
-                selected: t.month === s.month,
-                tooltip: (
-                  <>
-                    <strong>{monthLong(t.month)}</strong>
-                    <span className="num block">{money(t.amount)}</span>
-                  </>
-                ),
-              }))}
-              onSelect={(m) => s.months.includes(m) && go(m)}
-            />
-            <details className="mt-2 text-sm">
-              <summary className="cursor-pointer text-muted">The numbers</summary>
-              <table className="mt-2 w-full">
-                <caption className="sr-only">Spending by month</caption>
-                <tbody className="divide-y divide-line">
-                  {s.trend.map((t) => (
-                    <tr key={t.month}>
-                      <th scope="row" className="py-1 text-left font-normal">
-                        {monthLong(t.month)}
-                      </th>
-                      <td className="num py-1 text-right">{money(t.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
+            <SpendingChart month={s.month} person={who} onSelect={(m) => s.months.includes(m) && go(m)} />
           </div>
         </>
       )}

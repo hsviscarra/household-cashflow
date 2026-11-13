@@ -107,6 +107,23 @@ beforeEach(() => {
           settings = { ...settings, ...{ person: JSON.parse(String(init.body)).value } };
         return Promise.resolve(new Response(JSON.stringify({ user: "local", settings })));
       }
+      if (url.startsWith("/api/spending/series"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              months: SPENDING.trend.map((t) => t.month),
+              by: "none",
+              series: [
+                {
+                  key: "Spending",
+                  label: "Spending",
+                  color: null,
+                  values: SPENDING.trend.map((t) => t.amount),
+                },
+              ],
+            }),
+          ),
+        );
       urls.push(url);
       const out = url.startsWith("/api/spending/lines")
         ? LINES
@@ -305,7 +322,7 @@ describe("Spending page", () => {
     await screen.findByRole("table", { name: /Spending by category/ });
     fireEvent.change(screen.getByLabelText("Month"), { target: { value: "2026-08-01" } });
     await screen.findByRole("table", { name: /Spending by category/ });
-    fireEvent.click(screen.getByTestId("bar-2026-10-01"));
+    fireEvent.click(await screen.findByTestId("stack-2026-10-01"));
     expect(urls).toEqual(
       expect.arrayContaining(["/api/spending?month=2026-08-01", "/api/spending?month=2026-10-01"]),
     );

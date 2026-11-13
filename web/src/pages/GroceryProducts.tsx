@@ -8,6 +8,7 @@ import {
   type GroceryProduct,
   type GroceryProducts,
 } from "../api";
+import DataTable, { type Column } from "../components/DataTable";
 import { addMonths, money, monthLong, num } from "../money";
 
 // Groceries → Products (ADR-061): every supermarket product of a period, totals by aisle, type
@@ -233,67 +234,105 @@ function Totals({
   );
 }
 
+const COLUMNS = (edit: (key: string) => void): Column<GroceryProduct>[] => [
+  {
+    id: "product",
+    label: "Product",
+    fixed: true,
+    sort: (r) => r.description,
+    cell: (r) => (
+      <span className="block max-w-72 truncate" title={r.description}>
+        {r.description}
+        {r.label_source === "claude" && <span className="pill ml-2 text-xs">Claude</span>}
+      </span>
+    ),
+  },
+  {
+    id: "aisle",
+    label: "Aisle",
+    sort: (r) => r.product_group ?? "",
+    group: (r) => r.product_group ?? UNKNOWN,
+    cell: (r) => r.product_group ?? "—",
+  },
+  {
+    id: "type",
+    label: "Type",
+    sort: (r) => r.product_type ?? "",
+    group: (r) => r.product_type ?? UNKNOWN,
+    cell: (r) => <span className="font-medium">{r.product_type ?? "—"}</span>,
+  },
+  {
+    id: "brand",
+    label: "Brand",
+    sort: (r) => r.brand ?? "",
+    group: (r) => r.brand ?? UNKNOWN,
+    cell: (r) => r.brand ?? <span className="text-muted">no brand</span>,
+  },
+  {
+    id: "store",
+    label: "Store",
+    sort: (r) => r.stores.join(", "),
+    cell: (r) => r.stores.join(", "),
+  },
+  {
+    id: "quantity",
+    label: "Bought",
+    align: "right",
+    sort: (r) => num(r.quantity),
+    cell: (r) => Number(r.quantity).toLocaleString("en-US", { maximumFractionDigits: 3 }),
+  },
+  { id: "times", label: "Times", align: "right", sort: (r) => r.times, cell: (r) => `${r.times}×` },
+  {
+    id: "unit_price",
+    label: "Unit price",
+    align: "right",
+    sort: (r) => num(r.unit_price),
+    cell: (r) => money(r.unit_price),
+  },
+  {
+    id: "amount",
+    label: "Spent",
+    align: "right",
+    fixed: "end",
+    sort: (r) => num(r.amount),
+    total: (r) => num(r.amount),
+    cell: (r) => <span className="font-semibold">{money(r.amount)}</span>,
+  },
+  {
+    id: "edit",
+    label: "Edit",
+    header: <span className="sr-only">Edit</span>,
+    align: "right",
+    fixed: "end",
+    cell: (r) => (
+      <button
+        className="text-primary underline"
+        aria-label={`Edit ${r.description}`}
+        onClick={() => edit(r.product_key)}
+      >
+        Edit
+      </button>
+    ),
+  },
+];
+
+// On the shared table (ADR-091): columns, order, sort and grouping with subtotals are the
+// person's; the label editor opens under the row.
 function ProductTable({ rows }: { rows: GroceryProduct[] }) {
   const [editing, setEditing] = useState<string | null>(null);
+  const columns = useMemo(() => COLUMNS(setEditing), []);
   return (
-    <div className="mt-3 overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-muted">
-          <tr>
-            <th scope="col" className="px-2 py-1 text-left font-semibold">
-              Product
-            </th>
-            <th scope="col" className="px-2 py-1 text-left font-semibold">
-              Aisle · type · brand
-            </th>
-            <th scope="col" className="px-2 py-1 text-right font-semibold">
-              Bought
-            </th>
-            <th scope="col" className="px-2 py-1 text-right font-semibold">
-              Unit price
-            </th>
-            <th scope="col" className="px-2 py-1 text-right font-semibold">
-              Spent
-            </th>
-            <th scope="col">
-              <span className="sr-only">Edit</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((r) =>
-            editing === r.product_key ? (
-              <EditRow key={r.product_key} r={r} done={() => setEditing(null)} />
-            ) : (
-              <tr key={r.product_key}>
-                <td className="max-w-72 truncate px-2 py-2" title={r.description}>
-                  {r.description}
-                </td>
-                <td className="px-2 py-2">
-                  <span className="text-muted">{r.product_group ?? "—"} · </span>
-                  <span className="font-medium">{r.product_type ?? "—"}</span>
-                  <span className="text-muted"> · {r.brand ?? "no brand"}</span>
-                  {r.label_source === "claude" && <span className="pill ml-2 text-xs">Claude</span>}
-                </td>
-                <td className="num px-2 py-2 text-right">
-                  {Number(r.quantity).toLocaleString("en-US", { maximumFractionDigits: 3 })} · {r.times}×
-                </td>
-                <td className="num px-2 py-2 text-right">{money(r.unit_price)}</td>
-                <td className="num px-2 py-2 text-right font-semibold">{money(r.amount)}</td>
-                <td className="px-2 py-2 text-right">
-                  <button
-                    className="text-primary underline"
-                    aria-label={`Edit ${r.description}`}
-                    onClick={() => setEditing(r.product_key)}
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ),
-          )}
-        </tbody>
-      </table>
+    <div className="mt-3">
+      <DataTable
+        table="grocery-products"
+        caption="Every product bought in the period"
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.product_key}
+        defaults={["aisle", "type", "brand", "quantity", "times", "unit_price"]}
+        defaultSort={{ id: "amount", dir: "desc" }}
+        expanded={(r) => (editing === r.product_key ? <EditRow r={r} done={() => setEditing(null)} /> : null)}
+      />
     </div>
   );
 }
@@ -317,51 +356,46 @@ function EditRow({ r, done }: { r: GroceryProduct; done: () => void }) {
     },
   });
   return (
-    <tr className="bg-surface">
-      <td className="px-2 py-2 font-medium">{r.description}</td>
-      <td colSpan={4} className="px-2 py-2">
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save.mutate();
-          }}
-        >
-          <select
-            className="field !w-48"
-            aria-label="Aisle"
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-          >
-            <option value="">No aisle</option>
-            {AISLES.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-          <input
-            className="field !w-40"
-            aria-label="Type"
-            placeholder="Type, e.g. Cheese"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-          />
-          <input
-            className="field !w-40"
-            aria-label="Brand"
-            placeholder="Brand, e.g. Kiosko"
-            value={brand}
-            onChange={(e) => setBrand(e.target.value)}
-          />
-          <button className="btn btn-primary h-9 px-4 text-sm" disabled={save.isPending}>
-            Save for every purchase
-          </button>
-          <button type="button" className="btn btn-quiet h-9 px-3 text-sm" onClick={done}>
-            Cancel
-          </button>
-          {save.error && <span className="text-danger-ink">{(save.error as Error).message}</span>}
-        </form>
-      </td>
-      <td />
-    </tr>
+    <form
+      aria-label={`Labels of ${r.description}`}
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate();
+      }}
+    >
+      <select
+        className="field !w-48"
+        aria-label="Aisle"
+        value={group}
+        onChange={(e) => setGroup(e.target.value)}
+      >
+        <option value="">No aisle</option>
+        {AISLES.map((a) => (
+          <option key={a}>{a}</option>
+        ))}
+      </select>
+      <input
+        className="field !w-40"
+        aria-label="Type"
+        placeholder="Type, e.g. Cheese"
+        value={type}
+        onChange={(e) => setType(e.target.value)}
+      />
+      <input
+        className="field !w-40"
+        aria-label="Brand"
+        placeholder="Brand, e.g. Kiosko"
+        value={brand}
+        onChange={(e) => setBrand(e.target.value)}
+      />
+      <button className="btn btn-primary h-9 px-4 text-sm" disabled={save.isPending}>
+        Save for every purchase
+      </button>
+      <button type="button" className="btn btn-quiet h-9 px-3 text-sm" onClick={done}>
+        Cancel
+      </button>
+      {save.error && <span className="text-danger-ink">{(save.error as Error).message}</span>}
+    </form>
   );
 }

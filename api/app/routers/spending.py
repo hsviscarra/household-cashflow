@@ -18,6 +18,8 @@ from app.schemas import (
     SpendLineOut,
     SpendMerchantOut,
     SpendMonthOut,
+    SpendSeriesOut,
+    SpendSeriesSetOut,
     SpendSliceOut,
     SpendTotalOut,
 )
@@ -56,6 +58,28 @@ def get_spending(db: DB, month: Month = None, person: Person = None) -> Spending
         fixed=[SpendSliceOut(**asdict(x)) for x in s.fixed],
         merchants=[SpendMerchantOut(**asdict(m)) for m in s.merchants],
         trend=[SpendMonthOut(month=m, amount=a) for m, a in s.trend],
+    )
+
+
+@router.get("/series", response_model=SpendSeriesSetOut)
+def get_series(
+    db: DB,
+    month: Month = None,
+    months: Annotated[int, Query(ge=1, le=spending.MAX_SERIES_MONTHS)] = spending.TREND_MONTHS,
+    by: Annotated[
+        Literal["none", "group", "category", "person", "account", "country"], Query()
+    ] = "none",
+    person: Person = None,
+) -> SpendSeriesSetOut:
+    """Spending for each of the last `months` months up to `month`, split by group, category,
+    person, account or country; the seven largest keep their own series (ADR-094)."""
+    latest = spending.months(db)
+    end = month or (latest[0] if latest else date.today())
+    found = spending.series(db, end, months, by, person)
+    return SpendSeriesSetOut(
+        months=found.months,
+        by=found.by,
+        series=[SpendSeriesOut(**asdict(x)) for x in found.series],
     )
 
 
