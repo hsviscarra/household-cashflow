@@ -344,6 +344,7 @@ function Products({ g, month }: { g: Groceries; month: string }) {
           rowKey={(p) => p.product_key}
           defaults={["bought", "unit", "change", "spent"]}
           defaultSort={{ id: "spent", dir: "desc" }}
+          search={(p) => `${p.description} ${p.product_group ?? ""}`}
         />
       </div>
     </section>

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
 import { money } from "../money";
 import { useDensity, useTableLayout, type TableSort } from "../prefs";
@@ -39,7 +39,31 @@ type Props<T> = {
   rowClass?: (row: T) => string;
   /** Something to draw under a row across the whole table (its editor), or null. */
   expanded?: (row: T) => ReactNode | null;
+  /** The words a row is found by; with it the table gets a "Find in this table" box. */
+  search?: (row: T) => string;
+  /** Rows can be ticked: the table adds the tick column, totals what is ticked and shows the
+   * page's actions for those rows (ADR-093). The page owns which rows are ticked. */
+  select?: {
+    ticked: Set<string | number>;
+    onChange: (ticked: Set<string | number>) => void;
+    /** What the row is called in "Tick …". */
+    name: (row: T) => string;
+    /** Buttons or pickers that act on the ticked rows. */
+    actions?: (rows: T[]) => ReactNode;
+    /** In place of the plain sums: for example out, in and net. */
+    summary?: (rows: T[]) => ReactNode;
+  };
 };
+
+/** Every word typed must appear in the row's words, in any order and any case. */
+export function found<T>(rows: T[], words: (row: T) => string, typed: string): T[] {
+  const wanted = typed.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!wanted.length) return rows;
+  return rows.filter((r) => {
+    const text = words(r).toLowerCase();
+    return wanted.every((w) => text.includes(w));
+  });
+}
 
 const compare = (a: string | number, b: string | number) =>
   typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
@@ -72,7 +96,12 @@ export default function DataTable<T>({
   defaultSort,
   rowClass,
   expanded,
+  search,
+  select,
 }: Props<T>) {
+  const [typed, setTyped] = useState("");
+  const all = rows;
+  rows = search ? found(all, search, typed) : all;
   const pickable = columns.filter((c) => !c.fixed);
   const [layout, setLayout] = useTableLayout(
     table,
@@ -81,7 +110,38 @@ export default function DataTable<T>({
     columns.filter((c) => c.fixed).map((c) => c.id),
   );
   const byId = new Map(columns.map((c) => [c.id, c]));
+  const tick: Column<T>[] = select
+    ? [
+        {
+          id: "__tick",
+          label: "Tick",
+          fixed: true,
+          header: (
+            <input
+              type="checkbox"
+              aria-label="Tick every row shown"
+              checked={rows.length > 0 && rows.every((r) => select.ticked.has(rowKey(r)))}
+              onChange={(e) => select.onChange(new Set(e.target.checked ? rows.map(rowKey) : []))}
+            />
+          ),
+          cell: (r) => (
+            <input
+              type="checkbox"
+              aria-label={`Tick ${select.name(r)}`}
+              checked={select.ticked.has(rowKey(r))}
+              onChange={() => {
+                const next = new Set(select.ticked);
+                if (!next.delete(rowKey(r))) next.add(rowKey(r));
+                select.onChange(next);
+              }}
+            />
+          ),
+        },
+      ]
+    : [];
+  const chosen = select ? all.filter((r) => select.ticked.has(rowKey(r))) : [];
   const shown = [
+    ...tick,
     ...columns.filter((c) => c.fixed && c.fixed !== "end"),
     ...layout.columns.map((id) => byId.get(id)!),
     ...columns.filter((c) => c.fixed === "end"),
@@ -108,6 +168,23 @@ export default function DataTable<T>({
   return (
     <div>
       <div className="flex flex-wrap items-center justify-end gap-3">
+        {search && (
+          <label className="mr-auto flex items-center gap-2 text-sm">
+            <span className="sr-only">Find in this table</span>
+            <input
+              type="search"
+              className="field h-10 !w-64"
+              placeholder="Find in this table"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+            {typed && (
+              <span className="text-muted" role="status">
+                {rows.length} of {all.length}
+              </span>
+            )}
+          </label>
+        )}
         {columns.some((c) => c.group) && (
           <label className="flex items-center gap-2 text-sm">
             Group by
@@ -133,6 +210,34 @@ export default function DataTable<T>({
           onChange={(ids) => setLayout({ columns: ids })}
         />
       </div>
+      {select && chosen.length > 0 && (
+        <div
+          className="mt-3 flex flex-wrap items-center gap-3 rounded-[10px] bg-info-bg px-3 py-2 text-sm"
+          role="status"
+        >
+          <span className="font-semibold">{chosen.length} ticked</span>
+          {select.summary
+            ? select.summary(chosen)
+            : columns
+                .filter((c) => c.total)
+                .map((c) => (
+                  <span key={c.id}>
+                    {c.label}{" "}
+                    <span className="num font-semibold">
+                      {money(chosen.reduce((t, r) => t + c.total!(r), 0))}
+                    </span>
+                  </span>
+                ))}
+          {select.actions?.(chosen)}
+          <button
+            type="button"
+            className="btn btn-quiet ml-auto h-8 px-3"
+            onClick={() => select.onChange(new Set())}
+          >
+            Clear
+          </button>
+        </div>
+      )}
       <div className="mt-3 overflow-x-auto rounded-[14px] border border-line bg-ground">
         <table className="w-full text-sm">
           <caption className="sr-only">{caption}</caption>

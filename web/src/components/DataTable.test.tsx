@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import DataTable, { grouped, sorted, type Column } from "./DataTable";
+import { useState } from "react";
+
+import DataTable, { found, grouped, sorted, type Column } from "./DataTable";
 
 type Row = { id: number; shop: string; who: string; amount: number };
 const ROWS: Row[] = [
@@ -143,5 +145,55 @@ describe("DataTable", () => {
     fireEvent.click(screen.getByLabelText("Who"));
     await vi.waitFor(() => expect(shops()[1]).toBe("Bakery#112.00"));
     expect(screen.queryByLabelText("Shop")).not.toBeInTheDocument(); // fixed: always shown
+  });
+
+  it("finds rows by words and totals what is ticked", async () => {
+    expect(found(ROWS, (r) => `${r.shop} ${r.who}`, "  lauren CIN ").map((r) => r.id)).toEqual([3]);
+    expect(found(ROWS, (r) => r.shop, "")).toBe(ROWS);
+
+    function Page() {
+      const [ticked, setTicked] = useState<Set<string | number>>(new Set());
+      return (
+        <DataTable
+          table="demo"
+          caption="Demo"
+          columns={COLUMNS}
+          rows={ROWS}
+          rowKey={(r) => r.id}
+          defaults={["who", "amount"]}
+          search={(r) => `${r.shop} ${r.who}`}
+          select={{
+            ticked,
+            onChange: setTicked,
+            name: (r) => r.shop,
+            actions: (rows) => <button type="button">Act on {rows.map((r) => r.id).join("+")}</button>,
+          }}
+        />
+      );
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["settings"], { user: "t", settings: {} });
+    render(
+      <QueryClientProvider client={client}>
+        <Page />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("table", { name: "Demo" });
+    fireEvent.click(screen.getByLabelText("Tick Bakery"));
+    fireEvent.click(screen.getByLabelText("Tick Garage"));
+    const bar = screen.getByText("2 ticked").closest("div")!;
+    expect(bar).toHaveTextContent("Amount 312.00");
+    expect(within(bar).getByRole("button", { name: "Act on 1+2" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Find in this table"), { target: { value: "lauren" } });
+    expect(screen.getByText("2 of 3")).toBeInTheDocument();
+    expect(shops().at(-1)).toMatch(/Total · 2.*32\.50/);
+    // Ticking everything shown ticks only what the search left; what was ticked stays counted.
+    fireEvent.click(screen.getByLabelText("Tick every row shown"));
+    expect(screen.getByText("2 ticked").closest("div")).toHaveTextContent("Amount 32.50");
+    fireEvent.click(
+      within(screen.getByText("2 ticked").closest("div")!).getByRole("button", { name: "Clear" }),
+    );
+    expect(screen.queryByText(/ticked/)).not.toBeInTheDocument();
   });
 });

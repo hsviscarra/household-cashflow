@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.103.0] — Ticked totals, find in a table, one search box
+
+### Added
+- **Tick lines on Transactions** to see their money out, in and net, and categorize them all at
+  once (ADR-093).
+- **Find in this table** on Deductions, By category and Groceries' top products.
+- **Search** (Ctrl+K or ⌘K, or the button in the menu): go to a page or an action, or search the
+  last 12 months of lines by text or by amount.
+
 ## [0.102.1] — Let the database pause
 
 ### Fixed

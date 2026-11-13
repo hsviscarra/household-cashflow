@@ -187,8 +187,22 @@ export default function TransactionsPage() {
     else next.delete(key);
     setParams(next, { replace: key === "q" || key === "min" || key === "max" });
   };
-  useQuery({ queryKey: ["categories"], queryFn: fetchCategories }); // ready for the editors
+  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const [open, setOpen] = useState<number | null>(null);
+  // Ticked lines (ADR-093): their totals show above the table and they can be categorized together.
+  const [ticked, setTicked] = useState<Set<number>>(new Set());
+  const qc = useQueryClient();
+  const bulk = useMutation({
+    mutationFn: async ({ ids, category_id }: { ids: number[]; category_id: number }) => {
+      for (const id of ids) await updateTransaction(id, { category_id });
+    },
+    onSuccess: () => {
+      setTicked(new Set());
+      ["transactions", "cashflow", "spending", "todo", "review"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k] }),
+      );
+    },
+  });
 
   const out = (data ?? []).filter((t) => counted(t) && num(t.amount) < 0 && t.type !== "transfer");
   const totalOut = out.reduce((s, t) => s - num(t.amount), 0);
@@ -510,6 +524,35 @@ export default function TransactionsPage() {
             expanded={(t) =>
               open === t.transaction_id ? <TxnEditor t={t} onDone={() => setOpen(null)} /> : null
             }
+            select={{
+              ticked,
+              onChange: (next) => setTicked(next as Set<number>),
+              name: (t) => t.description,
+              summary: (lines) => <TickedTotals lines={lines.filter(counted)} />,
+              actions: (lines) => (
+                <span className="flex items-center gap-2">
+                  Categorize as
+                  <span className="w-56">
+                    <CategoryPicker
+                      label="Category for the ticked lines"
+                      hideLabel
+                      groups={cats.data ?? []}
+                      value=""
+                      placeholder="Choose a category"
+                      onChange={(id) =>
+                        id !== "" && bulk.mutate({ ids: lines.map((t) => t.transaction_id), category_id: id })
+                      }
+                    />
+                  </span>
+                  {bulk.isPending && <span className="text-muted">Saving…</span>}
+                  {bulk.error && (
+                    <span role="alert" className="text-danger-ink">
+                      {(bulk.error as Error).message}
+                    </span>
+                  )}
+                </span>
+              ),
+            }}
           />
         </div>
       )}
@@ -525,6 +568,26 @@ export default function TransactionsPage() {
         </p>
       )}
     </section>
+  );
+}
+
+/** What the ticked lines add up to: money out, money in and the net; transfers left out. */
+function TickedTotals({ lines }: { lines: Txn[] }) {
+  const flows = lines.filter((t) => t.type !== "transfer");
+  const out = flows.filter((t) => num(t.amount) < 0).reduce((s, t) => s - num(t.amount), 0);
+  const into = flows.filter((t) => num(t.amount) > 0).reduce((s, t) => s + num(t.amount), 0);
+  return (
+    <>
+      <span>
+        Out <span className="num font-semibold">{money(out)}</span>
+      </span>
+      <span>
+        In <span className="num font-semibold">{money(into)}</span>
+      </span>
+      <span>
+        Net <span className="num font-semibold">{showAmount(into - out)}</span>
+      </span>
+    </>
   );
 }
 
