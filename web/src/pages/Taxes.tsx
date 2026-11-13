@@ -18,8 +18,9 @@ import {
   type GpCategory,
 } from "../api";
 import CategoryPicker from "../components/CategoryPicker";
+import DataTable, { type Column } from "../components/DataTable";
 import { PersonNote } from "../components/Personalize";
-import { localToday, money, num } from "../money";
+import { localToday, money, monthLong, num } from "../money";
 import { usePerson } from "../prefs";
 
 const day = (iso: string) =>
@@ -253,6 +254,127 @@ function Invoices({
     queryFn: () => fetchGastosInvoices(year, filter),
   });
   const rows = (q.data ?? []).filter((r) => person === "Both" || filter === "nobody" || r.person === person);
+  const qc = useQueryClient();
+  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
+  const groups = cats.data ?? [];
+  // On by default: one choice settles every invoice of the supplier that has none of its own.
+  const [everyIssuer, setEveryIssuer] = useState(true);
+  const save = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: GastosChoice }) =>
+      chooseGastos(id, { ...body, remember_issuer: everyIssuer }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gastos", year] }),
+  });
+  const columns: Column<GastosInvoice>[] = [
+    {
+      id: "supplier",
+      label: "Supplier",
+      fixed: true,
+      sort: (r) => r.issuer_name,
+      group: (r) => r.issuer_name,
+      cell: (r) => (
+        <>
+          <span className="font-semibold">{r.issuer_name}</span>
+          <span className="num block text-xs text-muted">RUC {r.issuer_ruc}</span>
+        </>
+      ),
+    },
+    {
+      id: "date",
+      label: "Date",
+      sort: (r) => r.issue_date,
+      group: (r) => monthLong(`${r.issue_date.slice(0, 7)}-01`),
+      cell: (r) => <span className="num whitespace-nowrap">{day(r.issue_date)}</span>,
+    },
+    {
+      id: "number",
+      label: "Invoice",
+      sort: (r) => r.number,
+      cell: (r) => <span className="num">{r.number}</span>,
+    },
+    {
+      id: "subtotal",
+      label: "Before VAT",
+      align: "right",
+      sort: (r) => num(r.subtotal),
+      total: (r) => num(r.subtotal),
+      cell: (r) => money(r.subtotal),
+    },
+    {
+      id: "total",
+      label: "Paid",
+      align: "right",
+      sort: (r) => num(r.total),
+      total: (r) => num(r.total),
+      cell: (r) => money(r.total),
+    },
+    {
+      id: "whose",
+      label: "Whose",
+      sort: (r) => r.person ?? "",
+      group: (r) => r.person ?? "Nobody",
+      cell: (r) => (
+        <>
+          <select
+            aria-label={`Whose invoice from ${r.issuer_name}`}
+            className="field h-10 !w-32"
+            value={r.person ?? ""}
+            disabled={save.isPending}
+            onChange={(e) =>
+              save.mutate({
+                id: r.invoice_id,
+                body: { person: (e.target.value || null) as GastosChoice["person"] },
+              })
+            }
+          >
+            <option value="">Nobody</option>
+            <option value="Hernan">Hernan</option>
+            <option value="Lauren">Lauren</option>
+          </select>
+          {r.person_source === "paid" && (
+            <span className="block text-xs text-muted">from the line that paid it</span>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "category",
+      label: "Category",
+      sort: (r) => r.category_path ?? "",
+      group: (r) => r.category_path ?? "No category",
+      cell: (r) => (
+        <div className="w-64">
+          <CategoryPicker
+            label={`Category for ${r.issuer_name}`}
+            hideLabel
+            groups={groups}
+            value={r.category_id ?? ""}
+            placeholder="Choose a category"
+            onChange={(id) => save.mutate({ id: r.invoice_id, body: { category_id: id === "" ? null : id } })}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "sri",
+      label: "For the SRI",
+      sort: (r) => sriWords(r),
+      group: (r) => sriWords(r),
+      cell: (r) => (
+        <>
+          <span className={`pill ${r.category && r.category !== "none" ? "" : "text-muted"}`}>
+            {sriWords(r)}
+          </span>
+          {guessWords(r) && <span className="mt-1 block text-xs text-muted">{guessWords(r)}</span>}
+        </>
+      ),
+    },
+    {
+      id: "paid_as",
+      label: "Paid with",
+      sort: (r) => r.paid_as ?? "",
+      cell: (r) => <span className="text-muted">{r.paid_as ?? "Payment not found yet"}</span>,
+    },
+  ];
   return (
     <section className="mt-10" aria-labelledby="gp-invoices">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -287,86 +409,36 @@ function Invoices({
               : "No invoices this year yet."}
         </p>
       )}
-      <ul
-        className="mt-3 divide-y divide-line rounded-[14px] border border-line bg-ground"
-        aria-label="Invoices"
-      >
-        {rows.map((r) => (
-          <InvoiceRow key={r.invoice_id} r={r} year={year} />
-        ))}
-      </ul>
+      {rows.length > 0 && (
+        <>
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={everyIssuer} onChange={(e) => setEveryIssuer(e.target.checked)} />
+            A choice applies to all from the same supplier that have none of their own
+          </label>
+          {save.error && (
+            <p role="alert" className="mt-2 text-sm text-danger-ink">
+              {(save.error as Error).message}
+            </p>
+          )}
+          <div className="mt-2">
+            <DataTable
+              table="gastos-invoices"
+              caption={`Invoices of ${year}`}
+              columns={columns}
+              rows={rows}
+              rowKey={(r) => r.invoice_id}
+              defaults={INVOICE_DEFAULTS}
+              defaultSort={{ id: "date", dir: "desc" }}
+            />
+          </div>
+        </>
+      )}
     </section>
   );
 }
 
-function InvoiceRow({ r, year }: { r: GastosInvoice; year: number }) {
-  const qc = useQueryClient();
-  const cats = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
-  const groups = cats.data ?? [];
-  // On by default: one choice settles every invoice of the supplier that has none of its own.
-  const [everyIssuer, setEveryIssuer] = useState(true);
-  const save = useMutation({
-    mutationFn: (body: GastosChoice) => chooseGastos(r.invoice_id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["gastos", year] }),
-  });
-  const why = guessWords(r);
-  return (
-    <li className="grid gap-2 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
-      <div>
-        <p className="font-semibold">
-          {r.issuer_name} <span className="num text-sm font-normal text-muted">RUC {r.issuer_ruc}</span>
-        </p>
-        <p className="text-sm text-muted">
-          {day(r.issue_date)} · invoice {r.number} · <span className="num">{money(r.subtotal)}</span> before
-          VAT, <span className="num">{money(r.total)}</span> paid
-          {r.person_source === "paid" && " · whose: from the line that paid it"}
-          {why && ` · category: ${why}`}
-        </p>
-      </div>
-      <div className="grid gap-2 md:flex md:flex-wrap md:items-center">
-        <label className="flex items-center gap-1.5 text-sm">
-          <input type="checkbox" checked={everyIssuer} onChange={(e) => setEveryIssuer(e.target.checked)} />
-          All from this supplier
-        </label>
-        <label className="sr-only" htmlFor={`who-${r.invoice_id}`}>
-          Whose invoice
-        </label>
-        <select
-          id={`who-${r.invoice_id}`}
-          className="field h-10 md:!w-36"
-          value={r.person ?? ""}
-          disabled={save.isPending}
-          onChange={(e) =>
-            save.mutate({
-              person: (e.target.value || null) as GastosChoice["person"],
-              remember_issuer: everyIssuer,
-            })
-          }
-        >
-          <option value="">Nobody</option>
-          <option value="Hernan">Hernan</option>
-          <option value="Lauren">Lauren</option>
-        </select>
-        <div className="md:w-72">
-          <CategoryPicker
-            label={`Category for ${r.issuer_name}`}
-            hideLabel
-            groups={groups}
-            value={r.category_id ?? ""}
-            placeholder="Choose a category"
-            onChange={(id) =>
-              save.mutate({ category_id: id === "" ? null : id, remember_issuer: everyIssuer })
-            }
-          />
-        </div>
-        <span className={`pill ${r.category && r.category !== "none" ? "" : "text-muted"}`}>
-          {sriWords(r)}
-        </span>
-      </div>
-      {save.error && <p className="text-sm text-danger-ink">{(save.error as Error).message}</p>}
-    </li>
-  );
-}
+// The columns shown until a person chooses their own (ADR-091).
+const INVOICE_DEFAULTS = ["date", "subtotal", "whose", "category", "sri"];
 
 const LABEL: Record<GpCategory, string> = {
   alimentacion: "Food",
