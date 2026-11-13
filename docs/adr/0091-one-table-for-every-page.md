@@ -40,3 +40,14 @@ grouped or added up.
 - **Groceries → Top products**: sort by price change or quantity, group by type of product.
 - **Not moved: Bills' year grid.** It is a month-by-month matrix that is edited in place; its
   columns are the months, so choosing and sorting columns doesn't apply. It stays as it is.
+
+## 0.102.0: Transactions
+
+- Transactions is on the shared table and its own column picker is gone. The description stays
+  first and the amount and Edit last (`fixed: "end"`); the editor opens under the row
+  (`expanded`). New: sort by any column, group by month, account, who, category, merchant, the
+  month a line counts in or country, a totals row, and "Counts in" as a column.
+- The columns a person had chosen carry over (same setting). Without a sort the lines keep the
+  page's order, with the parts of a split line under it; sorting by a column sorts parts like any
+  other line.
+- The phone list is unchanged.

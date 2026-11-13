@@ -20,8 +20,9 @@ export type Column<T> = {
   align?: "right";
   /** Drawn in the header instead of the label (a "tick all" box); the label still names it. */
   header?: ReactNode;
-  /** Always shown, first, and not in the column list (the row's name). */
-  fixed?: boolean;
+  /** Always shown and not in the column list: before the chosen columns (the row's name), or
+   * with "end" after them (the amount, the row's actions). */
+  fixed?: boolean | "end";
 };
 
 type Props<T> = {
@@ -34,6 +35,10 @@ type Props<T> = {
   /** Column ids shown until the person chooses. */
   defaults?: string[];
   defaultSort?: TableSort;
+  /** A class for a row (a line that was split reads as struck out). */
+  rowClass?: (row: T) => string;
+  /** Something to draw under a row across the whole table (its editor), or null. */
+  expanded?: (row: T) => ReactNode | null;
 };
 
 const compare = (a: string | number, b: string | number) =>
@@ -65,6 +70,8 @@ export default function DataTable<T>({
   rowKey,
   defaults,
   defaultSort,
+  rowClass,
+  expanded,
 }: Props<T>) {
   const pickable = columns.filter((c) => !c.fixed);
   const [layout, setLayout] = useTableLayout(
@@ -73,7 +80,11 @@ export default function DataTable<T>({
     defaults,
   );
   const byId = new Map(columns.map((c) => [c.id, c]));
-  const shown = [...columns.filter((c) => c.fixed), ...layout.columns.map((id) => byId.get(id)!)];
+  const shown = [
+    ...columns.filter((c) => c.fixed && c.fixed !== "end"),
+    ...layout.columns.map((id) => byId.get(id)!),
+    ...columns.filter((c) => c.fixed === "end"),
+  ];
   const sort = layout.sort ?? defaultSort ?? null;
   const groupBy = layout.group ? byId.get(layout.group) : undefined;
   const groups = grouped(sorted(rows, columns, sort), groupBy?.group);
@@ -168,18 +179,30 @@ export default function DataTable<T>({
                     )}
                   </tr>
                 )}
-                {g.rows.map((r) => (
-                  <tr key={rowKey(r)}>
-                    {shown.map((c) => (
-                      <td
-                        key={c.id}
-                        className={`px-3 py-2 align-top ${c.align === "right" ? "num text-right" : ""}`}
-                      >
-                        {c.cell(r)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {g.rows.map((r) => {
+                  const under = expanded?.(r) ?? null;
+                  return (
+                    <Fragment key={rowKey(r)}>
+                      <tr className={rowClass?.(r)}>
+                        {shown.map((c) => (
+                          <td
+                            key={c.id}
+                            className={`px-3 py-2 align-top ${c.align === "right" ? "num text-right" : ""}`}
+                          >
+                            {c.cell(r)}
+                          </td>
+                        ))}
+                      </tr>
+                      {under !== null && (
+                        <tr>
+                          <td colSpan={shown.length} className="bg-surface px-4 py-4">
+                            {under}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </Fragment>
             ))}
           </tbody>

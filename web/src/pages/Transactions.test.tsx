@@ -127,13 +127,13 @@ describe("Transactions page", () => {
   it("searches, filters what needs a category and follows the person switch", async () => {
     renderAt();
     const table = await screen.findByRole("table");
-    expect(within(table).getAllByRole("row")).toHaveLength(3);
+    expect(within(table).getAllByRole("row")).toHaveLength(4); // header, two lines, the totals row
     expect(urls.filter((u) => u.startsWith("/api/transactions"))).toEqual([
       "/api/transactions?month=2026-10-01",
     ]);
 
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "uber" } });
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
     expect(screen.getByText(/1 of 2 lines/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "nothing like this" } });
     expect(screen.getByText("No lines match these filters.")).toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("Transactions page", () => {
     );
     expect(within(table).getByRole("columnheader", { name: "Date" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(settings["table:transactions"]).toEqual({ columns: ["date", "category", "note"] }),
+      expect(settings["table:transactions"]).toEqual({ columns: ["date", "category", "note"], sort: null, group: null }),
     );
 
     fireEvent.click(screen.getByRole("radio", { name: "compact" }));
@@ -230,13 +230,13 @@ describe("ADR-030: filters, tabs, periods, people and CSV", () => {
     renderAt();
     const table = await screen.findByRole("table");
     fireEvent.change(screen.getByRole("combobox", { name: "Category" }), { target: { value: "Groceries" } });
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
     expect(screen.getByText(/1 of 2 lines/)).toBeInTheDocument();
     expect(screen.getByText("Total shown").parentElement).toHaveTextContent("Total shown 80.00");
     expect(screen.getByRole("status", { name: "location" }).textContent).toContain("cat=Groceries");
     fireEvent.change(screen.getByRole("combobox", { name: "Category" }), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText("From"), { target: { value: "50" } });
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
     fireEvent.change(screen.getByLabelText("From"), { target: { value: "" } });
     fireEvent.click(screen.getByLabelText("Has a note"));
     expect(within(screen.getByRole("table")).getByText("UBER EATS")).toBeInTheDocument();
