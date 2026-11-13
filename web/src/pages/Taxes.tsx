@@ -431,6 +431,9 @@ function Invoices({
               rowKey={(r) => r.invoice_id}
               defaults={INVOICE_DEFAULTS}
               defaultSort={{ id: "date", dir: "desc" }}
+              search={(r) =>
+                `${r.issuer_name} ${r.issuer_ruc} ${r.number} ${r.category_path ?? ""} ${r.person ?? ""} ${r.subtotal} ${r.total}`
+              }
             />
           </div>
         </>

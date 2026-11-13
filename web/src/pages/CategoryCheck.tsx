@@ -178,36 +178,7 @@ function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPi
     },
     onError: (e: Error) => setNote(e.message),
   });
-  const all = row.lines.map((t) => t.transaction_id);
-  const toggle = (id: number) =>
-    setTicked((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
   const columns: Column<Txn>[] = [
-    {
-      id: "tick",
-      label: "Tick",
-      fixed: true,
-      header: (
-        <input
-          type="checkbox"
-          aria-label="Tick every line"
-          checked={ticked.size === all.length && all.length > 0}
-          onChange={(e) => setTicked(e.target.checked ? new Set(all) : new Set())}
-        />
-      ),
-      cell: (t) => (
-        <input
-          type="checkbox"
-          aria-label={`Tick ${t.description}`}
-          checked={ticked.has(t.transaction_id)}
-          onChange={() => toggle(t.transaction_id)}
-        />
-      ),
-    },
     {
       id: "description",
       label: "Description",
@@ -328,6 +299,14 @@ function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPi
           rowKey={(t) => t.transaction_id}
           defaults={LINE_DEFAULTS}
           defaultSort={{ id: "date", dir: "desc" }}
+          search={(t) =>
+            `${t.description} ${t.merchant ?? ""} ${t.account_name ?? ""} ${t.notes ?? ""} ${t.amount}`
+          }
+          select={{
+            ticked,
+            onChange: (next) => setTicked(next as Set<number>),
+            name: (t) => t.description,
+          }}
         />
       </div>
     </section>

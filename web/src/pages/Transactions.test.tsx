@@ -132,6 +132,14 @@ describe("Transactions page", () => {
       "/api/transactions?month=2026-10-01",
     ]);
 
+    // Ticked lines are totalled above the table (ADR-093).
+    fireEvent.click(within(table).getByLabelText("Tick every row shown"));
+    const bar = screen.getByText("2 ticked").closest("div")!;
+    expect(bar).toHaveTextContent("Out 100.00");
+    expect(bar).toHaveTextContent("In 0.00");
+    expect(within(bar).getByText("Categorize as")).toBeInTheDocument();
+    fireEvent.click(within(bar).getByRole("button", { name: "Clear" }));
+
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "uber" } });
     expect(within(table).getAllByRole("row")).toHaveLength(3);
     expect(screen.getByText(/1 of 2 lines/)).toBeInTheDocument();
@@ -164,7 +172,11 @@ describe("Transactions page", () => {
     );
     expect(within(table).getByRole("columnheader", { name: "Date" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(settings["table:transactions"]).toEqual({ columns: ["date", "category", "note"], sort: null, group: null }),
+      expect(settings["table:transactions"]).toEqual({
+        columns: ["date", "category", "note"],
+        sort: null,
+        group: null,
+      }),
     );
 
     fireEvent.click(screen.getByRole("radio", { name: "compact" }));
