@@ -368,3 +368,19 @@ def test_too_little_history_has_no_range(client: TestClient) -> None:
     p = _get(client)
     assert p["band"] == [] and p["chance_under_floor"] is None and p["seasonal_groups"] == 0
     assert p["months"][0]["end_cash_low"] is None
+
+
+def test_one_season_of_all_spending_when_no_group_has_its_own(
+    client: TestClient, db: Session
+) -> None:
+    """ADR-101: the doctor is a bill now, so no everyday group repeats; everything spent still
+    shows August, and the months ahead follow it."""
+    _history(db, "Produbanco Ahorros Hernan")
+    _template(client, name="Doctor", category_id=_cat(db, "Doctors"), type="expense", amount="1")
+    p = _year_ahead(client)
+    assert p["seasons_from"] == "all" and p["seasonal_groups"] == 1
+    everyday = {m["month"]: Decimal(m["variable"]) for m in p["months"]}
+    assert everyday["2027-08-01"] - everyday["2027-07-01"] > 500
+    august = next(m for m in p["months"] if m["month"] == "2027-08-01")
+    assert [n["group_name"] for n in august["seasonal"]] == ["All spending"]
+    assert _year_ahead(client, seasons=False)["seasons_from"] is None

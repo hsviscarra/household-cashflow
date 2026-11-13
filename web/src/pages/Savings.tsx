@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchSavings, setDebtTerms, type DebtLine, type PayoffPlan, type Savings } from "../api";
+import ChartTools from "../components/ChartTools";
 import { StackedColumns } from "../components/charts";
 import SafeToSpend from "../components/SafeToSpend";
 import { addMonths, money, monthLong, monthShort, num, pct } from "../money";
@@ -85,9 +86,29 @@ function Rate({ s }: { s: Savings }) {
   const title = `Share of income kept, by month (%), ${monthLong(s.months[0]?.month ?? s.today)} to ${monthLong(s.today)}`;
   return (
     <section className="card" aria-labelledby="rate">
-      <h2 id="rate" className="font-display text-xl font-bold">
-        Savings rate by month
-      </h2>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h2 id="rate" className="font-display text-xl font-bold">
+          Savings rate by month
+        </h2>
+        <ChartTools
+          name="Savings rate"
+          csv={{
+            file: "savings-rate.csv",
+            rows: () => [
+              ["Month", "Money in", "Spent", "Kept", "Rate", "Set aside"],
+              ...s.months.map((m) => [
+                m.month.slice(0, 7),
+                m.money_in,
+                m.spent,
+                m.kept,
+                m.rate ?? "",
+                m.set_aside,
+              ]),
+            ],
+          }}
+          explain="Explain our savings rate over the last year: the best and worst months and what made them so."
+        />
+      </div>
       <p className="mt-1 text-sm text-muted">
         Kept is money in less what was spent: what was there to set aside or leave in the bank.
       </p>

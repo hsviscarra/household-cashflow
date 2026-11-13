@@ -71,3 +71,9 @@ def test_everyday_spending_follows_each_groups_season() -> None:
     assert group == SCHOOL and more.quantize(CENT) == Decimal("183.33")
     assert seasons.usual(history, [], idx) == {} and seasons.indices({}) == {}
     assert seasons.total(history)[date(2025, 8, 1)] == 800
+
+
+def test_whole_years_need_every_month() -> None:
+    series = {**_year(2024, "100"), **_year(2025, "100")}
+    del series[date(2025, 2, 1)]
+    assert seasons.whole_years(series) == [2024]

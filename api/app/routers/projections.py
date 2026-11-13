@@ -138,4 +138,5 @@ def _out(p: projections.Projection) -> ProjectionOut:
         chance_under_floor=p.chance_under_floor,
         seasons=p.seasons,
         seasonal_groups=p.seasonal_groups,
+        seasons_from=p.seasons_from,
     )

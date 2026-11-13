@@ -39,6 +39,8 @@ ASSET_CLASSES = ("property", "vehicle", "investment", "cash", "purchase")
 CARRIED_BACK = ("property", "vehicle")  # their first value also counts before it (ADR-063)
 LIABILITY_CLASSES = ("loan", "personal_loan", "card")
 MANUAL = "manual"
+TREND_MONTHS = 24  # months of net worth shown until the person chooses
+MAX_TREND_MONTHS = 36  # each month is valued on its own, so the trend is kept short
 
 
 class NetWorthError(Exception):
@@ -318,7 +320,7 @@ def holdings(db: Session, as_of: date) -> list[Item]:
     return out
 
 
-def sheet(db: Session, as_of: date | None = None, months: int = 24) -> BalanceSheet:
+def sheet(db: Session, as_of: date | None = None, months: int = TREND_MONTHS) -> BalanceSheet:
     as_of = as_of or date.today()
     items = accounts(db, as_of) + holdings(db, as_of)
     series = []

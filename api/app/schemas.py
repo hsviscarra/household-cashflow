@@ -1161,6 +1161,7 @@ class ProjectionOut(BaseModel):
     chance_under_floor: Decimal | None = None
     seasons: bool = True
     seasonal_groups: int = 0
+    seasons_from: Literal["groups", "all"] | None = None
 
 
 class ProjectionAccountOut(BaseModel):

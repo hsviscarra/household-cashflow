@@ -63,6 +63,14 @@ def index(by_month: dict[date, Decimal], years: list[int]) -> Index:
     return [m / level for m in medians]
 
 
+def whole_years(by_month: dict[date, Decimal]) -> list[int]:
+    """Calendar years with all twelve months in a series (a missing month isn't a zero)."""
+    years = {m.year for m in by_month}
+    return sorted(
+        y for y in years if all(date(y, k, 1) in by_month for k in range(1, MONTHS_IN_YEAR + 1))
+    )
+
+
 def by_group(history: History) -> dict[int, dict[date, Decimal]]:
     """The history as one series of months per group."""
     out: dict[int, dict[date, Decimal]] = defaultdict(dict)

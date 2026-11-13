@@ -19,6 +19,7 @@ import {
   type SavedView,
   type ViewSpec,
 } from "../explore";
+import { downloadText } from "../csv";
 import { localToday, num } from "../money";
 import { useSettings } from "../prefs";
 
@@ -36,15 +37,6 @@ export function viewTitle(spec: ViewSpec): string {
   const by = `${DIMENSIONS[spec.rows].toLowerCase()}${spec.cols === "none" ? "" : ` and ${DIMENSIONS[spec.cols].toLowerCase()}`}`;
   const who = spec.person === "Both" ? "" : `, ${spec.person}`;
   return `${MEASURES[spec.measure]} by ${by}, ${PERIODS[spec.period].toLowerCase()}${who}`;
-}
-
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 export default function ExplorePage() {
@@ -154,7 +146,7 @@ export default function ExplorePage() {
             <button
               type="button"
               className="btn btn-quiet h-9 px-3 text-sm"
-              onClick={() => download("explore.csv", exploreCsv(r))}
+              onClick={() => downloadText("explore.csv", exploreCsv(r))}
             >
               Download CSV
             </button>

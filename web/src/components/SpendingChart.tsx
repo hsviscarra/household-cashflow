@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchSpendSeries, type SeriesBy, type SpendSeries } from "../api";
+import { askAbout } from "../ask";
+import { downloadText } from "../csv";
 import { addMonths, money, monthLong, monthShort, num } from "../money";
 import { asRecord, useSettings } from "../prefs";
 import { Legend, StackedColumns } from "./charts";
@@ -76,15 +78,6 @@ export function toCsv(data: SpendSeries, before?: number[]): string {
 /** A difference with its sign: spending more reads "+", less reads "−". */
 const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${money(Math.abs(v))}`;
 
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function SpendingChart({
   month,
   person,
@@ -132,13 +125,22 @@ export default function SpendingChart({
           onChange={(compare) => change({ compare })}
         />
         {data && (
-          <button
-            type="button"
-            className="btn btn-quiet ml-auto h-10 px-3 text-sm"
-            onClick={() => download(`spending-${month.slice(0, 7)}.csv`, toCsv(data, before))}
-          >
-            Download CSV
-          </button>
+          <span className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-quiet h-10 px-3 text-sm"
+              onClick={() => downloadText(`spending-${month.slice(0, 7)}.csv`, toCsv(data, before))}
+            >
+              Download CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet h-10 px-3 text-sm"
+              onClick={() => askAbout(`Explain this chart: ${title}. What changed and why?`)}
+            >
+              Explain
+            </button>
+          </span>
         )}
       </div>
       {(q.error ?? earlier.error) && (

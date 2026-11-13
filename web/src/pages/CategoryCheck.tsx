@@ -208,6 +208,7 @@ function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPi
       id: "date",
       label: "Date",
       sort: (t) => t.txn_date,
+      date: (t) => t.txn_date,
       group: (t) => monthLong(`${t.txn_date.slice(0, 7)}-01`),
       cell: (t) => <span className="whitespace-nowrap">{day(t.txn_date)}</span>,
     },
@@ -293,6 +294,7 @@ function Lines({ row, groups }: { row: Row; groups: Parameters<typeof CategoryPi
       <div className="mt-3">
         <DataTable
           table="category-lines"
+          filter
           caption={`Lines in ${row.path}`}
           columns={columns}
           rows={row.lines}

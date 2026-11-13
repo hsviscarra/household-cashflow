@@ -1150,6 +1150,9 @@ export const fetchMeasures = (month: string, person?: string | null, months?: nu
     `/api/cashflow/measures${query({ month, person: person ?? undefined, months })}`,
   );
 export const fetchBalanceSheet = () => send<BalanceSheet>("GET", "/api/networth");
+/** The same sheet with a trend of `months` months (ADR-101). */
+export const fetchBalanceSheetOver = (months: number) =>
+  send<BalanceSheet>("GET", `/api/networth${query({ months })}`);
 export const createHolding = (h: HoldingInput) => send<{ holding_id: number }>("POST", "/api/holdings", h);
 export const updateHolding = (id: number, h: Partial<HoldingInput> & { is_active?: boolean }) =>
   send<{ holding_id: number }>("PATCH", `/api/holdings/${id}`, h);
@@ -1221,6 +1224,7 @@ export type Projection = {
   chance_under_floor?: string | null;
   seasons?: boolean;
   seasonal_groups?: number;
+  seasons_from?: "groups" | "all" | null; // each group's own year, or all spending together
 };
 // ADR-033: choices, per-account runs and what-ifs.
 export type ForecastOptions = {

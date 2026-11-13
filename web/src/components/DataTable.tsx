@@ -20,6 +20,8 @@ export type Column<T> = {
   align?: "right";
   /** Drawn in the header instead of the label (a "tick all" box); the label still names it. */
   header?: ReactNode;
+  /** The row's day (YYYY-MM-DD); with it the filter bar offers "from" and "to". */
+  date?: (row: T) => string;
   /** Always shown and not in the column list: before the chosen columns (the row's name), or
    * with "end" after them (the amount, the row's actions). */
   fixed?: boolean | "end";
@@ -41,6 +43,10 @@ type Props<T> = {
   expanded?: (row: T) => ReactNode | null;
   /** The words a row is found by; with it the table gets a "Find in this table" box. */
   search?: (row: T) => string;
+  /** A filter bar built from the columns (ADR-101): one value of any column that can be
+   * grouped, an amount range on the first column that is totalled, and a date range when a
+   * column has a date. Not remembered: a filter is for the question of the moment. */
+  filter?: boolean;
   /** Rows can be ticked: the table adds the tick column, totals what is ticked and shows the
    * page's actions for those rows (ADR-093). The page owns which rows are ticked. */
   select?: {
@@ -54,6 +60,30 @@ type Props<T> = {
     summary?: (rows: T[]) => ReactNode;
   };
 };
+
+export type TableFilter = {
+  column?: string; // a column that can be grouped…
+  value?: string; // …and the one value of it to keep
+  min?: number; // on the size of the amount, whatever its sign
+  max?: number;
+  from?: string; // days, YYYY-MM-DD, both included
+  to?: string;
+};
+
+/** The rows a filter keeps. Each part only applies when it is filled in. */
+export function filtered<T>(rows: T[], columns: Column<T>[], f: TableFilter): T[] {
+  const by = f.value ? columns.find((c) => c.id === f.column)?.group : undefined;
+  const amount = columns.find((c) => c.total)?.total;
+  const day = columns.find((c) => c.date)?.date;
+  return rows.filter((r) => {
+    if (by && by(r) !== f.value) return false;
+    if (amount && f.min !== undefined && Math.abs(amount(r)) < f.min) return false;
+    if (amount && f.max !== undefined && Math.abs(amount(r)) > f.max) return false;
+    if (day && f.from && day(r) < f.from) return false;
+    if (day && f.to && day(r) > f.to) return false;
+    return true;
+  });
+}
 
 /** Every word typed must appear in the row's words, in any order and any case. */
 export function found<T>(rows: T[], words: (row: T) => string, typed: string): T[] {
@@ -97,11 +127,13 @@ export default function DataTable<T>({
   rowClass,
   expanded,
   search,
+  filter,
   select,
 }: Props<T>) {
   const [typed, setTyped] = useState("");
+  const [only, setOnly] = useState<TableFilter>({});
   const all = rows;
-  rows = search ? found(all, search, typed) : all;
+  rows = filtered(search ? found(all, search, typed) : all, columns, filter ? only : {});
   const pickable = columns.filter((c) => !c.fixed);
   const [layout, setLayout] = useTableLayout(
     table,
@@ -167,6 +199,9 @@ export default function DataTable<T>({
 
   return (
     <div>
+      {filter && (
+        <FilterBar columns={columns} rows={all} value={only} onChange={setOnly} kept={rows.length} />
+      )}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {search && (
           <label className="mr-auto flex items-center gap-2 text-sm">
@@ -411,5 +446,114 @@ function ColumnMenu<T>({
         </fieldset>
       </div>
     </details>
+  );
+}
+
+const amountOf = (text: string) =>
+  text.trim() === "" || !Number.isFinite(Number(text)) ? undefined : Number(text);
+
+/** The filter bar: what the columns allow, and how many rows are left. */
+function FilterBar<T>({
+  columns,
+  rows,
+  value,
+  onChange,
+  kept,
+}: {
+  columns: Column<T>[];
+  rows: T[];
+  value: TableFilter;
+  onChange: (f: TableFilter) => void;
+  kept: number;
+}) {
+  const groupable = columns.filter((c) => c.group);
+  const by = groupable.find((c) => c.id === value.column);
+  const values = by ? [...new Set(rows.map((r) => by.group!(r)))].sort((a, b) => a.localeCompare(b)) : [];
+  const hasAmount = columns.some((c) => c.total);
+  const hasDate = columns.some((c) => c.date);
+  const active = Object.values(value).some((v) => v !== undefined && v !== "");
+  return (
+    <div className="mb-3 flex flex-wrap items-end gap-3 text-sm" role="group" aria-label="Filter">
+      {groupable.length > 0 && (
+        <>
+          <label>
+            <span className="label">Only where</span>
+            <select
+              className="field h-10 !w-40"
+              value={value.column ?? ""}
+              onChange={(e) => onChange({ ...value, column: e.target.value || undefined, value: undefined })}
+            >
+              <option value="">Any</option>
+              {groupable.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {by && (
+            <label>
+              <span className="label">is</span>
+              <select
+                className="field h-10 !w-48"
+                aria-label={`${by.label} is`}
+                value={value.value ?? ""}
+                onChange={(e) => onChange({ ...value, value: e.target.value || undefined })}
+              >
+                <option value="">Choose</option>
+                {values.map((v) => (
+                  <option key={v}>{v}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </>
+      )}
+      {hasAmount && (
+        <>
+          <label>
+            <span className="label">Amount from</span>
+            <input
+              className="field num h-10 !w-28"
+              inputMode="decimal"
+              onChange={(e) => onChange({ ...value, min: amountOf(e.target.value) })}
+            />
+          </label>
+          <label>
+            <span className="label">Amount to</span>
+            <input
+              className="field num h-10 !w-28"
+              inputMode="decimal"
+              onChange={(e) => onChange({ ...value, max: amountOf(e.target.value) })}
+            />
+          </label>
+        </>
+      )}
+      {hasDate && (
+        <>
+          <label>
+            <span className="label">From</span>
+            <input
+              type="date"
+              className="field h-10"
+              onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
+            />
+          </label>
+          <label>
+            <span className="label">To</span>
+            <input
+              type="date"
+              className="field h-10"
+              onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
+            />
+          </label>
+        </>
+      )}
+      {active && (
+        <span className="pb-2 text-muted" role="status">
+          {kept} of {rows.length} rows
+        </span>
+      )}
+    </div>
   );
 }

@@ -22,6 +22,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -52,6 +53,9 @@ CENT = Decimal("0.01")
 INCOME = ("income", "refund")
 NOTES_PER_MONTH = 3  # the seasonal reasons shown for a month
 NO_GROUP = 0  # spending without a category yet
+ALL_SPENDING = -1  # stands for every group together when no group has a season of its own
+ALL_SPENDING_NAME = "All spending"
+SEASON_HISTORY_MONTHS = 96  # how far back the season of all spending is read (8 years)
 
 
 @dataclass
@@ -156,6 +160,8 @@ class Projection:
     chance_under_floor: Decimal | None = None
     seasons: bool = True
     seasonal_groups: int = 0  # groups whose pattern through the year is being followed
+    # Where the seasons are read from: each group, all spending together, or nowhere.
+    seasons_from: Literal["groups", "all"] | None = None
 
 
 @dataclass
@@ -274,15 +280,20 @@ def everyday(
     history: seasons.History,
     names: dict[int, str],
     paid_categories: set[int],
+    spent: dict[date, Decimal] | None = None,
 ) -> Everyday:
     """Everyday spending for each month in `ahead` (ADR-096). Without seasons (an empty
     `history`, or one too short to show any) it is the average of the last months. With them, a
     seasonal group is forecast by its own year in place of its share of that average:
     - what it pays from the bank: its usual month times the month's index;
     - what it puts on cards: only what the month before spent over a usual month, because the
-      usual part is already inside the card payments (recurring items)."""
+      usual part is already inside the card payments (recurring items).
+    When no group has a season of its own, `spent` (everything spent, month by month over the
+    years) is read for one season of all spending together (ADR-101)."""
     average, months = variable_average(db, today, over)
     idx = seasons.indices(history)
+    if not idx and spent and months:
+        return _season_of_everything(average, months, ahead, spent, recurring.first(today))
     if not idx or not months:
         return Everyday(average, months, dict.fromkeys(ahead, average), {})
     current = recurring.first(today)
@@ -319,6 +330,44 @@ def everyday(
         level=level,
         idx=idx,
     )
+
+
+def _season_of_everything(
+    average: Decimal,
+    months: list[date],
+    ahead: list[date],
+    spent: dict[date, Decimal],
+    current: date,
+) -> Everyday:
+    """One season for all spending together (ADR-101), read from everything spent in whole
+    calendar years: the workbook's years, where everyday spending sat inside the card payments
+    and so in the month it left the bank. A month ahead gets the everyday average plus what
+    that calendar month usually spends over (or under) a usual month, at today's level."""
+    idx = seasons.index(spent, seasons.whole_years(spent))
+    year = [recurring.add_months(current, -i) for i in range(1, seasons.MONTHS_IN_YEAR + 1)]
+    have = [spent[m] for m in year if m in spent]
+    if idx == seasons.FLAT or not have:
+        return Everyday(average, months, dict.fromkeys(ahead, average), {})
+    level = {ALL_SPENDING: sum(have, ZERO) / len(have)}
+    by_group = {ALL_SPENDING: idx}
+    more = {m: seasons.over_usual(level, by_group, m)[ALL_SPENDING] for m in ahead}
+    return Everyday(
+        average,
+        months,
+        {m: max(ZERO, average + more[m]).quantize(CENT) for m in ahead},
+        {
+            m: [(ALL_SPENDING_NAME, more[m].quantize(CENT))] if more[m] >= seasons.NOTE_MIN else []
+            for m in ahead
+        },
+        level=level,
+        idx=by_group,
+    )
+
+
+def _seasons_from(spend: Everyday) -> Literal["groups", "all"] | None:
+    if not spend.level:
+        return None
+    return "all" if ALL_SPENDING in spend.level else "groups"
 
 
 def _month_days(month: date) -> int:
@@ -554,6 +603,9 @@ def project(
 
     paid_categories = {t.category_id for t in db.scalars(select(RecurringTemplate))}
     history, group_names = spending_history(db, current, paid_categories)
+    spent_before = measures.spent_by_month(
+        db, [recurring.add_months(current, -i) for i in range(1, SEASON_HISTORY_MONTHS + 1)]
+    )
     spend = everyday(
         db,
         today,
@@ -562,6 +614,7 @@ def project(
         history if follow_seasons else {},
         group_names,
         paid_categories,
+        spent_before if follow_seasons else None,
     )
     variable, avg_months = spend.average, spend.average_months
     days = _usual_days(db)
@@ -620,10 +673,9 @@ def project(
 
     lowest = min(daily, key=lambda d: (d[1], d[0])) if daily else None
     first_short = next((d for d, b in daily if b < floor), None)
-    last_months = [
-        recurring.add_months(current, -i) for i in range(1, likely_range.HISTORY_MONTHS + 1)
-    ]
-    band, chance = likely(daily, measures.spent_by_month(db, last_months), spend, floor)
+    since = recurring.add_months(current, -likely_range.HISTORY_MONTHS)
+    recent = {m: amount for m, amount in spent_before.items() if m >= since}
+    band, chance = likely(daily, recent, spend, floor)
     for band_day, worst, best in band:
         if band_day == recurring.add_months(recurring.first(band_day), 1) - timedelta(days=1):
             p = plans.get(recurring.first(band_day))
@@ -692,4 +744,5 @@ def project(
         chance_under_floor=chance,
         seasons=follow_seasons,
         seasonal_groups=len(spend.level),
+        seasons_from=_seasons_from(spend),
     )

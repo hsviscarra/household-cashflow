@@ -41,8 +41,12 @@ MAX_BYTES = 10 * 1024 * 1024
 def get_networth(
     db: DB,
     as_of: Annotated[date | None, Query(description="The day to value; default today")] = None,
+    months: Annotated[
+        int, Query(ge=1, le=networth.MAX_TREND_MONTHS, description="Months of trend")
+    ] = networth.TREND_MONTHS,
 ) -> BalanceSheetOut:
-    s = networth.sheet(db, as_of)
+    """What is owned and owed on a day, and net worth for each of the last `months` months."""
+    s = networth.sheet(db, as_of, months)
     assets, debts = s.total("asset"), s.total("liability")
     return BalanceSheetOut(
         as_of=s.as_of,

@@ -462,7 +462,13 @@ const INVOICE_COLUMNS = (open: number | null, toggle: (id: number) => void): Col
       </button>
     ),
   },
-  { id: "date", label: "Date", sort: (i) => i.issue_date, cell: (i) => day(i.issue_date) },
+  {
+    id: "date",
+    label: "Date",
+    sort: (i) => i.issue_date,
+    date: (i) => i.issue_date,
+    cell: (i) => day(i.issue_date),
+  },
   {
     id: "payment",
     label: "Payment",
@@ -528,6 +534,7 @@ function InvoiceList({ invoices }: { invoices: Invoice[] }) {
       <div className="mt-3">
         <DataTable
           table="purchases-invoices"
+          filter
           caption="The month's invoices"
           columns={columns}
           rows={invoices}
