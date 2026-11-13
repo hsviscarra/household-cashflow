@@ -25,6 +25,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Account, RecurringEntry, RecurringTemplate, Transaction
 from app.models import v_spending_line as v
@@ -218,7 +219,7 @@ def variable_average(
     return (Decimal(str(total or 0)) / len(have)).quantize(CENT), sorted(have)
 
 
-def _not_paid(paid_categories: set[int]):  # type: ignore[no-untyped-def]
+def _not_paid(paid_categories: set[int]) -> ColumnElement[bool]:
     """Lines in a category no recurring item pays: everyday spending, in the old sheets too."""
     return v.c.category_id.is_(None) | v.c.category_id.not_in(sorted(paid_categories))
 

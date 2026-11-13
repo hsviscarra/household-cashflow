@@ -221,10 +221,10 @@ def test_a_loans_terms_come_from_its_table_or_its_payment() -> None:
         other_left=Decimal(0),
     )
     with_table = _item(loan=networth.Loan(Decimal(500), Decimal(0), 0, table))
-    assert savings._loan_terms(with_table) == (Decimal("0.1000"), Decimal(550), "table")
+    assert savings.loan_terms(with_table) == (Decimal("0.1000"), Decimal(550), "table")
     paying = _item(loan=networth.Loan(Decimal(500), Decimal(0), 0))
-    assert savings._loan_terms(paying) == (None, Decimal(500), "payment")
-    assert savings._loan_terms(_item()) == (None, None, None)
+    assert savings.loan_terms(paying) == (None, Decimal(500), "payment")
+    assert savings.loan_terms(_item()) == (None, None, None)
 
 
 def test_a_card_shows_what_it_cost_but_is_not_planned_until_its_rate_is_typed(

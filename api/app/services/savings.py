@@ -25,6 +25,7 @@ CARD_MINIMUM_SHARE = Decimal("0.03")  # a card's minimum payment when none was t
 CARD_MINIMUM_FLOOR = Decimal(25)  # …and never under 25.00
 TERMS_KEY = "debt-terms:"  # + the balance-sheet item's key
 MAX_RATE = Decimal(2)  # 200% a year: anything over is a typing mistake
+MAX_AMOUNT = Decimal(1_000_000)  # the largest payment or extra a month the page accepts
 
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
@@ -32,6 +33,8 @@ RATE = Decimal("0.0001")
 
 
 class SavingsError(Exception):
+    """Something asked of this page that can't be done; `status` is the HTTP status."""
+
     def __init__(self, message: str, status: int = 422) -> None:
         super().__init__(message)
         self.status = status
@@ -40,6 +43,8 @@ class SavingsError(Exception):
 # ---------------- savings rate ----------------
 @dataclass
 class RateMonth:
+    """One month of the savings rate: what came in, what was spent and what was set aside."""
+
     month: date
     money_in: Decimal
     spent: Decimal
@@ -64,6 +69,7 @@ def rate_of(months: list[RateMonth]) -> Decimal | None:
 
 
 def rate_months(db: Session, today: date) -> list[RateMonth]:
+    """The last `RATE_MONTHS` months, oldest first; the running month counts to today."""
     current = first(today)
     return [
         RateMonth(
@@ -80,6 +86,8 @@ def rate_months(db: Session, today: date) -> list[RateMonth]:
 # ---------------- the goals' plan ----------------
 @dataclass
 class GoalPlan:
+    """What the open goals need a month against what is planned and already saved."""
+
     needed: Decimal  # a month, for every dated goal to arrive on time
     planned: Decimal  # a month, as typed on the goals
     saved: Decimal  # put into savings this month so far
@@ -105,6 +113,7 @@ def saved_in(db: Session, month: date) -> Decimal:
 
 
 def goal_plan(db: Session, today: date) -> GoalPlan:
+    """The plan over the goals that are active and not reached yet."""
     live = [g for g in goals.all_goals(db, today) if g.is_active and g.status != "reached"]
     return GoalPlan(
         sum((g.needed_monthly or ZERO for g in live), ZERO),
@@ -136,6 +145,8 @@ class Safe:
 
 
 def safe_to_spend(db: Session, today: date, plan: GoalPlan | None = None) -> Safe:
+    """What is left so far this month, plus income still to come, less the bills still due
+    and what the goals' plan still needs. `plan` avoids reading the goals twice."""
     month = first(today)
     so_far = measures.window(db, month, today.day)
     ahead = projections.rest_of_month(db, today)
@@ -153,6 +164,8 @@ def safe_to_spend(db: Session, today: date, plan: GoalPlan | None = None) -> Saf
 # ---------------- debts ----------------
 @dataclass
 class DebtLine:
+    """One thing owed, with its rate and payment where known and where each came from."""
+
     key: str
     name: str
     kind: str  # card or loan
@@ -213,7 +226,7 @@ def set_terms(
     db.commit()
 
 
-def _loan_terms(item: networth.Item) -> tuple[Decimal | None, Decimal | None, str | None]:
+def loan_terms(item: networth.Item) -> tuple[Decimal | None, Decimal | None, str | None]:
     """A loan's rate and payment: (rate, payment, where the payment is from)."""
     s = item.loan.schedule if item.loan else None
     if s is not None and s.next_total is not None and s.balance and s.left:
@@ -251,7 +264,7 @@ def debts(db: Session, today: date) -> list[DebtLine]:
                 minimum_from = "assumed"
         else:
             kind, interest = "loan", ZERO
-            rate, minimum, minimum_from = _loan_terms(item)
+            rate, minimum, minimum_from = loan_terms(item)
             rate_from = "table" if rate is not None else None
         if typed_rate is not None:
             rate, rate_from = typed_rate, "typed"

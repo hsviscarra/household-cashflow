@@ -25,6 +25,8 @@ CENT = Decimal("0.01")
 
 @dataclass(frozen=True)
 class Debt:
+    """One debt as the comparison needs it: what is owed, its yearly rate and its payment."""
+
     key: str
     name: str
     balance: Decimal
@@ -34,6 +36,8 @@ class Debt:
 
 @dataclass
 class Plan:
+    """How one way of paying ends: how long it takes, what it costs and in what order."""
+
     months: int | None  # until every debt is paid; None when the payments never get there
     interest: Decimal  # paid along the way (through MAX_MONTHS when it never ends)
     order: list[str] = field(default_factory=list)  # debts in the order they are paid off
@@ -87,6 +91,8 @@ def simulate(debts: list[Debt], extra: Decimal = ZERO, strategy: str | None = No
 
 @dataclass
 class Comparison:
+    """The same debts paid three ways, with the same money each month."""
+
     minimums: Plan
     avalanche: Plan
     snowball: Plan
@@ -98,6 +104,7 @@ class Comparison:
 
 
 def compare(debts: list[Debt], extra: Decimal) -> Comparison:
+    """Minimums only, highest rate first and smallest balance first, side by side."""
     return Comparison(
         simulate(debts),
         simulate(debts, extra, "avalanche"),

@@ -15,11 +15,13 @@ router = APIRouter(prefix="/api/networth", tags=["networth"])
 DB = Annotated[Session, Depends(get_session)]
 Today = Annotated[date | None, Query(description="For tests; default today")]
 # Yearly rates as fractions: 0.05 is 5% a year.
-Rate = Annotated[Decimal, Query(ge=-0.5, le=0.5)]
+Rate = Annotated[Decimal, Query(ge=long_view.RATE_RANGE[0], le=long_view.RATE_RANGE[1])]
 Share = Annotated[Decimal, Query(ge=0, le=1)]
 
 
 class YearOut(BaseModel):
+    """One year's end: assets by kind, debts, and net worth in the three cases."""
+
     year: int
     end: date
     cash: Decimal
@@ -39,6 +41,8 @@ class YearOut(BaseModel):
 
 
 class LoanOut(BaseModel):
+    """A loan the projection follows, and whether from its table."""
+
     name: str
     balance: Decimal
     from_table: bool
@@ -46,6 +50,8 @@ class LoanOut(BaseModel):
 
 
 class AheadOut(BaseModel):
+    """What the projection starts from and each year ahead."""
+
     today: date
     kept_a_year: Decimal
     net_today: Decimal
@@ -65,6 +71,8 @@ def get_ahead(
     vehicle_growth: Rate = long_view.DEFAULT_VEHICLE,
     invest_share: Share = long_view.DEFAULT_INVEST_SHARE,
 ) -> AheadOut:
+    """Net worth at the end of this year and of the next 5 or 10, under the assumptions
+    given (ADR-098)."""
     if years not in long_view.YEARS:
         raise HTTPException(422, "Years ahead is 5 or 10.")
     if not low <= expected <= high:

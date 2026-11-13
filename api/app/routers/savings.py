@@ -15,10 +15,14 @@ from app.services import payoff, savings
 router = APIRouter(prefix="/api/savings", tags=["savings"])
 DB = Annotated[Session, Depends(get_session)]
 Today = Annotated[date | None, Query(description="For tests; default today")]
-Extra = Annotated[Decimal, Query(ge=0, le=1_000_000, description="Extra toward debts each month")]
+Extra = Annotated[
+    Decimal, Query(ge=0, le=savings.MAX_AMOUNT, description="Extra toward debts each month")
+]
 
 
 class RateMonthOut(BaseModel):
+    """One month of the savings rate."""
+
     month: date
     money_in: Decimal
     spent: Decimal
@@ -29,6 +33,8 @@ class RateMonthOut(BaseModel):
 
 
 class GoalNeedOut(BaseModel):
+    """What one goal needs a month."""
+
     goal_id: int
     name: str
     target_date: date | None
@@ -39,6 +45,8 @@ class GoalNeedOut(BaseModel):
 
 
 class GoalPlanOut(BaseModel):
+    """The goals together: needed, planned, saved and still to go."""
+
     needed: Decimal
     planned: Decimal
     saved: Decimal
@@ -48,6 +56,8 @@ class GoalPlanOut(BaseModel):
 
 
 class SafeOut(BaseModel):
+    """Safe to spend, with the four amounts it is made of."""
+
     month: date
     left_so_far: Decimal
     income_to_come: Decimal
@@ -59,6 +69,8 @@ class SafeOut(BaseModel):
 
 
 class DebtOut(BaseModel):
+    """One debt with its terms and where each came from."""
+
     key: str
     name: str
     kind: str
@@ -73,6 +85,8 @@ class DebtOut(BaseModel):
 
 
 class PlanOut(BaseModel):
+    """One way of paying the debts off."""
+
     months: int | None
     interest: Decimal
     order: list[str]
@@ -80,6 +94,8 @@ class PlanOut(BaseModel):
 
 
 class PayoffOut(BaseModel):
+    """The three ways compared, for an extra amount a month."""
+
     extra: Decimal
     minimums: PlanOut
     avalanche: PlanOut
@@ -88,6 +104,8 @@ class PayoffOut(BaseModel):
 
 
 class SavingsOut(BaseModel):
+    """Everything the Saving page shows."""
+
     today: date
     months: list[RateMonthOut]
     rate_12: Decimal | None
@@ -100,9 +118,11 @@ class SavingsOut(BaseModel):
 class TermsIn(BaseModel):
     """A debt's yearly rate (a fraction: 0.156) and monthly payment; null forgets what was typed."""
 
-    rate: Decimal | None = Field(default=None, ge=0, le=2, max_digits=6, decimal_places=4)
+    rate: Decimal | None = Field(
+        default=None, ge=0, le=savings.MAX_RATE, max_digits=6, decimal_places=4
+    )
     minimum: Decimal | None = Field(
-        default=None, ge=0, le=1_000_000, max_digits=12, decimal_places=2
+        default=None, ge=0, le=savings.MAX_AMOUNT, max_digits=12, decimal_places=2
     )
 
 
@@ -125,6 +145,8 @@ def _plan(p: payoff.Plan) -> PlanOut:
 
 @router.get("", response_model=SavingsOut)
 def get_savings(db: DB, today: Today = None, extra: Extra = Decimal(0)) -> SavingsOut:
+    """The Saving page: rate by month, goals, safe to spend, debts and the payoff orders
+    for `extra` a month on top of the payments."""
     day = today or date.today()
     months = savings.rate_months(db, day)
     plan = savings.goal_plan(db, day)
@@ -132,55 +154,11 @@ def get_savings(db: DB, today: Today = None, extra: Extra = Decimal(0)) -> Savin
     compared = savings.payoff_plans(lines, extra)
     return SavingsOut(
         today=day,
-        months=[
-            RateMonthOut(
-                month=m.month,
-                money_in=m.money_in,
-                spent=m.spent,
-                set_aside=m.set_aside,
-                kept=m.kept,
-                rate=m.rate,
-                running=m.running,
-            )
-            for m in months
-        ],
+        months=[_month(m) for m in months],
         rate_12=savings.rate_of([m for m in months if not m.running]),
-        goals=GoalPlanOut(
-            needed=plan.needed,
-            planned=plan.planned,
-            saved=plan.saved,
-            to_go=plan.to_go,
-            short=plan.short,
-            goals=[
-                GoalNeedOut(
-                    goal_id=g.goal_id,
-                    name=g.name,
-                    target_date=g.target_date,
-                    left=g.left,
-                    needed_monthly=g.needed_monthly,
-                    monthly_amount=g.monthly_amount,
-                    status=g.status,
-                )
-                for g in plan.open_goals
-            ],
-        ),
+        goals=_goals(plan),
         safe=_safe(savings.safe_to_spend(db, day, plan)),
-        debts=[
-            DebtOut(
-                key=d.key,
-                name=d.name,
-                kind=d.kind,
-                balance=d.balance,
-                as_of=d.as_of,
-                rate=d.rate,
-                minimum=d.minimum,
-                rate_from=d.rate_from,
-                minimum_from=d.minimum_from,
-                interest_12=d.interest_12,
-                planned=d.planned,
-            )
-            for d in lines
-        ],
+        debts=[_debt(d) for d in lines],
         payoff=PayoffOut(
             extra=extra,
             minimums=_plan(compared.minimums),
@@ -193,6 +171,56 @@ def get_savings(db: DB, today: Today = None, extra: Extra = Decimal(0)) -> Savin
     )
 
 
+def _month(m: savings.RateMonth) -> RateMonthOut:
+    return RateMonthOut(
+        month=m.month,
+        money_in=m.money_in,
+        spent=m.spent,
+        set_aside=m.set_aside,
+        kept=m.kept,
+        rate=m.rate,
+        running=m.running,
+    )
+
+
+def _goals(plan: savings.GoalPlan) -> GoalPlanOut:
+    return GoalPlanOut(
+        needed=plan.needed,
+        planned=plan.planned,
+        saved=plan.saved,
+        to_go=plan.to_go,
+        short=plan.short,
+        goals=[
+            GoalNeedOut(
+                goal_id=g.goal_id,
+                name=g.name,
+                target_date=g.target_date,
+                left=g.left,
+                needed_monthly=g.needed_monthly,
+                monthly_amount=g.monthly_amount,
+                status=g.status,
+            )
+            for g in plan.open_goals
+        ],
+    )
+
+
+def _debt(d: savings.DebtLine) -> DebtOut:
+    return DebtOut(
+        key=d.key,
+        name=d.name,
+        kind=d.kind,
+        balance=d.balance,
+        as_of=d.as_of,
+        rate=d.rate,
+        minimum=d.minimum,
+        rate_from=d.rate_from,
+        minimum_from=d.minimum_from,
+        interest_12=d.interest_12,
+        planned=d.planned,
+    )
+
+
 @router.get("/safe-to-spend", response_model=SafeOut)
 def safe_to_spend(db: DB, today: Today = None) -> SafeOut:
     """One number for Home: what is left for the rest of the month after bills and goals."""
@@ -201,6 +229,7 @@ def safe_to_spend(db: DB, today: Today = None) -> SafeOut:
 
 @router.put("/debts/{key}", status_code=status.HTTP_204_NO_CONTENT)
 def set_terms(key: str, body: TermsIn, db: DB, request: Request, today: Today = None) -> None:
+    """Keep a debt's yearly rate and monthly payment as typed; both null forgets them."""
     user = (request.headers.get(PRINCIPAL_HEADER) or "local").strip().lower()[:200]
     try:
         savings.set_terms(db, key, body.rate, body.minimum, user, today or date.today())

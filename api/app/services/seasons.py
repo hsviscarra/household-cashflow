@@ -64,6 +64,7 @@ def index(by_month: dict[date, Decimal], years: list[int]) -> Index:
 
 
 def by_group(history: History) -> dict[int, dict[date, Decimal]]:
+    """The history as one series of months per group."""
     out: dict[int, dict[date, Decimal]] = defaultdict(dict)
     for (group, month), amount in history.items():
         out[group][month] = amount
@@ -93,6 +94,7 @@ def indices(history: History) -> dict[int, Index]:
 
 
 def of(idx: Index | None, month: date) -> Decimal:
+    """A month's index from a group's year; 1 when the group has no pattern."""
     return ONE if idx is None else idx[month.month - 1]
 
 
