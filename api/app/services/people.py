@@ -151,33 +151,48 @@ def update_person(db: Session, person: Counterparty, fields: dict[str, object], 
     tag_lines(db, user, person)
 
 
-def _set(db: Session, person: Counterparty, fields: dict[str, object]) -> None:  # noqa: C901 - baseline, docs/refactors.md #15
+MIN_PATTERN = 4  # letters a text to find needs, so it can't match half the bank's lines
+TEXT_MAX = 400  # the width of patterns and notes
+
+
+def _patterns(value: object) -> str | None:
+    """The texts to find, cleaned and joined, or PeopleError."""
+    texts = [t.strip() for t in str(value or "").split(";") if t.strip()]
+    if any(len(t) < MIN_PATTERN for t in texts):
+        raise PeopleError(f"Each text to find needs at least {MIN_PATTERN} letters.")
+    joined = "; ".join(texts)
+    if len(joined) > TEXT_MAX:
+        raise PeopleError(f"Keep the texts to find under {TEXT_MAX} characters.")
+    return joined or None
+
+
+def _check_holding(db: Session, holding_id: object) -> None:
+    """A person links to a personal loan item only: money held for or owed by them."""
+    h = db.get(Holding, holding_id)
+    if h is None:
+        raise PeopleError("Debt & Net Worth item not found.", 404)
+    if h.holding_class != "personal_loan":
+        raise PeopleError("Link a personal loan item (money held for or owed by them).")
+
+
+def _set(db: Session, person: Counterparty, fields: dict[str, object]) -> None:
     if "patterns" in fields:
-        texts = [t.strip() for t in str(fields["patterns"] or "").split(";") if t.strip()]
-        if any(len(t) < 4 for t in texts):
-            raise PeopleError("Each text to find needs at least 4 letters.")
-        joined = "; ".join(texts)
-        if len(joined) > 400:
-            raise PeopleError("Keep the texts to find under 400 characters.")
-        person.patterns = joined or None
+        person.patterns = _patterns(fields["patterns"])
     if "category_id" in fields:
         cid = fields["category_id"]
         if cid is not None and db.get(Category, cid) is None:
             raise PeopleError("Category not found.", 404)
         person.category_id = cid  # type: ignore[assignment]
     if "holding_id" in fields:
-        hid = fields["holding_id"]
-        if hid is not None:
-            h = db.get(Holding, hid)
-            if h is None:
-                raise PeopleError("Debt & Net Worth item not found.", 404)
-            if h.holding_class != "personal_loan":
-                raise PeopleError("Link a personal loan item (money held for or owed by them).")
-        person.holding_id = hid  # type: ignore[assignment]
+        if fields["holding_id"] is not None:
+            _check_holding(db, fields["holding_id"])
+        person.holding_id = fields["holding_id"]  # type: ignore[assignment]
     if "is_active" in fields:
         person.is_active = bool(fields["is_active"])
     if "notes" in fields:
-        person.notes = (str(fields["notes"]).strip()[:400] or None) if fields["notes"] else None
+        person.notes = (
+            (str(fields["notes"]).strip()[:TEXT_MAX] or None) if fields["notes"] else None
+        )
 
 
 def delete_person(db: Session, person: Counterparty) -> None:
@@ -344,7 +359,36 @@ def match_all(db: Session, user: str) -> int:
     return found
 
 
-def add_note(db: Session, fields: dict[str, object], user: str) -> tuple[TransferNote, bool]:  # noqa: C901 - baseline, docs/refactors.md #15
+def _check_note_refs(db: Session, fields: dict[str, object]) -> None:
+    """The account, person and category a note names must exist."""
+    for key, model, what in (
+        ("account_id", Account, "Account"),
+        ("counterparty_id", Counterparty, "Person"),
+        ("category_id", Category, "Category"),
+    ):
+        if fields.get(key) is not None and db.get(model, fields[key]) is None:
+            raise PeopleError(f"{what} not found.", 404)
+
+
+def _checked_share(db: Session, fields: dict[str, object], amount: Decimal) -> Decimal | None:
+    """The person's part of a shared line, or PeopleError: it needs somewhere to go (the
+    person's category), somewhere for the rest (the note's), and to be less than the whole."""
+    if fields.get("share") is None:
+        return None
+    share = abs(Decimal(str(fields["share"])))
+    person = (
+        db.get(Counterparty, fields["counterparty_id"]) if fields.get("counterparty_id") else None
+    )
+    if person is None or person.category_id is None:
+        raise PeopleError("A share needs a person with a category (their part goes there).")
+    if fields.get("category_id") is None:
+        raise PeopleError("A share needs a category for the rest (your part).")
+    if not 0 < share < abs(amount):
+        raise PeopleError("The share must be more than 0 and less than the amount.")
+    return share
+
+
+def add_note(db: Session, fields: dict[str, object], user: str) -> tuple[TransferNote, bool]:
     """Save a note (once per bank reference) and match it. Returns (note, created)."""
     reference = fields.get("reference")
     if reference:
@@ -354,36 +398,16 @@ def add_note(db: Session, fields: dict[str, object], user: str) -> tuple[Transfe
     amount = Decimal(str(fields["amount"]))
     if amount == 0:
         raise PeopleError("The amount can't be zero.")
-    for key, model, what in (
-        ("account_id", Account, "Account"),
-        ("counterparty_id", Counterparty, "Person"),
-        ("category_id", Category, "Category"),
-    ):
-        if fields.get(key) is not None and db.get(model, fields[key]) is None:
-            raise PeopleError(f"{what} not found.", 404)
-    share = fields.get("share")
-    if share is not None:
-        share = abs(Decimal(str(share)))
-        person = (
-            db.get(Counterparty, fields["counterparty_id"])
-            if fields.get("counterparty_id")
-            else None
-        )
-        if person is None or person.category_id is None:
-            raise PeopleError("A share needs a person with a category (their part goes there).")
-        if fields.get("category_id") is None:
-            raise PeopleError("A share needs a category for the rest (your part).")
-        if not 0 < share < abs(amount):
-            raise PeopleError("The share must be more than 0 and less than the amount.")
+    _check_note_refs(db, fields)
     note = TransferNote(
-        share=share,
+        share=_checked_share(db, fields, amount),
         txn_date=fields["txn_date"],
         amount=amount,
         account_id=fields.get("account_id"),
         counterparty_id=fields.get("counterparty_id"),
         category_id=fields.get("category_id"),
         other_party=_text(fields.get("other_party"), 100),
-        description=_text(fields.get("description"), 400),
+        description=_text(fields.get("description"), TEXT_MAX),
         source=str(fields.get("source") or "manual"),
         reference=str(reference)[:64] if reference else None,
         created_by=user[:320],

@@ -34,6 +34,7 @@ from app.models import (
     v_spending_line,
 )
 from app.services import budget as budget_service
+from app.services import cashflow as cashflow_service
 from app.services import (
     gastos,
     goals,
@@ -257,13 +258,11 @@ def month_lines(
     """Every line of a month (YYYY-MM) as the cash flow counts it, any type: income, expense,
     savings, debt_payment, transfer, refund, fee_interest. Optionally only one type, or only lines
     whose description holds a text (then also uncounted lines a month around). At most 500."""
-    from app.services import cashflow
-
     with _session() as db:
         found = (
-            cashflow.search(db, text, _m(month))
+            cashflow_service.search(db, text, _m(month))
             if text
-            else cashflow.lines(db, _m(month), type_=type or None)
+            else cashflow_service.lines(db, _m(month), type_=type or None)
         )
     if type and text:
         found = [ln for ln in found if ln.type == type]

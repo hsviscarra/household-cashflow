@@ -891,7 +891,7 @@ class TimelineStatementOut(BaseModel):
     file_name: str
     start: date
     end: date
-    state: Literal["loaded", "waiting", "problems", "not_read"]
+    state: Literal["loaded", "waiting", "problems", "not_read", "synced"]
     batch_id: int | None
 
 

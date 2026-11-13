@@ -36,6 +36,7 @@ from app.models import (
     ProductRule,
     Transaction,
 )
+from app.services import invoice_category
 
 ZERO = Decimal(0)
 CENT = Decimal("0.01")
@@ -396,8 +397,6 @@ def store(db: Session, p: Parsed, user: str) -> Stored:
     db.flush()
     group_lines(db, inv.lines)
     if _link(db, inv):
-        from app.services import invoice_category
-
         db.flush()
         invoice_category.apply(db, since=inv.issue_date)
     db.add(
@@ -440,8 +439,6 @@ def link_pending(db: Session, since: date | None = None) -> int:
     linked = sum(1 for inv in list(db.scalars(q)) if _link(db, inv))
     if linked:
         db.commit()
-    from app.services import invoice_category
-
     invoice_category.apply(db, since=since)  # the products decide the category (ADR-066)
     return linked
 

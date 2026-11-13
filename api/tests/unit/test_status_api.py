@@ -410,3 +410,18 @@ def test_an_account_is_not_expected_before_it_opened(client: TestClient, db: Ses
     [acc] = st["statements"]
     assert acc["opened_on"] == "2026-08-01"
     assert all(g["start"] >= "2026-08-01" for g in acc["gaps"])
+
+
+def test_an_account_the_bank_sync_covers_shows_it_on_its_timeline(
+    client: TestClient, db: Session, monkeypatch: Any
+) -> None:
+    """The bank sync's days are on the timeline as "synced" (ADR-072). The response schema once
+    didn't allow that state, so Data Status failed for any household with a synced account."""
+    keep = _only_produbanco(db)
+    covered = {keep.account_id: (date(2026, 9, 1), date(2026, 10, 27))}
+    monkeypatch.setattr(status.months, "sync_coverage", lambda *_: covered)
+    got = client.get("/api/status", params={"today": "2026-10-27"})
+    assert got.status_code == 200
+    line = next(t for t in got.json()["statements"] if t["account_id"] == keep.account_id)
+    assert [x["state"] for x in line["statements"]] == ["synced"]
+    assert _month(got.json(), "2026-10-01")["coverage"][0]["covered_days"] == 27

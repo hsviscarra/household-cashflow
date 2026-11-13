@@ -23,6 +23,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import FROM_BANKS, Account, AppSetting, Category, ChangeLog, Transaction
+from app.services import rules as rule_engine
 
 WINDOW = timedelta(days=5)
 # Between countries (an exchange through people, ADR-055) the other side can take longer.
@@ -282,10 +283,8 @@ def _fee_cap(amount: Decimal, abroad: bool) -> Decimal:
 
 
 def _place_key(t: Transaction) -> str:
-    from app.services.classify import merchant_key
-
     amount = abs(Decimal(t.amount)).quantize(Decimal("0.01"))  # 300.00 and 300.0000 are one
-    text = f"{merchant_key(t.description_raw or '')}|{amount}"
+    text = f"{rule_engine.key(t.description_raw or '')}|{amount}"
     return PLACE_KEY + hashlib.sha1(text.encode()).hexdigest()[:30]
 
 
@@ -355,8 +354,6 @@ def workbench(db: Session, since: date | None = None) -> list[Bunch]:
     """Every transfer still missing its other side, newest first, bunched by text and amount,
     each with the lines that could be its other side (opposite amount, another account, near in
     time, not paired yet)."""
-    from app.services.classify import merchant_key
-
     names = {a.account_id: a.name for a in db.scalars(select(Account))}
     countries = {a.account_id: a.country for a in db.scalars(select(Account))}
     rows = [t for t in unmatched(db) if since is None or t.txn_date >= since]
@@ -426,7 +423,7 @@ def workbench(db: Session, since: date | None = None) -> list[Bunch]:
                 for o in cands
             ],
         )
-        key = f"{merchant_key(t.description_raw)}|{abs(t.amount)}"
+        key = f"{rule_engine.key(t.description_raw)}|{abs(t.amount)}"
         b = bunches.get(key)
         if b is None:
             b = bunches[key] = Bunch(key, t.description_raw, abs(t.amount), [])
@@ -459,7 +456,7 @@ def pair(db: Session, a_id: int, b_id: int, user: str) -> int:
     abroad = countries.get(a.account_id or 0) != countries.get(b.account_id or 0)
     fees = _category(db, *FEES)
     if target and fees and 0 < fee <= _fee_cap(sent.amount, abroad):
-        from app.services import classify
+        from app.services import classify  # classify imports this module: each needs the other
 
         parts = classify.split(
             db,

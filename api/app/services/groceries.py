@@ -329,60 +329,67 @@ def _unit(total: Decimal, qty: Decimal) -> Decimal:
     return (total / qty).quantize(Decimal("0.01")) if qty > 0 else ZERO
 
 
-def trends(db: Session, month: date, months: int = TREND_YEAR) -> Trends:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    """Groceries by aisle for each of the last months (2 to 36), with what changed and what is
-    missing."""
-    m = first(month)
-    n = max(2, min(months, 36))
-    start = add_months(m, -(n - 1))
-    nxt = add_months(m, 1)
-    gid = _group_id(db)
-    spent = _spent(db, gid, start, m)
-    txns = _grocery_txns(db, gid, add_months(start, -1), nxt)
-    invoices = _invoices(db, start, nxt, txns)
-    keys = [add_months(start, i) for i in range(n)]
+MAX_TREND_MONTHS = 36
+REGULAR_WINDOW = 6  # the months before this one a regular is looked for in
+CENT = Decimal("0.01")
+RATE = Decimal("0.0001")
 
-    per: dict[date, TrendMonth] = {
-        k: TrendMonth(k, spent[k], ZERO, 0, ZERO, defaultdict(lambda: ZERO)) for k in keys
-    }
-    cells: dict[tuple[date, str, str | None, str | None], list[Decimal]] = defaultdict(
-        lambda: [ZERO, ZERO]
+# product -> month -> [amount, quantity]
+Bought = dict[str, dict[date, list[Decimal]]]
+# (month, aisle, type, brand) -> [amount, lines]
+CellKey = tuple[date, str, str | None, str | None]
+
+
+@dataclass
+class _Tally:
+    """The invoices of the months added up every way the page shows them."""
+
+    per: dict[date, TrendMonth]
+    cells: dict[CellKey, list[Decimal]] = field(
+        default_factory=lambda: defaultdict(lambda: [ZERO, ZERO])
     )
-    weekdays = [Weekday(d, 0, ZERO) for d in range(7)]
-    # product → month → [amount, quantity]; and its description and aisle
-    bought: dict[str, dict[date, list[Decimal]]] = defaultdict(
-        lambda: defaultdict(lambda: [ZERO, ZERO])
+    weekdays: list[Weekday] = field(default_factory=lambda: [Weekday(d, 0, ZERO) for d in range(7)])
+    bought: Bought = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(lambda: [ZERO, ZERO]))
     )
-    names: dict[str, tuple[str, str]] = {}
-    for inv in invoices:
+    names: dict[str, tuple[str, str]] = field(default_factory=dict)  # description, aisle
+
+    def add(self, inv: Invoice) -> None:
+        """Count one invoice in its month, its weekday, its aisles and its products."""
         k = first(inv.issue_date)
-        p = per[k]
+        p = self.per[k]
         p.invoiced += inv.total
         p.trips += 1
-        w = weekdays[inv.issue_date.weekday()]
+        w = self.weekdays[inv.issue_date.weekday()]
         w.trips += 1
         w.amount += inv.total
         for ln in inv.lines:
             aisle = ln.product_group or NOT_GROUPED
             p.aisles[aisle] += ln.total
-            c = cells[(k, aisle, ln.product_type, ln.brand)]
+            c = self.cells[(k, aisle, ln.product_type, ln.brand)]
             c[0] += ln.total
             c[1] += 1
-            b = bought[ln.product_key][k]
+            b = self.bought[ln.product_key][k]
             b[0] += ln.total
             b[1] += ln.quantity
-            names[ln.product_key] = (ln.description, aisle)
+            self.names[ln.product_key] = (ln.description, aisle)
 
-    totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for p in per.values():
-        p.basket = (p.invoiced / p.trips).quantize(Decimal("0.01")) if p.trips else ZERO
-        for a, amt in p.aisles.items():
-            totals[a] += amt
-        p.aisles = dict(p.aisles)
-    aisles = sorted(totals, key=lambda a: (a == NOT_GROUPED, -totals[a]))
+    def aisles(self) -> list[str]:
+        """Close each month (its basket, its aisles) and return the aisles, largest first with
+        the ungrouped one last."""
+        totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
+        for p in self.per.values():
+            p.basket = (p.invoiced / p.trips).quantize(CENT) if p.trips else ZERO
+            for a, amt in p.aisles.items():
+                totals[a] += amt
+            p.aisles = dict(p.aisles)
+        return sorted(totals, key=lambda a: (a == NOT_GROUPED, -totals[a]))
 
-    movers: list[Mover] = []
-    for key, by in bought.items():
+
+def _movers(tally: _Tally) -> list[Mover]:
+    """Products bought in at least two months, with their unit price in the first and the last."""
+    out: list[Mover] = []
+    for key, by in tally.bought.items():
         seen = sorted(k for k, (amt, q) in by.items() if q > 0 and amt > 0)
         if len(seen) < 2:
             continue
@@ -390,47 +397,64 @@ def trends(db: Session, month: date, months: int = TREND_YEAR) -> Trends:  # noq
         fp, lp = _unit(*by[f]), _unit(*by[last])
         if fp <= 0:
             continue
-        movers.append(
-            Mover(
-                key,
-                names[key][0],
-                names[key][1],
-                f,
-                fp,
-                last,
-                lp,
-                (lp / fp - 1).quantize(Decimal("0.0001")),
-                sum((v[0] for v in by.values()), ZERO),
-            )
-        )
-    risers = sorted((x for x in movers if x.change > 0), key=lambda x: (-x.change, -x.amount))
-    fallers = sorted((x for x in movers if x.change < 0), key=lambda x: (x.change, -x.amount))
+        desc, aisle = tally.names[key]
+        total = sum((v[0] for v in by.values()), ZERO)
+        out.append(Mover(key, desc, aisle, f, fp, last, lp, (lp / fp - 1).quantize(RATE), total))
+    return out
 
-    before = keys[-1 - min(6, n - 1) : -1]  # up to six months before this one
+
+def _new_and_skipped(tally: _Tally, keys: list[date]) -> tuple[list[Regular], list[Regular]]:
+    """Products bought for the first time in the last month, and regulars (bought in at least
+    REGULAR_OF of the months before) missing from it."""
+    m = keys[-1]
+    before = keys[-1 - min(REGULAR_WINDOW, len(keys) - 1) : -1]
     new, skipped = [], []
-    for key, by in bought.items():
+    for key, by in tally.bought.items():
         had = [k for k in before if by.get(k, [ZERO])[0] > 0]
         now = by.get(m, [ZERO])[0] > 0
-        desc, aisle = names[key]
+        desc, aisle = tally.names[key]
         if now and not any(by.get(k, [ZERO])[0] > 0 for k in keys[:-1]):
             new.append(Regular(key, desc, aisle, 0, by[m][0]))
         elif not now and len(had) >= REGULAR_OF:
-            usual = (sum((by[k][0] for k in had), ZERO) / len(had)).quantize(Decimal("0.01"))
+            usual = (sum((by[k][0] for k in had), ZERO) / len(had)).quantize(CENT)
             skipped.append(Regular(key, desc, aisle, len(had), usual))
     new.sort(key=lambda r: -r.usual)
     skipped.sort(key=lambda r: (-r.months, -r.usual))
+    return new, skipped
 
+
+def trends(db: Session, month: date, months: int = TREND_YEAR) -> Trends:
+    """Groceries by aisle for each of the last months (2 to 36), with what changed and what is
+    missing."""
+    m = first(month)
+    n = max(2, min(months, MAX_TREND_MONTHS))
+    start = add_months(m, -(n - 1))
+    nxt = add_months(m, 1)
+    gid = _group_id(db)
+    spent = _spent(db, gid, start, m)
+    txns = _grocery_txns(db, gid, add_months(start, -1), nxt)
+    keys = [add_months(start, i) for i in range(n)]
+    tally = _Tally(
+        {k: TrendMonth(k, spent[k], ZERO, 0, ZERO, defaultdict(lambda: ZERO)) for k in keys}
+    )
+    for inv in _invoices(db, start, nxt, txns):
+        tally.add(inv)
+    aisles = tally.aisles()
+    movers = _movers(tally)
+    risers = sorted((x for x in movers if x.change > 0), key=lambda x: (-x.change, -x.amount))
+    fallers = sorted((x for x in movers if x.change < 0), key=lambda x: (x.change, -x.amount))
+    new, skipped = _new_and_skipped(tally, keys)
     return Trends(
         month=m,
-        months=[per[k] for k in keys],
+        months=[tally.per[k] for k in keys],
         aisles=aisles,
         cells=[
             Cell(k, a, t, b, amt, int(c))
             for (k, a, t, b), (amt, c) in sorted(
-                cells.items(), key=lambda kv: (kv[0][0], kv[0][1], -kv[1][0])
+                tally.cells.items(), key=lambda kv: (kv[0][0], kv[0][1], -kv[1][0])
             )
         ],
-        weekdays=weekdays,
+        weekdays=tally.weekdays,
         risers=risers[:MOVERS],
         fallers=fallers[:MOVERS],
         new=new[:MOVERS],

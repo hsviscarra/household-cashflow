@@ -111,26 +111,43 @@ class MonthCheck:
     groups: list[GroupGap] = field(default_factory=list)
 
 
-def check(db: Session) -> list[MonthCheck]:  # noqa: C901 - baseline, docs/refactors.md #15
+def _group_names(db: Session) -> dict[int, str]:
+    """category_id -> the name of its group (its parent, or itself when it has none)."""
+    cats = {c.category_id: c for c in db.scalars(select(Category))}
+    return {c.category_id: (cats.get(c.parent_id or -1) or c).name for c in cats.values()}
+
+
+def _count(c: MonthCheck, gaps: dict[str, GroupGap], row: tuple[str, str, str, Decimal]) -> None:
+    """Add one line to its month, on the workbook's side or the statements'."""
+    source, kind, group, amount = row
+    workbook = source == "excel_history"
+    if not workbook:
+        c.statement_lines += 1
+    if kind == "income":
+        if workbook:
+            c.workbook_income += amount
+        else:
+            c.statements_income += amount
+    elif kind in SPENDING:
+        g = gaps.setdefault(group, GroupGap(group))
+        if workbook:
+            c.workbook_spending -= amount
+            g.workbook -= amount
+        else:
+            c.statements_spending -= amount
+            g.statements -= amount
+
+
+def check(db: Session) -> list[MonthCheck]:
     """For each month that has workbook rows and counts statements: income and spending from
     each source, and spending per group, biggest gap first. Spending as on the Spending page
     (expenses, fees and interest, less refunds); transfers left out; split lines through their
     parts."""
     since = statements_from(db)
-    if since is None:
-        return []
-    months = [m for m in workbook_months(db) if m >= since]
+    months = [m for m in workbook_months(db) if m >= since] if since is not None else []
     if not months:
         return []
-    cats = {c.category_id: c for c in db.scalars(select(Category))}
-
-    def group(category_id: int | None) -> str:
-        c = cats.get(category_id or -1)
-        if c is None:
-            return "Uncategorized"
-        parent = cats.get(c.parent_id) if c.parent_id is not None else None
-        return (parent or c).name
-
+    groups = _group_names(db)
     part = aliased(Transaction)
     has_parts = exists().where(part.parent_transaction_id == Transaction.transaction_id)
     rows = db.execute(
@@ -149,25 +166,8 @@ def check(db: Session) -> list[MonthCheck]:  # noqa: C901 - baseline, docs/refac
     checks = {m: MonthCheck(m) for m in months}
     gaps: dict[date, dict[str, GroupGap]] = defaultdict(dict)
     for m, source, kind, category_id, amount in rows:
-        c = checks[m]
-        workbook = source == "excel_history"
-        amount = Decimal(str(amount))
-        if not workbook:
-            c.statement_lines += 1
-        if kind == "income":
-            if workbook:
-                c.workbook_income += amount
-            else:
-                c.statements_income += amount
-        elif kind in SPENDING:
-            name = group(category_id)
-            g = gaps[m].setdefault(name, GroupGap(name))
-            if workbook:
-                c.workbook_spending -= amount
-                g.workbook -= amount
-            else:
-                c.statements_spending -= amount
-                g.statements -= amount
+        group = groups.get(category_id or -1, "Uncategorized")
+        _count(checks[m], gaps[m], (source, kind, group, Decimal(str(amount))))
     for m, c in checks.items():
         c.groups = sorted(
             (g for g in gaps[m].values() if g.workbook or g.statements),

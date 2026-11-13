@@ -5,6 +5,26 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.113.0] — Seasons scale everyday spending
+
+### Fixed
+- **The forecast showed no everyday spending in February and far too much in December.** The
+  season read from all your spending was added whole to the everyday line. Everyday spending
+  now goes up or down by the same share your total spending does that month (ADR-104).
+
+## [0.112.0] — Services in small steps
+
+### Changed
+- **The 20 longest functions of the app's logic are split into named steps**, and Bills &
+  recurring and Data Status are each several small modules instead of one long file (ADR-103).
+  Adding a finding to the monthly report, a section to the check-in or a spending idea is now
+  adding one small function. Nothing changes in what the app shows.
+
+### Fixed
+- **Data Status failed to load** ("Internal Server Error") once the bank sync covered an
+  account: the timeline's "Bank sync" entry wasn't a state the response allowed. Found by
+  comparing the live pages before and after this release.
+
 ## [0.111.0] — The leftovers, and the code standard checked by CI
 
 ### Added

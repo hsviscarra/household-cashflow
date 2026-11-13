@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import current_user
+from app.config import get_settings
 from app.db.session import get_session
 from app.ingestion.preview import category_paths
 from app.ingestion.storage import StatementStore, get_store
@@ -185,8 +186,6 @@ def suggest(
     ] = None,
 ) -> SuggestOut:
     """Ask Claude about this month's merchants that have no suggestion yet (ADR-006)."""
-    from app.config import get_settings
-
     try:
         asked, stored = suggestions.suggest(db, month)
     except suggestions.SuggestError as exc:
@@ -388,8 +387,6 @@ def batch_resolve(batch_id: int, body: ResolveIn, db: DB, request: Request) -> R
 @router.post("/batches/{batch_id}/suggest", response_model=SuggestOut)
 def batch_suggest(batch_id: int, db: DB) -> SuggestOut:
     """Ask Claude about this statement's merchants that have no suggestion yet (ADR-006)."""
-    from app.config import get_settings
-
     _waiting(db, batch_id)
     try:
         asked, stored = suggestions.suggest(db, batch_id=batch_id)
@@ -473,8 +470,6 @@ def _inbox_fail(exc: inbox.InboxError) -> HTTPException:
 @router.get("/review/auto", response_model=AutoOut)
 def recently_auto(db: DB) -> AutoOut:
     """Rules saved on their own from Claude's sure suggestions in the last 30 days."""
-    from app.config import get_settings
-
     paths = category_paths(db)
     threshold = get_settings().auto_accept_confidence
     return AutoOut(

@@ -91,8 +91,8 @@ def _date(text: str | None) -> date | None:
     return None
 
 
-def parse(xml: bytes) -> Report:  # noqa: C901 - baseline, docs/refactors.md #15
-    """Read an Activity Flex report (XML)."""
+def _statement(xml: bytes) -> ElementTree.Element:
+    """The report's first statement, or IbkrError when the XML isn't a report."""
     try:
         root = ElementTree.fromstring(xml)
     except ElementTree.ParseError as exc:
@@ -102,39 +102,57 @@ def parse(xml: bytes) -> Report:  # noqa: C901 - baseline, docs/refactors.md #15
     statements = root.findall(".//FlexStatement")
     if not statements:
         raise IbkrError("The Flex report has no statement in it.", 422)
-    st = statements[0]
+    return statements[0]
 
+
+def _navs(st: ElementTree.Element) -> list[tuple[date, Decimal, Decimal]]:
+    """The net asset value by day, in the base currency: (day, total, cash)."""
     navs = []
     for n in st.iter("EquitySummaryByReportDateInBase"):
         d, total = _date(n.get("reportDate")), _dec(n.get("total"))
         if d and total is not None:
             navs.append((d, total, _dec(n.get("cash")) or ZERO))
-    positions = []
-    for p in st.iter("OpenPosition"):
-        if p.get("levelOfDetail", "SUMMARY").upper() not in ("SUMMARY", ""):
-            continue  # lots repeat the summary
-        qty, price = _dec(p.get("position")), _dec(p.get("markPrice"))
-        local = _dec(p.get("positionValue"))
-        if qty is None or local is None:
-            continue
-        rate = _dec(p.get("fxRateToBase")) or Decimal(1)
-        positions.append(
-            Position(
-                symbol=(p.get("symbol") or "?")[:40],
-                description=(p.get("description") or None) and p.get("description", "")[:200],
-                asset_class=(p.get("assetCategory") or "OTHER")[:20],
-                currency=(p.get("currency") or "USD")[:3],
-                quantity=qty,
-                price=price or ZERO,
-                value=(local * rate).quantize(CENT),
-                cost_basis=_q(_dec(p.get("costBasisMoney")), rate),
-                unrealized=_q(_dec(p.get("fifoPnlUnrealized")), rate),
-            )
-        )
+    return navs
+
+
+def _position(p: ElementTree.Element) -> Position | None:
+    """One open position in the base currency; None for a lot (lots repeat the summary) or a
+    row without a quantity or a value."""
+    if p.get("levelOfDetail", "SUMMARY").upper() not in ("SUMMARY", ""):
+        return None
+    qty, price = _dec(p.get("position")), _dec(p.get("markPrice"))
+    local = _dec(p.get("positionValue"))
+    if qty is None or local is None:
+        return None
+    rate = _dec(p.get("fxRateToBase")) or Decimal(1)
+    return Position(
+        symbol=(p.get("symbol") or "?")[:40],
+        description=(p.get("description") or None) and p.get("description", "")[:200],
+        asset_class=(p.get("assetCategory") or "OTHER")[:20],
+        currency=(p.get("currency") or "USD")[:3],
+        quantity=qty,
+        price=price or ZERO,
+        value=(local * rate).quantize(CENT),
+        cost_basis=_q(_dec(p.get("costBasisMoney")), rate),
+        unrealized=_q(_dec(p.get("fifoPnlUnrealized")), rate),
+    )
+
+
+def _base_cash(st: ElementTree.Element) -> Decimal:
+    """Ending cash from the cash report, all currencies in the base one."""
     cash = ZERO
     for c in st.iter("CashReportCurrency"):
         if c.get("currency") == "BASE_SUMMARY":
             cash = _dec(c.get("endingCash")) or ZERO
+    return cash
+
+
+def parse(xml: bytes) -> Report:
+    """Read an Activity Flex report (XML)."""
+    st = _statement(xml)
+    navs = _navs(st)
+    positions = [p for o in st.iter("OpenPosition") if (p := _position(o)) is not None]
+    cash = _base_cash(st)
     if navs:
         as_of, total, nav_cash = max(navs, key=lambda n: n[0])
         cash = nav_cash or cash

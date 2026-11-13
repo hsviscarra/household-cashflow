@@ -297,7 +297,7 @@ def test_data_status(household: Engine, monkeypatch: pytest.MonkeyPatch) -> None
     def no_loads(*_: Any, **__: Any) -> None:
         raise AssertionError("audit.load_log isn't granted to the reader")
 
-    monkeypatch.setattr(status, "loads", no_loads)
+    monkeypatch.setattr(status.months, "loads", no_loads)
     got = mcp_server.data_status(months=2)
     assert got["today"] == date.today().isoformat()
     assert 1 <= len(got["months"]) <= 2

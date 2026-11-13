@@ -114,53 +114,44 @@ def _unusual(db: Session, today: date) -> list[Item]:
     return out[:5]
 
 
-def build(db: Session, today: date | None = None) -> Digest:  # noqa: C901 - baseline, docs/refactors.md #15
-    """The daily check-in: what needs a decision today, by section, with one summary line."""
-    today = today or date.today()
-    month = first(today)
-    sections: list[Section] = []
+SOON_DAYS = 7  # bills due within this many days are shown
+MAX_BILLS = 8
+MAX_MISSING = 6
+SAFE_DAY = 28  # a day every month has
 
-    # 1. The Inbox
+
+def _inbox(db: Session, today: date) -> Section | None:
     waiting = classify.uncategorized(db)
-    if waiting:
-        merchants = len({classify.merchant_key(t.description_raw) for t in waiting})
-        sections.append(
-            Section(
-                "Needs a category",
-                [
-                    Item(
-                        f"{_n(len(waiting), 'line')} from {_n(merchants, 'merchant')} in the Inbox",
-                        "/review",
-                    )
-                ],
-            )
-        )
+    if not waiting:
+        return None
+    merchants = len({classify.merchant_key(t.description_raw) for t in waiting})
+    text = f"{_n(len(waiting), 'line')} from {_n(merchants, 'merchant')} in the Inbox"
+    return Section("Needs a category", [Item(text, "/review")])
 
-    # 2. Bills: late this month, or due in the next 7 days
-    soon = today + timedelta(days=7)
-    bill_items = []
-    for m in {month, first(soon)}:
+
+def _bills(db: Session, today: date) -> Section | None:
+    """Bills late this month, or due in the next days."""
+    soon = today + timedelta(days=SOON_DAYS)
+    items = []
+    for m in {first(today), first(soon)}:
         for b in recurring.bills(db, m, today):
             if b.type in ("income", "refund") or b.status in ("paid", "skipped"):
                 continue
             if b.status == "late":
-                bill_items.append(Item(f"Late: {b.name}, {_money(abs(b.expected))}", "/recurring"))
-            elif b.due_day:
-                due = m.replace(day=min(b.due_day, 28))
-                if today <= due <= soon:
-                    where = f" from {b.account_name}" if b.account_name else ""
-                    bill_items.append(
-                        Item(
-                            f"{b.name}: {_money(abs(b.expected))} due {due:%a %b %d}{where}",
-                            "/recurring",
-                        )
-                    )
-    if bill_items:
-        sections.append(Section("Bills this week", bill_items[:8]))
+                items.append(Item(f"Late: {b.name}, {_money(abs(b.expected))}", "/recurring"))
+                continue
+            due = m.replace(day=min(b.due_day, SAFE_DAY)) if b.due_day else None
+            if due is not None and today <= due <= soon:
+                where = f" from {b.account_name}" if b.account_name else ""
+                text = f"{b.name}: {_money(abs(b.expected))} due {due:%a %b %d}{where}"
+                items.append(Item(text, "/recurring"))
+    return Section("Bills this week", items[:MAX_BILLS]) if items else None
 
-    # 3. Cash in the next 30 days
+
+def _cash(db: Session, today: date) -> Section | None:
+    """Accounts, or cash as a whole, going under the floor in the next month."""
     p = projections.project(db, today, horizon=1)
-    cash_items = [
+    items = [
         Item(
             f"{a.name} dips to {_money(a.lowest[1])} on {a.lowest[0]:%b %d}: "
             f"move {_money(a.move)} in before {a.under_floor:%b %d}",
@@ -169,39 +160,41 @@ def build(db: Session, today: date | None = None) -> Digest:  # noqa: C901 - bas
         for a in p.accounts
         if a.under_floor
     ]
-    if not cash_items and p.first_short and p.lowest:
-        cash_items.append(
+    if not items and p.first_short and p.lowest:
+        items.append(
             Item(
                 f"Total cash goes under zero on {p.first_short:%b %d} "
                 f"(lowest {_money(p.lowest[1])})",
                 "/projections",
             )
         )
-    if cash_items:
-        sections.append(Section("Cash running short", cash_items))
+    return Section("Cash running short", items) if items else None
 
-    # 4. Unusual charges
+
+def _odd_charges(db: Session, today: date) -> Section | None:
     odd = _unusual(db, today)
-    if odd:
-        sections.append(Section("Unusual charges this week", odd))
+    return Section("Unusual charges this week", odd) if odd else None
 
-    # 5. Statements still missing for last month (this month's aren't due yet)
-    missing = [Item(t, "/status") for t in report._status(db, add_months(month, -1), today)["open"]]
-    if missing:
-        sections.append(Section("Statements to bring in", missing[:6]))
 
-    # 6. Gastos personales
+def _missing_statements(db: Session, today: date) -> Section | None:
+    """Statements still missing for last month (this month's aren't due yet)."""
+    last_month = add_months(first(today), -1)
+    missing = [Item(t, "/status") for t in report._status(db, last_month, today)["open"]]
+    return Section("Statements to bring in", missing[:MAX_MISSING]) if missing else None
+
+
+def _deductions(db: Session, today: date) -> Section | None:
     g = gastos.summary(db, today.year)
     to_sort = sum(x.to_classify for x in g.people) + g.unassigned
-    if to_sort:
-        sections.append(
-            Section(
-                "Gastos personales",
-                [Item(f"{_n(to_sort, 'invoice')} to sort out for {today.year}", "/taxes")],
-            )
-        )
+    if not to_sort:
+        return None
+    text = f"{_n(to_sort, 'invoice')} to sort out for {today.year}"
+    return Section("Gastos personales", [Item(text, "/taxes")])
 
-    # The month so far, against the same days last month
+
+def _month_so_far(db: Session, today: date) -> str:
+    """The month's spending so far, against the same days last month."""
+    month = first(today)
     now = _spent(db, month, today)
     prev_month = add_months(month, -1)
     prev_end = prev_month.replace(day=min(today.day, 28 if prev_month.month == 2 else 30))
@@ -212,11 +205,21 @@ def build(db: Session, today: date | None = None) -> Digest:  # noqa: C901 - bas
         change = (
             f", {'+' if pct >= 0 else MINUS}{abs(pct):.0f}% vs the same days of {prev_month:%B}"
         )
-    summary = f"Spent {_money(now)} in {month:%B} so far{change}."
+    return f"Spent {_money(now)} in {month:%B} so far{change}."
+
+
+# The sections, in the order the check-in shows them.
+SECTIONS = (_inbox, _bills, _cash, _odd_charges, _missing_statements, _deductions)
+
+
+def build(db: Session, today: date | None = None) -> Digest:
+    """The daily check-in: what needs a decision today, by section, with one summary line."""
+    today = today or date.today()
+    sections = [s for make in SECTIONS if (s := make(db, today)) is not None]
     actions = sum(len(s.items) for s in sections)
     need = f"{actions} {'thing needs' if actions == 1 else 'things need'} you"
     subject = f"Cashflow, week of {today:%b %d}: {need if actions else 'all clear'}"
-    return Digest(today, subject, summary, sections)
+    return Digest(today, subject, _month_so_far(db, today), sections)
 
 
 def text(d: Digest, base_url: str) -> str:

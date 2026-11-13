@@ -258,12 +258,14 @@ def _add_subs(
         conn.execute(insert(category), rows)
 
 
-def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:  # noqa: C901 - baseline, docs/refactors.md #15
-    """The fuller tree (seed v7). Anything Hernan already renamed, moved or added is left alone."""
+def _v7_renames(conn: Connection, category: Table) -> None:
     for path, new in v7.RENAMES:
         cid = _category_ids(conn, category).get(path)
         if cid is not None and new not in _category_ids(conn, category):
             conn.execute(update(category).where(category.c.category_id == cid).values(name=new))
+
+
+def _v7_groups(conn: Connection, category: Table) -> None:
     for group, kind, color, subs in v7.NEW_GROUPS:
         gid = _group_id(conn, category, group)
         if gid is None:
@@ -279,6 +281,9 @@ def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:  #
                 },
             ).scalar_one()
         _add_subs(conn, category, gid, kind, subs)
+
+
+def _v7_moves(conn: Connection, category: Table) -> None:
     for path, group, new in v7.MOVES:
         ids = _category_ids(conn, category)
         gid = _group_id(conn, category, group)
@@ -289,6 +294,9 @@ def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:  #
             .where(category.c.category_id == ids[path])
             .values(parent_id=gid, name=new, sort_order=_child_count(conn, category, gid))
         )
+
+
+def _v7_subs(conn: Connection, category: Table) -> None:
     for group, subs in v7.NEW_SUBS:
         row = conn.execute(
             select(category.c.category_id, category.c.kind).where(
@@ -297,14 +305,10 @@ def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:  #
         ).first()
         if row is not None:
             _add_subs(conn, category, row.category_id, row.kind, subs)
-    ids = _category_ids(conn, category)
-    for path, text in v7.DESCRIPTIONS.items():
-        if path in ids:
-            conn.execute(
-                update(category)
-                .where(category.c.category_id == ids[path], category.c.description.is_(None))
-                .values(description=text)
-            )
+
+
+def _v7_rules(conn: Connection, merchant_rule: Table, ids: dict[str, int]) -> None:
+    """Move the rules whose category moved, then add the new ones no pattern has yet."""
     for pattern, old, new in v7.RULE_MOVES:
         if old in ids and new in ids:
             conn.execute(
@@ -320,6 +324,23 @@ def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:  #
     ]
     if rows:
         conn.execute(insert(merchant_rule), rows)
+
+
+def load_v7(conn: Connection, category: Table, merchant_rule: Table) -> None:
+    """The fuller tree (seed v7). Anything Hernan already renamed, moved or added is left alone."""
+    _v7_renames(conn, category)
+    _v7_groups(conn, category)
+    _v7_moves(conn, category)
+    _v7_subs(conn, category)
+    ids = _category_ids(conn, category)
+    for path, text in v7.DESCRIPTIONS.items():
+        if path in ids:
+            conn.execute(
+                update(category)
+                .where(category.c.category_id == ids[path], category.c.description.is_(None))
+                .values(description=text)
+            )
+    _v7_rules(conn, merchant_rule, ids)
 
 
 def v7_added(conn: Connection, category: Table) -> list[int]:

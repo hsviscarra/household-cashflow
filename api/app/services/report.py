@@ -341,126 +341,158 @@ def _above(change: Decimal) -> str:
     return f"{_pct(change)} above"
 
 
-def rule_findings(f: dict[str, Any]) -> list[Finding]:  # noqa: C901 - baseline, docs/refactors.md #15
-    """Findings written from the facts by fixed rules, most important first."""
-    out: list[Finding] = []
-    label = date.fromisoformat(f["month"] + "-01").strftime("%B")
+def _signed(net: Decimal) -> str:
+    return f"{'+' if net >= 0 else MINUS}{_money(abs(net))}"
+
+
+def _incomplete(f: dict[str, Any], label: str) -> Finding | None:
     data = f["data"]
-    if not data.get("complete", True):
-        n = len(data.get("open", []))
-        out.append(
-            Finding(
-                f"{label} isn't complete yet",
-                f"{n} {'thing is' if n == 1 else 'things are'} still open in Data Status "
-                "(missing statements, imports or uncategorized lines), so these numbers may "
-                "change.",
-                "neutral",
-            )
-        )
+    if data.get("complete", True):
+        return None
+    n = len(data.get("open", []))
+    return Finding(
+        f"{label} isn't complete yet",
+        f"{n} {'thing is' if n == 1 else 'things are'} still open in Data Status "
+        "(missing statements, imports or uncategorized lines), so these numbers may "
+        "change.",
+        "neutral",
+    )
+
+
+def _net(f: dict[str, Any], label: str) -> Finding | None:
     cf = f["cash_flow"]
     now, avg = cf["month"], cf["average_3_months"]
-    if now:
-        net = Decimal(now["net"])
-        text = (
-            f"Income {_money(now['income'])}, spending {_money(now['expenses'])}, savings and "
-            f"debt payments {_money(Decimal(now['savings']) + Decimal(now['debt_payments']))}: "
-            f"net {'+' if net >= 0 else MINUS}{_money(abs(net))}"
-        )
-        if now["savings_rate"] is not None:
-            text += f" ({_pct(Decimal(now['savings_rate']))} of income)"
-        if avg:
-            text += f", against a {_money(avg['net'])} average over the three months before"
-        out.append(
-            Finding(
-                f"Net {'+' if net >= 0 else MINUS}{_money(abs(net))} in {label}",
-                text + ".",
-                "good" if net >= 0 else "bad",
-            )
-        )
+    if not now:
+        return None
+    net = Decimal(now["net"])
+    text = (
+        f"Income {_money(now['income'])}, spending {_money(now['expenses'])}, savings and "
+        f"debt payments {_money(Decimal(now['savings']) + Decimal(now['debt_payments']))}: "
+        f"net {_signed(net)}"
+    )
+    if now["savings_rate"] is not None:
+        text += f" ({_pct(Decimal(now['savings_rate']))} of income)"
+    if avg:
+        text += f", against a {_money(avg['net'])} average over the three months before"
+    return Finding(f"Net {_signed(net)} in {label}", text + ".", "good" if net >= 0 else "bad")
+
+
+def _biggest_move(f: dict[str, Any], label: str) -> Finding | None:
     moves = f["spending"]["biggest_moves"]
     # In an incomplete month a drop is mostly statements not loaded yet: no "biggest change".
-    if moves and Decimal(moves[0]["change"]) != 0 and data.get("complete", True):
-        m = moves[0]
-        change = Decimal(m["change"])
-        out.append(
-            Finding(
-                f"{m['group']} {'up' if change > 0 else 'down'} {_money(abs(change))}",
-                f"{m['group']} was {_money(m['amount'])} against {_money(m['last_month'])} last "
-                "month, the biggest change of any group.",
-                "bad" if change > 0 else "good",
-            )
-        )
-    for a in f["alerts"][:1]:
-        above = f" ({_above(Decimal(a['change']))})" if a["change"] else ""
-        out.append(
-            Finding(
-                f"{a['group']} above its usual",
-                f"{a['group']} spent {_money(a['amount'])} against a {_money(a['average'])} "
-                f"average{above}.",
-                "bad",
-            )
-        )
+    if not moves or Decimal(moves[0]["change"]) == 0 or not f["data"].get("complete", True):
+        return None
+    m = moves[0]
+    change = Decimal(m["change"])
+    return Finding(
+        f"{m['group']} {'up' if change > 0 else 'down'} {_money(abs(change))}",
+        f"{m['group']} was {_money(m['amount'])} against {_money(m['last_month'])} last "
+        "month, the biggest change of any group.",
+        "bad" if change > 0 else "good",
+    )
+
+
+def _alert(f: dict[str, Any], label: str) -> Finding | None:
+    if not f["alerts"]:
+        return None
+    a = f["alerts"][0]
+    above = f" ({_above(Decimal(a['change']))})" if a["change"] else ""
+    return Finding(
+        f"{a['group']} above its usual",
+        f"{a['group']} spent {_money(a['amount'])} against a {_money(a['average'])} "
+        f"average{above}.",
+        "bad",
+    )
+
+
+def _short(f: dict[str, Any], label: str) -> Finding | None:
     outlook = f.get("outlook")
-    if outlook and outlook["lowest_cash"] is not None and Decimal(outlook["lowest_cash"]) < 0:
-        payday = (
-            f", before the next payday on {_day(outlook['next_payday'])}"
-            if outlook["next_payday"]
-            else ", and no income is projected after it"
-        )
-        out.append(
-            Finding(
-                "Cash runs short ahead",
-                f"The projection reaches {_money(outlook['lowest_cash'])} on "
-                f"{_day(outlook['lowest_on'])}{payday}. Move money in before then or delay a "
-                "payment.",
-                "bad",
-            )
-        )
+    if not outlook or outlook["lowest_cash"] is None or Decimal(outlook["lowest_cash"]) >= 0:
+        return None
+    payday = (
+        f", before the next payday on {_day(outlook['next_payday'])}"
+        if outlook["next_payday"]
+        else ", and no income is projected after it"
+    )
+    return Finding(
+        "Cash runs short ahead",
+        f"The projection reaches {_money(outlook['lowest_cash'])} on "
+        f"{_day(outlook['lowest_on'])}{payday}. Move money in before then or delay a "
+        "payment.",
+        "bad",
+    )
+
+
+def _interest(f: dict[str, Any], label: str) -> Finding | None:
     debt = f["interest_and_fees"]
     paid = Decimal(debt["interest"]) + Decimal(debt["fees"])
     year = Decimal(debt["interest_year_to_date"]) + Decimal(debt["fees_year_to_date"])
-    if paid > 0:
-        out.append(
-            Finding(
-                f"{_money(paid)} in interest and fees",
-                f"Interest {_money(debt['interest'])} and fees {_money(debt['fees'])} this month; "
-                f"{_money(year)} so far this year.",
-                "bad",
-            )
-        )
+    if paid <= 0:
+        return None
+    return Finding(
+        f"{_money(paid)} in interest and fees",
+        f"Interest {_money(debt['interest'])} and fees {_money(debt['fees'])} this month; "
+        f"{_money(year)} so far this year.",
+        "bad",
+    )
+
+
+def _subscriptions_changed(f: dict[str, Any], label: str) -> Finding | None:
     subs = f["subscriptions"]
-    if subs["started"] or subs["stopped"]:
-        parts = []
-        if subs["started"]:
-            parts.append("started: " + ", ".join(s["merchant"] for s in subs["started"]))
-        if subs["stopped"]:
-            parts.append("stopped: " + ", ".join(s["merchant"] for s in subs["stopped"]))
-        out.append(
-            Finding(
-                "Subscriptions changed",
-                f"{_upper_first('; '.join(parts))}. {subs['active']} active subscriptions cost "
-                f"{_money(subs['monthly_cost'])} a month.",
-                "neutral",
-            )
-        )
+    parts = [
+        f"{word}: " + ", ".join(s["merchant"] for s in subs[word])
+        for word in ("started", "stopped")
+        if subs[word]
+    ]
+    if not parts:
+        return None
+    return Finding(
+        "Subscriptions changed",
+        f"{_upper_first('; '.join(parts))}. {subs['active']} active subscriptions cost "
+        f"{_money(subs['monthly_cost'])} a month.",
+        "neutral",
+    )
+
+
+def _net_worth(f: dict[str, Any], label: str) -> Finding | None:
     nw = f["net_worth"]
-    if nw["change"] is not None:
-        change = Decimal(nw["change"])
-        out.append(
-            Finding(
-                f"Net worth {'up' if change >= 0 else 'down'} {_money(abs(change))}",
-                f"Net worth {_money(nw['net_worth'])} on {_day(nw['as_of'])}: owned "
-                f"{_money(nw['assets'])}, owed {_money(nw['liabilities'])}"
-                + (
-                    "; first valued this month: "
-                    + ", ".join(n["name"] for n in nw.get("first_valued_this_month", []))
-                    + " (not counted as a change)."
-                    if nw.get("first_valued_this_month")
-                    else "."
-                ),
-                "good" if change >= 0 else "bad",
-            )
-        )
+    if nw["change"] is None:
+        return None
+    change = Decimal(nw["change"])
+    first_valued = nw.get("first_valued_this_month")
+    tail = (
+        "; first valued this month: "
+        + ", ".join(n["name"] for n in first_valued)
+        + " (not counted as a change)."
+        if first_valued
+        else "."
+    )
+    return Finding(
+        f"Net worth {'up' if change >= 0 else 'down'} {_money(abs(change))}",
+        f"Net worth {_money(nw['net_worth'])} on {_day(nw['as_of'])}: owned "
+        f"{_money(nw['assets'])}, owed {_money(nw['liabilities'])}" + tail,
+        "good" if change >= 0 else "bad",
+    )
+
+
+# The rules, most important first. Each reads the facts and writes a finding or nothing.
+RULES = (
+    _incomplete,
+    _net,
+    _biggest_move,
+    _alert,
+    _short,
+    _interest,
+    _subscriptions_changed,
+    _net_worth,
+)
+
+
+def rule_findings(f: dict[str, Any]) -> list[Finding]:
+    """Findings written from the facts by fixed rules, most important first."""
+    label = date.fromisoformat(f["month"] + "-01").strftime("%B")
+    out = [found for rule in RULES if (found := rule(f, label)) is not None]
+    subs = f["subscriptions"]
     if len(out) < MIN_FINDINGS and subs["active"]:
         out.append(
             Finding(

@@ -144,20 +144,13 @@ def label(db: Session, start: date, months: int = 1) -> int:
     return len(by_key)
 
 
-def set_labels(db: Session, key: str, changes: dict[str, str | None], user: str) -> int:  # noqa: C901 - baseline, docs/refactors.md #15
-    """A person's aisle, type or brand for a product: kept as its rule and set on every line with
-    it. Returns how many lines changed."""
-    group = changes.get("product_group")
-    if "product_group" in changes and group is not None and group not in PRODUCT_GROUPS:
-        raise SuggestError(f"Unknown aisle {group!r}.", 422)
-    rule = db.scalar(select(ProductRule).where(ProductRule.product_key == key))
-    if rule is None:
-        rule = ProductRule(product_key=key, created_by=user[:320])
-        db.add(rule)
-    lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.product_key == key)))
-    if not lines:
-        raise SuggestError(f"No purchases of {key!r}.", 404)
-    for col in ("product_group", "product_type", "brand"):
+LABELS = ("product_group", "product_type", "brand")
+USER_MAX = 320  # the width of created_by
+
+
+def _apply(rule: ProductRule, lines: list[InvoiceLine], changes: dict[str, str | None]) -> None:
+    """Write the changed labels on the rule and on every line of the product."""
+    for col in LABELS:
         if col not in changes:
             continue
         value = _clean(changes[col]) or None
@@ -166,14 +159,29 @@ def set_labels(db: Session, key: str, changes: dict[str, str | None], user: str)
             setattr(ln, col, value)
             if col == "product_group":
                 ln.group_source = "confirmed" if value else None
+
+
+def set_labels(db: Session, key: str, changes: dict[str, str | None], user: str) -> int:
+    """A person's aisle, type or brand for a product: kept as its rule and set on every line with
+    it. Returns how many lines changed."""
+    group = changes.get("product_group")
+    if group is not None and group not in PRODUCT_GROUPS:
+        raise SuggestError(f"Unknown aisle {group!r}.", 422)
+    rule = db.scalar(select(ProductRule).where(ProductRule.product_key == key))
+    if rule is None:
+        rule = ProductRule(product_key=key, created_by=user[:USER_MAX])
+        db.add(rule)
+    lines = list(db.scalars(select(InvoiceLine).where(InvoiceLine.product_key == key)))
+    if not lines:
+        raise SuggestError(f"No purchases of {key!r}.", 404)
+    _apply(rule, lines, changes)
     # The rest of the labels Claude gave become the person's too, once they've looked at them.
-    first_line = lines[0]
     for col in ("product_type", "brand"):
         if col not in changes and getattr(rule, col) is None:
-            setattr(rule, col, getattr(first_line, col))
+            setattr(rule, col, getattr(lines[0], col))
     for ln in lines:
         ln.product_type, ln.brand, ln.label_source = rule.product_type, rule.brand, "confirmed"
-    rule.created_by = user[:320]
+    rule.created_by = user[:USER_MAX]
     db.commit()
     return len(lines)
 

@@ -901,7 +901,7 @@ export type TimelineStatement = {
   file_name: string;
   start: string;
   end: string;
-  state: "loaded" | "waiting" | "problems" | "not_read";
+  state: "loaded" | "waiting" | "problems" | "not_read" | "synced";
   batch_id: number | null;
 };
 // due: the current cycle, whose statement the bank issues around that day (not missing).
