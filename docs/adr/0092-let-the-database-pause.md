@@ -31,3 +31,14 @@ after the replica went away it stayed billed for the 60-minute delay.
   With no pool that no longer keeps the database awake, but it is worth finding.
 - Releases cost money: each of the twelve deploys of Nov 12 woke the database for over an hour.
   Small changes are grouped into fewer releases from now on.
+
+## Also in 0.102.1, found by looking at the live app
+
+- **Bills: "Statement not in" instead of "Late".** On Nov 13 Bills showed 23 of 29 November
+  bills late and none paid. Most are paid from accounts whose November statement hasn't arrived,
+  so no line could have matched. A bill past its day is now `waiting` when the account that pays
+  it has no data up to that day (`recurring.data_through`: the end of its last approved
+  statement, or the last bank sync), and `late` only when the data reaches the day and no line
+  paid it. To do, the alerts and the digest count `late` only.
+- **The shared table forgot a sort or grouping by a column that is always shown** (Supplier on
+  Deductions): the saved layout was read back against the chosen columns only (ADR-091).

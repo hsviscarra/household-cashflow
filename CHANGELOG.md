@@ -11,6 +11,11 @@ the Excel workbook.
 - **The database was kept awake, and billed, whenever the app was up.** The app held open
   connections, and Azure SQL only pauses with none. It now opens a connection per request, and
   the pause delay is 15 minutes instead of 60 (ADR-092).
+- **Bills past their day aren't called late while the statement isn't in.** A bill paid from an
+  account whose statement for those days hasn't arrived shows "Statement not in"; "Late" is kept
+  for bills the loaded data should already show.
+- Grouping or sorting Deductions by Supplier wasn't kept.
+- The cost guard's `--restart` stopped at its first step and never started the app.
 
 ## [0.102.0] — Transactions on the shared table
 

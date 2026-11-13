@@ -34,6 +34,7 @@ const STATUS: Record<BillStatus, { label: string; cls: string }> = {
   paid: { label: "Paid", cls: "bg-good-bg text-good-ink" },
   due: { label: "Due", cls: "bg-surface text-ink" },
   late: { label: "Late", cls: "bg-danger-bg text-danger-ink" },
+  waiting: { label: "Statement not in", cls: "bg-info-bg text-info-ink" },
   skipped: { label: "Skipped", cls: "bg-surface text-muted line-through" },
 };
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -235,6 +236,11 @@ export default function BillsPage({ start }: { start?: View }) {
 
 const ORDER: { status: BillStatus; title: string; hint: string }[] = [
   { status: "late", title: "Late", hint: "Past their day and not found in a statement yet." },
+  {
+    status: "waiting",
+    title: "Waiting for the statement",
+    hint: "Past their day, but the account that pays them has no statement loaded for those days yet, so the app can't tell.",
+  },
   { status: "due", title: "Still to pay", hint: "Coming this month." },
   { status: "paid", title: "Paid", hint: "Matched to a statement line." },
   { status: "skipped", title: "Skipped this month", hint: "" },

@@ -19,7 +19,7 @@ A matched entry is never re-matched; unlinking or skipping frees its lines.
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, exists, func, select
@@ -30,9 +30,13 @@ from app.models import (
     Category,
     ChangeLog,
     ExcelCell,
+    ImportBatch,
+    LoadLog,
     RecurringAmount,
     RecurringEntry,
     RecurringTemplate,
+    StatementFileAccount,
+    StatementHeader,
     Transaction,
     v_excel_month,
 )
@@ -264,6 +268,42 @@ def update_template(db: Session, template_id: int, changes: dict[str, object], u
             )
             setattr(t, key, changes[key])
     db.commit()
+
+
+def data_through(db: Session) -> dict[int, date]:
+    """The last day each account's loaded data reaches (ADR-092): the end of its last approved
+    statement, or the day of the last bank sync for an account the bank sync reads. An account
+    with neither isn't in the answer."""
+    out: dict[int, date] = {
+        account_id: end
+        for account_id, end in db.execute(
+            select(StatementFileAccount.account_id, func.max(StatementHeader.period_end))
+            .join(
+                StatementHeader,
+                StatementHeader.statement_file_id == StatementFileAccount.statement_file_id,
+            )
+            .join(
+                ImportBatch, ImportBatch.statement_file_id == StatementFileAccount.statement_file_id
+            )
+            .where(ImportBatch.status == "approved")
+            .group_by(StatementFileAccount.account_id)
+        )
+        if end is not None
+    }
+    synced = db.scalar(select(func.max(LoadLog.loaded_at)).where(LoadLog.source == "bank_sync"))
+    if synced is not None:
+        for (account_id,) in db.execute(
+            select(Account.account_id).where(Account.sync_id.is_not(None))
+        ).all():
+            out[account_id] = max(out.get(account_id, synced.date()), synced.date())
+    return out
+
+
+def _due_date(month: date, due_day: int | None) -> date:
+    """The day a bill of `month` is due; the month's last day when it has none or the month is
+    shorter."""
+    last = (add_months(first(month), 1) - timedelta(days=1)).day
+    return first(month).replace(day=min(due_day or last, last))
 
 
 def stop(db: Session, template_id: int, month: date, user: str) -> int:
@@ -1082,6 +1122,7 @@ def bills(db: Session, month: date, today: date | None = None) -> list[Bill]:
     cats = {c.category_id: c for c in db.scalars(select(Category))}
     accounts = {a.account_id: a.name for a in db.scalars(select(Account))}
     history = amounts(db)
+    through = data_through(db)
     out = []
     for t in db.scalars(
         select(RecurringTemplate).order_by(RecurringTemplate.sort_order, RecurringTemplate.name)
@@ -1104,7 +1145,10 @@ def bills(db: Session, month: date, today: date | None = None) -> list[Bill]:
         elif month < first(today) or (
             month == first(today) and due is not None and due < today.day
         ):
-            status = "late"
+            # Past its day and not seen. If the account that pays it has no data for that day
+            # yet (its statement hasn't arrived), nobody can know: it waits, it isn't late.
+            reach = through.get(t.account_id) if t.account_id else None
+            status = "waiting" if reach is not None and reach < _due_date(month, due) else "late"
         else:
             status = "due"
         before = [
