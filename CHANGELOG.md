@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.113.0] — Seasons scale everyday spending
+
+### Fixed
+- **The forecast showed no everyday spending in February and far too much in December.** The
+  season read from all your spending was added whole to the everyday line. Everyday spending
+  now goes up or down by the same share your total spending does that month (ADR-104).
+
 ## [0.112.0] — Services in small steps
 
 ### Changed

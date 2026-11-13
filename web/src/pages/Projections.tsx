@@ -493,7 +493,7 @@ function Assumptions({
             {!opts.seasons
               ? "every month ahead gets the same average"
               : p.seasons_from === "all"
-                ? "all your spending together follows its year (December, the school months), read from past years; no single group has two years of detail yet"
+                ? "everyday spending goes up and down by the share all your spending does through the year (December, the school months), read from past years; no single group has two years of detail yet"
                 : p.seasonal_groups
                   ? `${p.seasonal_groups} ${p.seasonal_groups === 1 ? "group follows" : "groups follow"} their own year (school, December, yearly payments); on cards, paid the month after`
                   : "no group shows a pattern yet (it takes two complete years of history)"}

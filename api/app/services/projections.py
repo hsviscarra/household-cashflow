@@ -54,7 +54,7 @@ INCOME = ("income", "refund")
 NOTES_PER_MONTH = 3  # the seasonal reasons shown for a month
 NO_GROUP = 0  # spending without a category yet
 ALL_SPENDING = -1  # stands for every group together when no group has a season of its own
-ALL_SPENDING_NAME = "All spending"
+EVERYDAY_SEASON_NAME = "Everyday spending"
 SEASON_HISTORY_MONTHS = 96  # how far back the season of all spending is read (8 years)
 
 
@@ -351,26 +351,33 @@ def _season_of_everything(
 ) -> Everyday:
     """One season for all spending together (ADR-101), read from everything spent in whole
     calendar years: the workbook's years, where everyday spending sat inside the card payments
-    and so in the month it left the bank. A month ahead gets the everyday average plus what
-    that calendar month usually spends over (or under) a usual month, at today's level."""
+    and so in the month it left the bank. A month ahead gets the everyday average times that
+    calendar month's index: December's everyday spending goes up by the share the household's
+    December does, and a light month goes down by its share, never to nothing (ADR-104).
+    The whole household's difference isn't added, because much of it (yearly bills, school) is
+    already planned as recurring items.
+
+    `level` keeps the usual month of all spending: the likely range takes the season out of
+    total spending's surprises at that level."""
     idx = seasons.index(spent, seasons.whole_years(spent))
     year = [recurring.add_months(current, -i) for i in range(1, seasons.MONTHS_IN_YEAR + 1)]
     have = [spent[m] for m in year if m in spent]
     if idx == seasons.FLAT or not have:
         return Everyday(average, months, dict.fromkeys(ahead, average), {})
-    level = {ALL_SPENDING: sum(have, ZERO) / len(have)}
-    by_group = {ALL_SPENDING: idx}
-    more = {m: seasons.over_usual(level, by_group, m)[ALL_SPENDING] for m in ahead}
+    by_month = {m: (average * seasons.of(idx, m)).quantize(CENT) for m in ahead}
+    more = {m: by_month[m] - average for m in ahead}
     return Everyday(
         average,
         months,
-        {m: max(ZERO, average + more[m]).quantize(CENT) for m in ahead},
+        by_month,
         {
-            m: [(ALL_SPENDING_NAME, more[m].quantize(CENT))] if more[m] >= seasons.NOTE_MIN else []
+            m: [(EVERYDAY_SEASON_NAME, more[m].quantize(CENT))]
+            if more[m] >= seasons.NOTE_MIN
+            else []
             for m in ahead
         },
-        level=level,
-        idx=by_group,
+        level={ALL_SPENDING: sum(have, ZERO) / len(have)},
+        idx={ALL_SPENDING: idx},
     )
 
 

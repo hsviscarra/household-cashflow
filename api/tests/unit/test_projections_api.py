@@ -380,7 +380,15 @@ def test_one_season_of_all_spending_when_no_group_has_its_own(
     p = _year_ahead(client)
     assert p["seasons_from"] == "all" and p["seasonal_groups"] == 1
     everyday = {m["month"]: Decimal(m["variable"]) for m in p["months"]}
-    assert everyday["2027-08-01"] - everyday["2027-07-01"] > 500
+    # By hand (ADR-104). In 2024 and 2025 a year spends 1,800: 150 a usual month. August is
+    # 680 and 720 of it (4.53 and 4.8 times: median 14/3); any other month 80 or 120 (median
+    # 2/3); eleven of those and one August add up to 12, so the indices stand as they are.
+    # The everyday average here is 300 (July to September 2026, the doctor's 600 in it), and
+    # each month ahead is that average times its index.
+    assert Decimal(p["variable_per_month"]) == Decimal("300.00")
+    assert everyday["2027-07-01"] == Decimal("200.00")  # 300 x 2/3
+    assert everyday["2027-08-01"] == Decimal("1400.00")  # 300 x 14/3
+    assert min(everyday.values()) > 0  # a light month is lighter, never nothing
     august = next(m for m in p["months"] if m["month"] == "2027-08-01")
-    assert [n["group_name"] for n in august["seasonal"]] == ["All spending"]
+    assert august["seasonal"] == [{"group_name": "Everyday spending", "extra": "1100.00"}]
     assert _year_ahead(client, seasons=False)["seasons_from"] is None
