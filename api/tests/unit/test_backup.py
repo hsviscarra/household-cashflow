@@ -281,3 +281,108 @@ def test_drill_records_unexpected_errors(fake: dict[str, Any], tmp_path: Path) -
     assert r["problems"] == ["RuntimeError: Login failed for user 'sa'."] and not r["ok"]
     assert fake["stopped"] == 1  # the scratch server is still stopped
     assert backup.latest_drill(store) == r
+
+
+LAPTOP = Target("sqlserver,1433", "cashflow", "sql", "sa", "pw", trust_cert=True)
+
+
+class _Conn:
+    """A pyodbc connection that answers DB_ID and the table count, and records what ran."""
+
+    def __init__(self, ran: list[str], exists: bool, tables: int) -> None:
+        self.ran, self.exists, self.tables = ran, exists, tables
+
+    def __enter__(self) -> "_Conn":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def execute(self, sql: str, *params: object) -> "_Conn":
+        self.ran.append(sql)
+        self.row = (
+            (1 if self.exists else None,) if sql.startswith("SELECT DB_ID") else (self.tables,)
+        )
+        return self
+
+    def fetchone(self) -> tuple[object, ...]:
+        return self.row
+
+
+def _db(monkeypatch: pytest.MonkeyPatch, exists: bool, tables: int = 0) -> list[str]:
+    ran: list[str] = []
+    monkeypatch.setattr(
+        backup, "_connect", lambda t, database=None, autocommit=False: _Conn(ran, exists, tables)
+    )
+    return ran
+
+
+def test_copy_moves_the_database_and_checks_it(
+    fake: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-107: parking exports Azure's database and imports it into the laptop's SQL Server,
+    which may create it there; the copy is checked against the backup's manifest."""
+    ran = _db(monkeypatch, exists=False)
+    r = backup.copy(SOURCE, LAPTOP, LocalBackupStore(tmp_path), allow_create=True)
+    assert r["ok"] and r["problems"] == [] and (r["from"], r["to"]) == ("cashflow", "cashflow")
+    assert (r["tables"], r["rows"], r["transaction_total"]) == (2, 13, "-123.4500")
+    assert [a[0] for a in fake["sqlpackage"]] == ["/Action:Export", "/Action:Import"]
+    assert any("contained database authentication" in s for s in ran)
+    assert backup.latest_backup(LocalBackupStore(tmp_path))["file"] == r["backup"]
+
+
+def test_copy_reports_a_target_that_differs(
+    fake: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _db(monkeypatch, exists=True)
+    real = backup.export
+
+    def export(source: Target, store: Any) -> dict[str, Any]:
+        m = real(source, store)
+        fake["facts"].append({**FACTS, "tables": {"core.transaction": 9, "core.account": 3}})
+        return m
+
+    monkeypatch.setattr(backup, "export", export)
+    r = backup.copy(SOURCE, LAPTOP, LocalBackupStore(tmp_path))
+    assert not r["ok"] and r["problems"] == ["core.transaction: 9 rows instead of 10."]
+
+
+def test_copy_only_writes_into_an_empty_database(
+    fake: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing is exported or imported when the target isn't empty, or doesn't exist on Azure
+    (a database sqlpackage creates there isn't on the free offer)."""
+    _db(monkeypatch, exists=True, tables=40)
+    with pytest.raises(BackupError, match="already holds 40 tables"):
+        backup.copy(LAPTOP, SOURCE, LocalBackupStore(tmp_path))
+    ran = _db(monkeypatch, exists=False)
+    with pytest.raises(BackupError, match="Create the database cashflow first"):
+        backup.copy(LAPTOP, SOURCE, LocalBackupStore(tmp_path))
+    assert fake["sqlpackage"] == [] and not any("sp_configure" in s for s in ran)
+
+
+def test_main_copy(
+    fake: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env = {
+        "BACKUP_DIR": str(tmp_path),
+        "SOURCE_SERVER": "db.example.net",
+        "SOURCE_DATABASE": "cashflow",
+        "SOURCE_USER": "admin",
+        "SOURCE_PASSWORD": "x",
+        "TARGET_SERVER": "sqlserver,1433",
+        "TARGET_DATABASE": "cashflow",
+        "TARGET_USER": "sa",
+        "TARGET_PASSWORD": "y",
+        "TARGET_CREATE": "1",
+    }
+    _db(monkeypatch, exists=False)
+    assert backup.main(["copy"], env) == 0
+    assert "copy cashflow -> cashflow: ok, 2 tables, 13 rows" in capsys.readouterr().out
+    _db(monkeypatch, exists=True, tables=3)
+    assert backup.main(["copy"], env) == 1
+    assert "copy FAILED: cashflow already holds 3 tables" in capsys.readouterr().err
+    assert backup.main(["restore"], env) == 2

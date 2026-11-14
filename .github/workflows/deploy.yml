@@ -26,7 +26,10 @@ env:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Not while Azure is parked (ADR-107): the app is stopped and its database must stay asleep.
+    if: >-
+      vars.AZURE_PARKED != 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     environment: production
     steps:
