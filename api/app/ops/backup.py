@@ -172,19 +172,27 @@ def run_sqlpackage(args: list[str]) -> float:
     return round(time.monotonic() - started, 1)
 
 
-def wait_ready(target: Target, seconds: int = WAIT_SECONDS) -> None:
-    """The scratch SQL Server starts with the job: wait until it answers."""
+def wait_ready(target: Target, seconds: int = WAIT_SECONDS, database: str = "master") -> None:
+    """Wait until a server answers: the drill's scratch SQL Server starts with the job, and a
+    paused Azure database resumes in about a minute once something logs in to it (logging in
+    to `master` doesn't wake it, so `wake` names the database itself)."""
     deadline = time.monotonic() + seconds
     while True:
         try:
-            with _connect(target, "master") as conn:
+            with _connect(target, database) as conn:
                 conn.execute("SELECT 1").fetchone()
                 return
         # pyodbc (imported only where the job runs) raises several kinds while the server starts.
         except Exception as exc:
             if time.monotonic() > deadline:
-                raise BackupError(f"The scratch SQL Server didn't answer: {exc}") from exc
+                raise BackupError(f"{target.server} didn't answer: {exc}") from exc
             time.sleep(5)
+
+
+def wake(target: Target) -> None:
+    """Resume a paused serverless database before sqlpackage needs it (sqlpackage gives up on
+    "not currently available")."""
+    wait_ready(target, database=target.database)
 
 
 def drop_database(target: Target) -> None:
@@ -476,6 +484,7 @@ def prepare_target(target: Target, allow_create: bool) -> None:
         if not allow_create:
             raise BackupError(f"Create the database {target.database} first, with the free offer.")
         return
+    wake(target)
     with _connect(target) as conn:
         tables = conn.execute(
             "SELECT COUNT(*) FROM [sys].[tables] WHERE [is_ms_shipped] = 0"
@@ -493,6 +502,7 @@ def copy(
     """Move the whole database from `source` to `target`: export a backup with its manifest,
     import it into the empty target and compare the target with the manifest. Used to park the
     Azure database on a laptop and to bring it back. The backup stays in `store` either way."""
+    wake(source)
     prepare_target(target, allow_create)
     manifest = export(source, store)
     _, seconds = _import_latest(target, store)

@@ -36,7 +36,7 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     monkeypatch.setattr(backup, "run_sqlpackage", run)
     monkeypatch.setattr(backup, "facts", facts)
-    monkeypatch.setattr(backup, "wait_ready", lambda t, seconds=0: None)
+    monkeypatch.setattr(backup, "wait_ready", lambda t, seconds=0, database="master": None)
     monkeypatch.setattr(backup, "drop_database", lambda t: calls["dropped"].append(t.database))
 
     def stop(t: Target) -> None:
@@ -300,6 +300,9 @@ class _Conn:
 
     def execute(self, sql: str, *params: object) -> "_Conn":
         self.ran.append(sql)
+        if sql == "SELECT 1":
+            self.row = (1,)
+            return self
         self.row = (
             (1 if self.exists else None,) if sql.startswith("SELECT DB_ID") else (self.tables,)
         )
@@ -386,3 +389,19 @@ def test_main_copy(
     assert backup.main(["copy"], env) == 1
     assert "copy FAILED: cashflow already holds 3 tables" in capsys.readouterr().err
     assert backup.main(["restore"], env) == 2
+
+
+def test_copy_wakes_the_databases_first(
+    fake: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A paused Azure database answers "not currently available" to sqlpackage: the copy logs
+    in to the database itself (not master) and waits until it has resumed."""
+    _db(monkeypatch, exists=True)
+    woke: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        backup,
+        "wait_ready",
+        lambda t, seconds=0, database="master": woke.append((t.server, database)),
+    )
+    backup.copy(SOURCE, LAPTOP, LocalBackupStore(tmp_path))
+    assert woke == [(SOURCE.server, "cashflow"), (LAPTOP.server, "cashflow")]
