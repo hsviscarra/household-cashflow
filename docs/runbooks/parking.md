@@ -25,8 +25,9 @@ About 15 minutes the first time (it builds the backup image).
    If they don't, it stops and Azure stays as it was.
 2. Copies the statement PDFs from Blob storage into the app's local folder. The first time it
    offers to give your account the *Storage Blob Data Contributor* role it needs for that.
-3. Parks Azure: stops the app, moves the backup jobs to once a year, sets the database to pause
-   (never bill) at its free allowance, and sets the repository variable `AZURE_PARKED=true`, so
+3. Parks Azure: stops the app, moves the backup jobs to once a year, tries to set the database to
+   pause at its free allowance (Azure refuses in a month whose allowance is used up; harmless, since
+   a paused database bills nothing), and sets the repository variable `AZURE_PARKED=true`, so
    merges to `main` no longer deploy. Nothing in Azure is deleted.
 4. Starts the app at http://localhost:8000.
 

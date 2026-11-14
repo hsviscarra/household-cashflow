@@ -144,7 +144,12 @@ jobs_cron() {  # $1 export cron, $2 drill cron; jobs that don't exist are skippe
     run az containerapp job update -g "$RG" -n "$PREFIX-drill" --cron-expression "$2" -o none
   fi
 }
-db_limit() { run az sql db update -g "$RG" -s "$SERVER" -n "$DB" --set "freeLimitExhaustionBehavior=$1" -o none; }
+# A seatbelt only: a paused database bills nothing either way. Azure refuses BillOverUsage ->
+# AutoPause in a month whose allowance is used up (ProvisioningDisabled), so a refusal is a warning.
+db_limit() {
+  run az sql db update -g "$RG" -s "$SERVER" -n "$DB" --set "freeLimitExhaustionBehavior=$1" -o none \
+    || echo "Note: Azure kept the database's free-limit setting; a paused database costs nothing either way."
+}
 
 # Statement PDFs: the app keeps them in Blob storage in Azure and in a Docker volume here, under
 # the same names. Reading Blob with your sign-in needs a data role, given once if missing.
@@ -153,6 +158,10 @@ blob_role() {
   scope=$(az storage account show -g "$RG" -n "$STORAGE" --query id -o tsv)
   me=$(az ad signed-in-user show --query id -o tsv)
   if [ -z "$(az role assignment list --assignee "$me" --scope "$scope" --role 'Storage Blob Data Contributor' --query '[0].id' -o tsv)" ]; then
+    if [ "${DRY_RUN:-}" = 1 ]; then
+      echo "DRY RUN: your account would get 'Storage Blob Data Contributor' on $STORAGE; the PDFs aren't copied in a dry run."
+      return 1
+    fi
     echo "Your account needs 'Storage Blob Data Contributor' on $STORAGE to copy the statement PDFs."
     confirm "Give it to yourself now?" yes
     run az role assignment create --assignee "$me" --role 'Storage Blob Data Contributor' --scope "$scope" -o none
@@ -161,7 +170,7 @@ blob_role() {
 }
 statements_down() {
   say "Copying the statement PDFs to this Mac"
-  blob_role
+  blob_role || return 0
   rm -rf "$WORK/statements" && mkdir -p "$WORK/statements"
   az storage blob download-batch --auth-mode login --account-name "$STORAGE" -s statements \
     -d "$WORK/statements" --no-progress -o none
@@ -171,7 +180,7 @@ statements_down() {
 }
 statements_up() {
   say "Copying statement PDFs uploaded on this Mac to Azure"
-  blob_role
+  blob_role || return 0
   rm -rf "$WORK/statements-up" && mkdir -p "$WORK/statements-up"
   docker compose cp api:/data/statements/. "$WORK/statements-up"
   local there n=0 key

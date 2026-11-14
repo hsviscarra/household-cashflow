@@ -5,6 +5,15 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.116.2] — Park fixes from the real run
+
+### Fixed
+- **`park.sh down` stopped at the database's free-limit setting**: Azure refuses to switch it back
+  to pausing once the month's allowance is used. It is a seatbelt only (a paused database bills
+  nothing), so the script now notes it and goes on.
+- **A dry run stopped at the statement PDFs** when your account didn't yet have the Blob role; it
+  now says so and skips them.
+
 ## [0.116.1] — Park fixes from the first run
 
 ### Fixed
