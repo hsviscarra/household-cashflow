@@ -12,6 +12,7 @@ FINANCIAMIENTO N/D 0,60") and payments ("16/06 11111 SU PAGO "MUCHAS GRACIAS" 70
 """
 
 import re
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -23,6 +24,7 @@ from app.ingestion.parsers.base import (
     ParseError,
     Reject,
     fold_accents,
+    numbered_lines,
 )
 from app.ingestion.parsers.pichincha import amount
 
@@ -80,10 +82,21 @@ def _person(name: str) -> str | None:
     return next((PEOPLE[w] for w in name.upper().split() if w in PEOPLE), None)
 
 
-def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    """Read a Diners Club statement's pages (scans included): period, lines and checks."""
-    pages = [fold_accents(p) for p in pages]  # OCR of a scan drops them: match without accents
-    text = "\n".join(pages)
+# The headings that start a block of the detail. A heading that maps to None starts a part that
+# is skipped: purchases with grace months are billed (as installments) in a later statement, and
+# "Consumo en el exterior" repeats foreign purchases already listed above.
+BLOCKS = {
+    "Consumo periodo actual": "purchases",
+    "DETALLE DE DEBITOS": "debits",
+    "DETALLE DE PAGOS Y CREDITOS": "credits",
+    "Resumen consumos por cliente": "clients",
+}
+SKIPPED = ("Compras con meses de gracia", "Consumo en el exterior")
+DATED = re.compile(r"^\d{2}/\d{2} ")
+EARLIER = timedelta(days=7)  # how far before the period a date may be and still belong to it
+
+
+def _period(text: str) -> tuple[date, date]:
     p = PERIOD.search(text)
     if not p:
         raise ParseError("Period (e.g. '04 JUN 2026 AL 03 JUL 2026') not found.")
@@ -92,12 +105,137 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
         end = date(int(p.group(6)), ES_MONTHS[p.group(5).lower()], int(p.group(4)))
     except (KeyError, ValueError) as exc:
         raise ParseError(f"Period could not be read: {p.group(0)}") from exc
+    return start, end
+
+
+def _summary(text: str) -> dict[str, Decimal]:
+    """Page 1's figures; every one of them must be there."""
     totals: dict[str, Decimal] = {}
     for key, rx in SUMMARY.items():
         m = rx.search(text)
         if not m:
             raise ParseError(f"Summary figure '{rx.pattern.split(':')[0][1:]}' not found.")
         totals[key] = abs(amount(m.group(1)))
+    return totals
+
+
+class _TooManyAmounts(ValueError):
+    """A purchase line with more amounts than its columns allow."""
+
+
+@dataclass
+class _Reader:
+    """Reads the detail line by line, remembering the block and the card it is in. Each
+    `_take_*` method says whether the line was its kind; `read` tries them in order."""
+
+    out: ParsedStatement
+    block: str | None = None  # purchases, debits, credits, clients
+    card: str | None = None
+    card_names: dict[str, str] = field(default_factory=dict)
+    card_subtotals: dict[str, Decimal] = field(default_factory=dict)
+    clients: dict[str, Decimal] = field(default_factory=dict)
+    deferred: Decimal = Decimal(0)
+
+    def read(self, page_no: int, line_no: int, line: str) -> None:
+        """Read one line."""
+        if self._take_block(line) or self.block is None:
+            return
+        if self._take_printed(line) or self._take_client(line) or self._take_card(line):
+            return
+        self._take_movement(page_no, line_no, line)
+
+    def _take_block(self, line: str) -> bool:
+        """A heading that starts a block of the detail, or a part that is skipped."""
+        if line in BLOCKS:
+            self.block = BLOCKS[line]
+        elif line == "Detalle debitos y creditos":
+            self.block = self.block if self.block in ("debits", "credits") else "debits"
+        elif line.startswith(SKIPPED):
+            self.block = None
+        else:
+            return False
+        return True
+
+    def _take_printed(self, line: str) -> bool:
+        """A total the statement prints, kept for the checks."""
+        if not _printed(line, self.out.totals, self.card, self.card_subtotals):
+            return False
+        if line.startswith(("TOTAL A PAGAR", "TOTAL CONSUMO POR CLIENTE")):
+            self.block = None if self.block == "clients" else self.block
+        return True
+
+    def _take_client(self, line: str) -> bool:
+        """Inside the summary by client, a client's total; nothing else there is a line."""
+        if self.block != "clients":
+            return False
+        if c := CLIENT.match(line):
+            self.clients[c.group("name")] = amount(c.group("amt"))
+        return True
+
+    def _take_card(self, line: str) -> bool:
+        """The card a block of purchases belongs to."""
+        if self.block != "purchases" or not (c := CARD.match(line)):
+            return False
+        self.card = c.group("card")
+        self.card_names[self.card] = c.group("name").strip()
+        return True
+
+    def _purchase(self, m: re.Match[str], d: date) -> tuple[date, Decimal]:
+        """A purchase's date and what it costs. Columns: CUOTA, VALOR, IVA, SALDO DIF. An
+        installment line ends with its remaining balance ("(6/12) 336,00 2.016,00"); any number
+        between is IVA. Otherwise a second number is IVA, part of the charge ("TARIFA CONSUMO
+        GASOLINERA 0,20 0,03" costs 0,23; it was dropped, 2026-11-02)."""
+        extra = [amount(x) for x in (m.group("x2"), m.group("x3")) if x]
+        if m.group("cuota"):
+            if d < self.out.period_start - EARLIER:
+                d = self.out.period_end  # an earlier purchase
+            if extra:
+                self.deferred += extra.pop()
+        elif len(extra) > 1:
+            raise _TooManyAmounts("Too many amounts for a purchase")
+        return d, amount(m.group("amt")) + sum(extra, Decimal(0))
+
+    def _take_movement(self, page_no: int, line_no: int, line: str) -> None:
+        """A dated line: a purchase, a charge or a payment, or a reject when it can't be read."""
+        out, block = self.out, self.block
+        assert block is not None
+        purchase = block == "purchases"
+        m = (PURCHASE if purchase else MOVEMENT).match(line)
+        if not m:
+            if DATED.match(line):
+                out.rejects.append(Reject(page_no, line_no, line, "Line could not be read"))
+            return
+        try:
+            d = _date(m.group("d"), out.period_end)
+            d, value = self._purchase(m, d) if purchase else (d, amount(m.group("amt")))
+        except ValueError as exc:
+            out.rejects.append(Reject(page_no, line_no, line, str(exc)))
+            return
+        desc = m.group("desc").strip()
+        on_card = self.card if purchase else None
+        out.lines.append(
+            Line(
+                page=page_no,
+                line_no=line_no,
+                section=_section(desc, block),
+                text=line,
+                txn_date=d,
+                post_date=None,
+                amount=-value,  # charges are money out; "708,82-" is in
+                description=desc,
+                cardholder=on_card,
+                person=_person(self.card_names[on_card]) if on_card else None,
+                reference=m.group("cuota") if purchase else None,
+            )
+        )
+
+
+def parse(pages: list[str]) -> ParsedStatement:
+    """Read a Diners Club statement's pages (scans included): period, lines and checks."""
+    pages = [fold_accents(p) for p in pages]  # OCR of a scan drops them: match without accents
+    text = "\n".join(pages)
+    start, end = _period(text)
+    totals = _summary(text)
     out = ParsedStatement(
         parser=NAME,
         period_start=start,
@@ -106,99 +244,10 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
         closing_balance=totals["total_due"],
         totals=totals,
     )
-
-    block: str | None = None  # purchases, debits, credits, clients
-    card: str | None = None
-    card_names: dict[str, str] = {}
-    card_subtotals: dict[str, Decimal] = {}
-    clients: dict[str, Decimal] = {}
-    deferred = Decimal(0)
-    for page_no, page in enumerate(pages, start=1):
-        for line_no, raw in enumerate(page.splitlines(), start=1):
-            line = raw.strip()
-            if line == "Consumo periodo actual":
-                block = "purchases"
-                continue
-            if line == "Detalle debitos y creditos":
-                block = block if block in ("debits", "credits") else "debits"
-                continue
-            if line == "DETALLE DE DEBITOS":
-                block = "debits"
-                continue
-            if line == "DETALLE DE PAGOS Y CREDITOS":
-                block = "credits"
-                continue
-            if line == "Resumen consumos por cliente":
-                block = "clients"
-                continue
-            if line.startswith("Compras con meses de gracia"):
-                # Bought with grace months: billed (as installments) in a later statement.
-                block = None
-                continue
-            if line.startswith("Consumo en el exterior"):
-                block = None  # repeats foreign purchases already listed above
-                continue
-            if block is None:
-                continue
-            if _printed(line, totals, card, card_subtotals):
-                if line.startswith(("TOTAL A PAGAR", "TOTAL CONSUMO POR CLIENTE")):
-                    block = None if block == "clients" else block
-                continue
-            if block == "clients":
-                if c := CLIENT.match(line):
-                    clients[c.group("name")] = amount(c.group("amt"))
-                continue
-            if block == "purchases" and (c := CARD.match(line)):
-                card = c.group("card")
-                card_names[card] = c.group("name").strip()
-                continue
-            rx = PURCHASE if block == "purchases" else MOVEMENT
-            if not (m := rx.match(line)):
-                if re.match(r"^\d{2}/\d{2} ", line):
-                    out.rejects.append(Reject(page_no, line_no, line, "Line could not be read"))
-                continue
-            try:
-                d = _date(m.group("d"), end)
-            except ValueError as exc:
-                out.rejects.append(Reject(page_no, line_no, line, str(exc)))
-                continue
-            cuota = m.group("cuota") if block == "purchases" else None
-            value = amount(m.group("amt"))
-            if block == "purchases":
-                # Columns: CUOTA, VALOR, IVA, SALDO DIF. An installment line ends with its
-                # remaining balance ("(6/12) 336,00 2.016,00"); any number between is IVA.
-                # Otherwise a second number is IVA, part of the charge ("TARIFA CONSUMO
-                # GASOLINERA 0,20 0,03" costs 0,23; it was dropped, 2026-11-02).
-                extra = [amount(x) for x in (m.group("x2"), m.group("x3")) if x]
-                if cuota:
-                    d = end if d < start - timedelta(days=7) else d  # an earlier purchase
-                    if extra:
-                        deferred += extra.pop()
-                elif len(extra) > 1:
-                    out.rejects.append(
-                        Reject(page_no, line_no, line, "Too many amounts for a purchase")
-                    )
-                    continue
-                value += sum(extra, Decimal(0))
-            desc = m.group("desc").strip()
-            on_card = card if block == "purchases" else None
-            out.lines.append(
-                Line(
-                    page=page_no,
-                    line_no=line_no,
-                    section=_section(desc, block),
-                    text=line,
-                    txn_date=d,
-                    post_date=None,
-                    amount=-value,  # charges are money out; "708,82-" is in
-                    description=desc,
-                    cardholder=on_card,
-                    person=_person(card_names[on_card]) if on_card else None,
-                    reference=cuota,
-                )
-            )
-
-    _tie_out(out, card_subtotals, card_names, clients, deferred)
+    reader = _Reader(out)
+    for page_no, line_no, line in numbered_lines(pages):
+        reader.read(page_no, line_no, line)
+    _tie_out(out, reader.card_subtotals, reader.card_names, reader.clients, reader.deferred)
     return out
 
 

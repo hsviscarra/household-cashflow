@@ -11,6 +11,7 @@ the dollar amount; the dollar amount (Valor M.L.) is the last one. Layout notes 
 """
 
 import re
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
@@ -21,6 +22,7 @@ from app.ingestion.parsers.base import (
     ParseError,
     Reject,
     fold_accents,
+    numbered_lines,
 )
 
 NAME = "produbanco"  # one source with the savings statements; the reader tells them apart
@@ -80,9 +82,13 @@ def _section(op: str, desc: str) -> str:
     return "purchase"
 
 
-def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    """Read a Produbanco Visa statement's pages: period, lines and checks."""
-    text = "\n".join(pages)
+DETAIL_START = "Detalle de movimientos del periodo"
+# Operations printed with "-": the payments group counts them as positive.
+REDUCE_DEBT = ("PAGO", "N/C")
+
+
+def _header(text: str) -> tuple[date, date, dict[str, Decimal]]:
+    """The period, and the summary's four amounts: previous balance, payments, purchases, due."""
     p = PERIOD.search(text)
     if not p:
         raise ParseError("Period (Periodo : MM/DD/YYYY - MM/DD/YYYY) not found.")
@@ -91,81 +97,118 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
     if summary is None:
         raise ParseError("Summary (Saldo anterior, Pagos/Créditos, Consumos/Débitos) not found.")
     previous, credits, debits, due = (_num(summary.group(i)) for i in range(1, 5))
-    totals = {
-        "previous_balance": previous,
-        "payments_credits": credits,
-        "purchases_debits": debits,
-        "total_due": due,
-    }
-    out = ParsedStatement(
-        parser="produbanco_card",
-        period_start=start,
-        period_end=end,
-        opening_balance=previous,
-        closing_balance=due,
-        totals=totals,
+    return (
+        start,
+        end,
+        {
+            "previous_balance": previous,
+            "payments_credits": credits,
+            "purchases_debits": debits,
+            "total_due": due,
+        },
     )
 
-    moved = {"purchases": Decimal(0), "charges": Decimal(0), "payments": Decimal(0)}
-    in_detail = False
-    person: str | None = None
-    for page_no, page in enumerate(pages, start=1):
-        for line_no, raw in enumerate(page.splitlines(), start=1):
-            line = raw.strip()
-            if fold_accents(line).startswith("Detalle de movimientos del periodo"):
-                in_detail = True
-                continue
-            if not in_detail or not line:
-                continue
-            folded = fold_accents(line)
-            hit = next(((k, m) for k, rx in TOTALS.items() if (m := rx.match(folded))), None)
-            if hit:
-                totals[hit[0]] = _num(hit[1].group(1))
-                if hit[0] == "printed_total":
-                    in_detail = False  # PAGO TOTAL closes the detail
-                continue
-            if h := HOLDER.match(line):
-                words = h.group("name").upper().split()
-                person = next((PEOPLE[w] for w in words if w in PEOPLE), None)
-                continue
-            if not DATED.match(line) or "SALDO ANTERIOR" in line:
-                continue
-            m = LINE.match(line)
-            rest = m.group("rest") if m else ""
-            while m and NUMBER.search(rest):  # foreign amount and rate before the dollar amount
-                rest = NUMBER.sub("", rest)
-            op = OPERATION.search(rest) if m else None
-            if not m or not op:
-                reason = "operation not recognized" if m else "amount or sign not readable"
-                out.rejects.append(
-                    Reject(page_no, line_no, line, f"Line could not be read: {reason}")
-                )
-                continue
-            kind = re.sub(r"[^A-Z/]", "", op.group("op"))
-            words = rest[: op.start()].split()
-            if words and words[0].isdigit():
-                words = words[1:]  # the voucher reference
-            desc = COUNTRY.sub("", " ".join(words)).strip()
-            value = _num(m.group("amt")) * (1 if m.group("sign") == "+" else -1)
-            moved[GROUPS[kind]] += value if kind not in ("PAGO", "N/C") else -value
-            out.lines.append(
-                Line(
-                    page=page_no,
-                    line_no=line_no,
-                    section=_section(kind, desc),
-                    text=line,
-                    txn_date=_mdy(*m.group("d").split("/")),
-                    post_date=None,
-                    amount=-value,  # "+" adds to the debt: money out
-                    description=desc,
-                    person=person,
-                )
-            )
 
-    for key, label in LABELS.items():
-        if key in totals:
-            out.checks.append(Check(label, totals[key], moved[key]))
-    out.checks += [
+def _movement(line: str) -> tuple[re.Match[str], str, str]:
+    """A dated line's match, its operation and its description. ValueError, with the reason,
+    when the amount or the operation can't be read."""
+    m = LINE.match(line)
+    if not m:
+        raise ValueError("amount or sign not readable")
+    rest = m.group("rest")
+    while NUMBER.search(rest):  # foreign amount and rate before the dollar amount
+        rest = NUMBER.sub("", rest)
+    op = OPERATION.search(rest)
+    if not op:
+        raise ValueError("operation not recognized")
+    words = rest[: op.start()].split()
+    if words and words[0].isdigit():
+        words = words[1:]  # the voucher reference
+    desc = COUNTRY.sub("", " ".join(words)).strip()
+    return m, re.sub(r"[^A-Z/]", "", op.group("op")), desc
+
+
+@dataclass
+class _Reader:
+    """Reads the period's detail line by line, remembering whose block it is in and what each
+    group of operations moved."""
+
+    out: ParsedStatement
+    moved: dict[str, Decimal] = field(
+        default_factory=lambda: {
+            "purchases": Decimal(0),
+            "charges": Decimal(0),
+            "payments": Decimal(0),
+        }
+    )
+    in_detail: bool = False
+    person: str | None = None
+
+    def read(self, page_no: int, line_no: int, line: str) -> None:
+        """Read one line."""
+        if fold_accents(line).startswith(DETAIL_START):
+            self.in_detail = True
+            return
+        if not self.in_detail or not line:
+            return
+        if self._take_total(line) or self._take_holder(line):
+            return
+        if DATED.match(line) and "SALDO ANTERIOR" not in line:
+            self._take_movement(page_no, line_no, line)
+
+    def _take_total(self, line: str) -> bool:
+        """A total the detail prints; PAGO TOTAL closes the detail."""
+        folded = fold_accents(line)
+        hit = next(((k, m) for k, rx in TOTALS.items() if (m := rx.match(folded))), None)
+        if not hit:
+            return False
+        self.out.totals[hit[0]] = _num(hit[1].group(1))
+        if hit[0] == "printed_total":
+            self.in_detail = False
+        return True
+
+    def _take_holder(self, line: str) -> bool:
+        """The heading of a cardholder's block."""
+        h = HOLDER.match(line)
+        if not h:
+            return False
+        words = h.group("name").upper().split()
+        self.person = next((PEOPLE[w] for w in words if w in PEOPLE), None)
+        return True
+
+    def _take_movement(self, page_no: int, line_no: int, line: str) -> None:
+        """A dated line: a movement, or a reject when it can't be read."""
+        try:
+            m, kind, desc = _movement(line)
+        except ValueError as exc:
+            self.out.rejects.append(
+                Reject(page_no, line_no, line, f"Line could not be read: {exc}")
+            )
+            return
+        value = _num(m.group("amt")) * (1 if m.group("sign") == "+" else -1)
+        self.moved[GROUPS[kind]] += value if kind not in REDUCE_DEBT else -value
+        self.out.lines.append(
+            Line(
+                page=page_no,
+                line_no=line_no,
+                section=_section(kind, desc),
+                text=line,
+                txn_date=_mdy(*m.group("d").split("/")),
+                post_date=None,
+                amount=-value,  # "+" adds to the debt: money out
+                description=desc,
+                person=self.person,
+            )
+        )
+
+
+def _checks(totals: dict[str, Decimal], moved: dict[str, Decimal]) -> list[Check]:
+    previous, credits = totals["previous_balance"], totals["payments_credits"]
+    debits, due = totals["purchases_debits"], totals["total_due"]
+    checks = [
+        Check(label, totals[key], moved[key]) for key, label in LABELS.items() if key in totals
+    ]
+    checks += [
         Check(
             "Purchases and charges (Consumos/Débitos)",
             debits,
@@ -179,5 +222,23 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
         ),
     ]
     if "printed_total" in totals:
-        out.checks.append(Check("Total due printed in the detail", due, totals["printed_total"]))
+        checks.append(Check("Total due printed in the detail", due, totals["printed_total"]))
+    return checks
+
+
+def parse(pages: list[str]) -> ParsedStatement:
+    """Read a Produbanco Visa statement's pages: period, lines and checks."""
+    start, end, totals = _header("\n".join(pages))
+    out = ParsedStatement(
+        parser="produbanco_card",
+        period_start=start,
+        period_end=end,
+        opening_balance=totals["previous_balance"],
+        closing_balance=totals["total_due"],
+        totals=totals,
+    )
+    reader = _Reader(out)
+    for page_no, line_no, line in numbered_lines(pages):
+        reader.read(page_no, line_no, line)
+    out.checks += _checks(totals, reader.moved)
     return out

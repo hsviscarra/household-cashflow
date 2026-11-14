@@ -9,10 +9,19 @@ carry "Account # 4460 3033 8872" in their header. Layout notes in docs/parsers.m
 """
 
 import re
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
-from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError, Reject, money
+from app.ingestion.parsers.base import (
+    Check,
+    Line,
+    ParsedStatement,
+    ParseError,
+    Reject,
+    money,
+    numbered_lines,
+)
 
 NAME = "bofa"
 AMT = r"-?\$?[\d,]+\.\d{2}"
@@ -54,15 +63,133 @@ def _section_of(text: str) -> str | None:
     return SECTIONS.get(key)
 
 
-def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    """Read a Bank of America statement's pages: period, balances, lines and tie-out checks."""
-    text = "\n".join(pages)
+MAX_CONTINUATION_CHARS = 60  # a wrapped description's extra line is short
+
+
+def _period(text: str) -> tuple[date, date]:
     m = PERIOD.search(text)
     if not m:
         raise ParseError("Statement period (e.g. 'for August 22, 2026 to ...') not found.")
-    start = datetime.strptime(m.group(1), "%B %d, %Y").date()
-    end = datetime.strptime(m.group(2), "%B %d, %Y").date()
+    return (
+        datetime.strptime(m.group(1), "%B %d, %Y").date(),
+        datetime.strptime(m.group(2), "%B %d, %Y").date(),
+    )
 
+
+@dataclass
+class _Reader:
+    """Reads the statement line by line, remembering which account and section it is in. Each
+    `_take_*` method says whether the line was its kind; `read` tries them in order."""
+
+    out: ParsedStatement
+    summary: dict[str, dict[str, Decimal]] = field(default_factory=dict)
+    printed: dict[tuple[str, str], Decimal] = field(default_factory=dict)
+    begin: dict[str, Decimal] = field(default_factory=dict)
+    ending: dict[str, Decimal] = field(default_factory=dict)
+    account: str | None = None
+    section: str | None = None
+    in_summary: bool = False
+    last: Line | None = None
+    continued: int = 0
+
+    def read(self, page_no: int, line_no: int, line: str) -> None:
+        """Read one non-empty line."""
+        if self._take_account(line) or self.account is None:
+            return
+        if self._take_summary(line, self.account) or self._take_heading(line, self.account):
+            return
+        if self._take_movement(page_no, line_no, line):
+            return
+        self._take_continuation(line)
+
+    def _take_account(self, line: str) -> bool:
+        """The start of an account, or a continuation page's header naming it."""
+        if a := ACCOUNT.search(line):
+            self.account, self.section, self.in_summary, self.last = a.group(1), None, False, None
+            return True
+        if a := PAGE_ACCOUNT.search(line):
+            self.account = a.group(1)
+            return True
+        return False
+
+    def _take_summary(self, line: str, account: str) -> bool:
+        """The account summary: its balances and each section's amount."""
+        if line == "Account summary":
+            self.in_summary = True
+            return True
+        if b := BEGIN.match(line):
+            self.begin[account] = money(b.group(1))
+            return True
+        if e := END.match(line):
+            self.ending[account] = money(e.group(1))
+            self.in_summary = False
+            return True
+        if not self.in_summary:
+            return False
+        label, _, amount = line.rpartition(" ")
+        if (sec := _section_of(label)) and re.fullmatch(AMT, amount):
+            self.summary.setdefault(account, {})[sec] = money(amount)
+        return True
+
+    def _take_heading(self, line: str, account: str) -> bool:
+        """A section's header, its column header on a continuation page, or its printed total."""
+        if (sec := _section_of(line)) is not None:
+            self.section, self.last = sec, None
+            return True
+        if line.startswith("Date ") and line.endswith("Amount"):
+            # A header on a continuation page: the next short lines may finish the last line.
+            self.continued = 0
+            return True
+        if t := TOTAL.match(line):
+            sec = _section_of(t.group("what"))
+            if sec:
+                self.printed[(account, sec)] = money(t.group("amt"))
+            self.last = None
+            return True
+        return False
+
+    def _take_movement(self, page_no: int, line_no: int, line: str) -> bool:
+        """A dated line with an amount: a movement, or a reject when it can't be placed."""
+        m = LINE.match(line)
+        if not m:
+            return False
+        if self.section is None:
+            self.out.rejects.append(Reject(page_no, line_no, line, "Line outside a known section"))
+            return True
+        try:
+            d = _date(m.group("d"))
+        except ValueError as exc:
+            self.out.rejects.append(Reject(page_no, line_no, line, str(exc)))
+            return True
+        desc = m.group("desc").strip()
+        ref = REFERENCE.search(desc)
+        self.last = Line(
+            page_no, line_no, self.section, line, d, None, money(m.group("amt")), desc,
+            None, "Joint", self.account, ref.group(1) if ref else None,
+        )  # fmt: skip
+        self.out.lines.append(self.last)
+        self.continued = 0
+        return True
+
+    def _take_continuation(self, line: str) -> None:
+        """A short line after a movement finishes its description, unless it is page furniture."""
+        low = line.lower()
+        furniture = any(low.startswith(s) for s in STOP_CONTINUING)
+        fits = self.continued < MAX_CONTINUATION and len(line) <= MAX_CONTINUATION_CHARS
+        if self.last is not None and fits:
+            if furniture:
+                self.last = None if low.startswith("total ") else self.last
+                self.continued = MAX_CONTINUATION
+                return
+            self.last.description = f"{self.last.description} {line}"
+            self.continued += 1
+        elif furniture:
+            self.continued = MAX_CONTINUATION
+
+
+def parse(pages: list[str]) -> ParsedStatement:
+    """Read a Bank of America statement's pages: period, balances, lines and tie-out checks."""
+    start, end = _period("\n".join(pages))
     out = ParsedStatement(
         parser=NAME,
         period_start=start,
@@ -71,93 +198,17 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
         closing_balance=None,
         totals={},
     )
-    summary: dict[str, dict[str, Decimal]] = {}
-    printed: dict[tuple[str, str], Decimal] = {}
-    begin: dict[str, Decimal] = {}
-    ending: dict[str, Decimal] = {}
-
-    account: str | None = None
-    section: str | None = None
-    in_summary = False
-    last: Line | None = None
-    continued = 0
-    for page_no, page in enumerate(pages, start=1):
-        for line_no, raw in enumerate(page.splitlines(), start=1):
-            line = raw.strip()
-            if not line:
-                continue
-            if a := ACCOUNT.search(line):
-                account, section, in_summary, last = a.group(1), None, False, None
-                continue
-            if a := PAGE_ACCOUNT.search(line):
-                account = a.group(1)
-                continue
-            if account is None:
-                continue
-            if line == "Account summary":
-                in_summary = True
-                continue
-            if b := BEGIN.match(line):
-                begin[account] = money(b.group(1))
-                continue
-            if e := END.match(line):
-                ending[account] = money(e.group(1))
-                in_summary = False
-                continue
-            if in_summary:
-                label, _, amount = line.rpartition(" ")
-                if (sec := _section_of(label)) and re.fullmatch(AMT, amount):
-                    summary.setdefault(account, {})[sec] = money(amount)
-                continue
-            if (sec := _section_of(line)) is not None:
-                section, last = sec, None
-                continue
-            if line.startswith("Date ") and line.endswith("Amount"):
-                # A header on a continuation page: the next short lines may finish the last line.
-                continued = 0
-                continue
-            if t := TOTAL.match(line):
-                sec = _section_of(t.group("what"))
-                if sec:
-                    printed[(account, sec)] = money(t.group("amt"))
-                last = None
-                continue
-            if (t2 := LINE.match(line)) and section is not None:
-                try:
-                    d = _date(t2.group("d"))
-                except ValueError as exc:
-                    out.rejects.append(Reject(page_no, line_no, line, str(exc)))
-                    continue
-                desc = t2.group("desc").strip()
-                ref = REFERENCE.search(desc)
-                last = Line(
-                    page_no, line_no, section, line, d, None, money(t2.group("amt")), desc,
-                    None, "Joint", account, ref.group(1) if ref else None,
-                )  # fmt: skip
-                out.lines.append(last)
-                continued = 0
-                continue
-            if t2 and section is None:
-                out.rejects.append(Reject(page_no, line_no, line, "Line outside a known section"))
-                continue
-            low = line.lower()
-            if last is not None and continued < MAX_CONTINUATION and len(line) <= 60:
-                if any(low.startswith(s) for s in STOP_CONTINUING):
-                    last = None if low.startswith("total ") else last
-                    continued = MAX_CONTINUATION
-                    continue
-                last.description = f"{last.description} {line}"
-                continued += 1
-            elif any(low.startswith(s) for s in STOP_CONTINUING):
-                continued = MAX_CONTINUATION
-
-    if not begin:
+    reader = _Reader(out)
+    for page_no, line_no, line in numbered_lines(pages):
+        if line:
+            reader.read(page_no, line_no, line)
+    if not reader.begin:
         raise ParseError("No 'Account number' sections with a beginning balance found.")
-    out.balances = {acct: (begin[acct], ending.get(acct, Decimal(0))) for acct in begin}
+    out.balances = {a: (reader.begin[a], reader.ending.get(a, Decimal(0))) for a in reader.begin}
     for acct, (opening, closing) in out.balances.items():
         out.totals[f"{acct}_beginning"] = opening
         out.totals[f"{acct}_ending"] = closing
-    _tie_out(out, summary, printed)
+    _tie_out(out, reader.summary, reader.printed)
     return out
 
 

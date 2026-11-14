@@ -1,6 +1,7 @@
 """The shape every statement parser returns (F4 on)."""
 
 import unicodedata
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -73,6 +74,14 @@ class ParsedStatement:
     def tieout_ok(self) -> bool:
         """Whether the statement ties out: it has checks, all pass, and no line was rejected."""
         return bool(self.checks) and all(c.ok for c in self.checks) and not self.rejects
+
+
+def numbered_lines(pages: list[str]) -> Iterator[tuple[int, int, str]]:
+    """Every line of every page as (page number, line number, the line without the space around
+    it), both counted from 1: where a parser's lines and rejects say they were read."""
+    for page_no, page in enumerate(pages, start=1):
+        for line_no, raw in enumerate(page.splitlines(), start=1):
+            yield page_no, line_no, raw.strip()
 
 
 class ParseError(Exception):
