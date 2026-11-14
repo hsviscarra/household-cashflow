@@ -108,3 +108,5 @@ docker run --rm --network host -v "$PWD/backups:/backups" -e BACKUP_DIR=/backups
 ```
 
 Keep restored copies off shared or synced folders. They hold the household's whole history.
+
+To move the whole household between Azure and your Mac (and back), see parking.md.

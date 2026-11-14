@@ -2,6 +2,7 @@
 
     python -m app.ops.backup export   # BACPAC of the database, then its manifest
     python -m app.ops.backup drill    # restore the latest BACPAC into a scratch database, check it
+    python -m app.ops.backup copy     # export SOURCE and import it into the empty TARGET (ADR-107)
 
 In Azure both run as Container Apps Jobs with a managed identity (no passwords): the export reads
 the Azure SQL database and writes to the private `backups` Blob container; the drill restores
@@ -18,6 +19,8 @@ Settings (environment):
   SOURCE_TRUST_CERT (1 for a local SQL Server);
 - DRILL_SERVER, DRILL_DATABASE (must end in "restore"), DRILL_AUTH, DRILL_USER, DRILL_PASSWORD,
   DRILL_TRUST_CERT, DRILL_SHUTDOWN (1: stop the scratch SQL Server when done, so the job ends);
+- TARGET_SERVER, TARGET_DATABASE, TARGET_AUTH, TARGET_USER, TARGET_PASSWORD, TARGET_TRUST_CERT,
+  TARGET_CREATE (1: the import may create the database: the local SQL Server only), for `copy`;
 - AZURE_CLIENT_ID: the job's managed identity (msi auth and Blob);
 - BACKUP_ACCOUNT_URL and BACKUP_CONTAINER (Blob), or BACKUP_DIR (a folder);
 - SQLPACKAGE: path of the sqlpackage tool (default: on the PATH).
@@ -406,6 +409,28 @@ def compare(expected: dict[str, Any], got: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _import_latest(target: Target, store: BackupStore) -> tuple[dict[str, Any], float]:
+    """Download the newest backup, check it against its manifest's SHA-256 and import it into
+    `target`. Returns the manifest and the seconds the import took."""
+    manifest = latest_backup(store)
+    if manifest is None:
+        raise BackupError("There is no backup to restore yet.")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "restore.bacpac"
+        store.download(manifest["file"], path)
+        if _sha256(path) != manifest["sha256"]:
+            raise BackupError("The backup file doesn't match its manifest's SHA-256.")
+        seconds = run_sqlpackage(
+            [
+                "/Action:Import",
+                f"/SourceFile:{path}",
+                f"/TargetConnectionString:{target.sqlclient()}",
+                "/Quiet:True",
+            ]
+        )
+    return manifest, seconds
+
+
 def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict[str, Any]:
     """Restore the latest backup into the scratch database and check it against its manifest.
     The result is recorded whether it passes or not."""
@@ -416,21 +441,9 @@ def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict
         if manifest is None:
             raise BackupError("There is no backup to restore yet.")
         result["backup"] = manifest["file"]
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "restore.bacpac"
-            store.download(manifest["file"], path)
-            if _sha256(path) != manifest["sha256"]:
-                raise BackupError("The backup file doesn't match its manifest's SHA-256.")
-            wait_ready(target)
-            drop_database(target)
-            result["seconds"] = run_sqlpackage(
-                [
-                    "/Action:Import",
-                    f"/SourceFile:{path}",
-                    f"/TargetConnectionString:{target.sqlclient()}",
-                    "/Quiet:True",
-                ]
-            )
+        wait_ready(target)
+        drop_database(target)
+        manifest, result["seconds"] = _import_latest(target, store)
         got = facts(target)
         result["problems"] = compare(manifest, got)
         result["tables"] = len(got["tables"])
@@ -449,17 +462,89 @@ def drill(target: Target, store: BackupStore, stop_server: bool = False) -> dict
     return result
 
 
+# ------------------------------------------------- moving the data (ADR-107)
+def prepare_target(target: Target, allow_create: bool) -> None:
+    """A copy only writes into an empty database. On Azure it must already exist (created with
+    the free offer: a database sqlpackage creates there is billed); on the local SQL Server it
+    may be created by the import, which then needs contained users allowed (the read-only MCP
+    user is one on Azure)."""
+    with _connect(target, "master", autocommit=True) as conn:
+        exists = conn.execute("SELECT DB_ID(?)", target.database).fetchone()[0] is not None
+        if not exists and allow_create:
+            conn.execute("EXEC sp_configure 'contained database authentication', 1; RECONFIGURE;")
+    if not exists:
+        if not allow_create:
+            raise BackupError(f"Create the database {target.database} first, with the free offer.")
+        return
+    with _connect(target) as conn:
+        tables = conn.execute(
+            "SELECT COUNT(*) FROM [sys].[tables] WHERE [is_ms_shipped] = 0"
+        ).fetchone()[0]
+    if tables:
+        raise BackupError(
+            f"{target.database} already holds {tables} tables; a copy only writes into an empty "
+            "database."
+        )
+
+
+def copy(
+    source: Target, target: Target, store: BackupStore, allow_create: bool = False
+) -> dict[str, Any]:
+    """Move the whole database from `source` to `target`: export a backup with its manifest,
+    import it into the empty target and compare the target with the manifest. Used to park the
+    Azure database on a laptop and to bring it back. The backup stays in `store` either way."""
+    prepare_target(target, allow_create)
+    manifest = export(source, store)
+    _, seconds = _import_latest(target, store)
+    got = facts(target)
+    problems = compare(manifest, got)
+    return {
+        "kind": "copy",
+        "backup": manifest["file"],
+        "from": source.database,
+        "to": target.database,
+        "seconds": seconds,
+        "tables": len(got["tables"]),
+        "rows": sum(got["tables"].values()),
+        "transaction_total": got["transaction_total"],
+        "problems": problems,
+        "ok": not problems,
+    }
+
+
+COMMANDS = ("export", "drill", "copy")
+
+
 def main(argv: list[str] | None = None, env: Mapping[str, str] = os.environ) -> int:
-    """The job's entry point: `export` or `drill`; returns the exit code."""
+    """The jobs' and the park script's entry point: `export`, `drill` or `copy`; returns the
+    exit code."""
     args = sys.argv[1:] if argv is None else argv
-    if args not in (["export"], ["drill"]):
-        print("usage: python -m app.ops.backup export|drill", file=sys.stderr)
+    if len(args) != 1 or args[0] not in COMMANDS:
+        print(f"usage: python -m app.ops.backup {'|'.join(COMMANDS)}", file=sys.stderr)
         return 2
     store = store_from_env(env)
     if args == ["export"]:
         m = export(Target.from_env("SOURCE", env), store)
         print(f"backup {m['file']}: {m['size']} bytes, {sum(m['tables'].values())} rows")
         return 0
+    if args == ["copy"]:
+        try:
+            r = copy(
+                Target.from_env("SOURCE", env),
+                Target.from_env("TARGET", env),
+                store,
+                allow_create=env.get("TARGET_CREATE") == "1",
+            )
+        except BackupError as exc:
+            print(f"copy FAILED: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"copy {r['from']} -> {r['to']}: {'ok' if r['ok'] else 'FAILED'}, "
+            f"{r['tables']} tables, {r['rows']} rows, transactions total {r['transaction_total']}"
+        )
+        for p in r["problems"]:
+            print(f"  {p}")
+        return 0 if r["ok"] else 1
     r = drill(Target.from_env("DRILL", env), store, stop_server=env.get("DRILL_SHUTDOWN") == "1")
     print(f"drill of {r.get('backup')}: {'ok' if r['ok'] else 'FAILED'}")
     for p in r.get("problems", []):

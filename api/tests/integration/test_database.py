@@ -767,6 +767,19 @@ def test_backup_and_restore_drill_on_sql_server(tmp_path: object) -> None:
     assert backup.facts(scratch)["tables"] == m["tables"]
     backup.drop_database(scratch)
 
+    # ADR-107: `copy` moves the whole database into a new one (parking, and back), checked
+    # against the manifest of the backup it makes on the way; a second copy into it is refused.
+    moved = backup.Target(
+        server, "cashflow_copy_restore", "sql", url.username, url.password, None, True
+    )
+    backup.drop_database(moved)
+    c = backup.copy(source, moved, store, allow_create=True)
+    assert c["ok"], c["problems"]
+    assert backup.facts(moved)["tables"] == m["tables"]
+    with pytest.raises(backup.BackupError, match="already holds"):
+        backup.copy(source, moved, store)
+    backup.drop_database(moved)
+
 
 def test_mcp_reader_is_read_only_on_sql_server(
     tmp_path: object, monkeypatch: pytest.MonkeyPatch

@@ -5,6 +5,16 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.116.0] — Park Azure, run on the Mac
+
+### Added
+- **`infra/local/park.sh`**: `down` copies the database and statement PDFs from Azure to your Mac,
+  checks the copy, and parks Azure at about $0 a month (app stopped, backups yearly, database
+  never billing, deploys skipped); `up` copies everything back, checked the same way, and turns
+  the cloud on again. How-to in docs/runbooks/parking.md (ADR-107).
+- The backup tool's `copy` command, which moves a whole database into an empty one and compares
+  it with the backup it makes on the way.
+
 ## [0.115.0] — The web app in small files
 
 ### Changed

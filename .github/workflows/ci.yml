@@ -203,6 +203,17 @@ jobs:
             -e 'DRILL_PASSWORD=Ci-Only-Passw0rd!' -e DRILL_TRUST_CERT=1 \
             cashflow-ops:ci drill
           cat /tmp/backups/drills/*.json
+          # ADR-107: the copy the park script runs, here into a new database on the same server.
+          docker run --rm "${COMMON[@]}" \
+            -e SOURCE_SERVER=localhost,1433 -e SOURCE_DATABASE=cashflow -e SOURCE_USER=sa \
+            -e 'SOURCE_PASSWORD=Ci-Only-Passw0rd!' -e SOURCE_TRUST_CERT=1 \
+            -e TARGET_SERVER=localhost,1433 -e TARGET_DATABASE=cashflow_parked -e TARGET_USER=sa \
+            -e 'TARGET_PASSWORD=Ci-Only-Passw0rd!' -e TARGET_TRUST_CERT=1 -e TARGET_CREATE=1 \
+            cashflow-ops:ci copy
+      - name: Park script (ADR-107) - syntax and shellcheck
+        run: |
+          bash -n infra/local/park.sh
+          shellcheck -x infra/local/park.sh
       - name: App logs
         if: failure()
         run: docker logs app
