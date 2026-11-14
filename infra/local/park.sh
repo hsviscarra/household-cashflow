@@ -41,7 +41,9 @@ confirm() {
 }
 
 preflight() {
-  [ -f docker-compose.yml ] && [ -f infra/ops/Dockerfile ] || die "run this from the repo root."
+  if [ ! -f docker-compose.yml ] || [ ! -f infra/ops/Dockerfile ]; then
+    die "run this from the repo root."
+  fi
   for tool in az gh docker curl; do
     command -v "$tool" >/dev/null || die "$tool is not installed."
   done
