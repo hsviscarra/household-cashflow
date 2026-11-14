@@ -5,6 +5,13 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.115.0] — The web app in small files
+
+### Changed
+- **Every page that held several sections is now a folder of small files**, and the API client is
+  one module per area (ADR-106). No source file is over 400 lines and the exemption list is gone.
+  Nothing changes on any page.
+
 ## [0.114.0] — Statement readers in small steps
 
 ### Changed
