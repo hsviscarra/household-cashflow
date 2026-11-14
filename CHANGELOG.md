@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.116.1] — Park fixes from the first run
+
+### Fixed
+- **A dry run of `park.sh down` couldn't reach Azure**: it skipped the temporary firewall rule the
+  copy needs. The rule is now opened (and removed) in a dry run too.
+- **The copy failed on a paused Azure database** ("not currently available"): it now logs in to
+  the database and waits for it to resume before sqlpackage starts.
+
 ## [0.116.0] — Park Azure, run on the Mac
 
 ### Added

@@ -8,7 +8,8 @@
 # Run from the repo root with Docker Desktop running, signed in with `az login` (as the
 # subscription's owner) and `gh auth login`. You type the SQL admin password (from bootstrap.sh,
 # in your password manager) when asked; it is never printed or written to disk.
-# DRY_RUN=1 prints the Azure and GitHub changes instead of making them.
+# DRY_RUN=1 prints the Azure and GitHub changes instead of making them. It still copies the data
+# to this Mac (that only reads Azure), so it opens the temporary firewall rule for real.
 #
 # Parked means: the app is stopped, the backup jobs run once a year instead of nightly, the
 # database pauses instead of billing once its free allowance is used, and deploys skip Azure
@@ -72,17 +73,19 @@ sql_password() {
   export SQL_PASSWORD
 }
 
-# This Mac reaches the Azure database through a firewall rule for its own address, removed on exit.
+# This Mac reaches the Azure database through a firewall rule for its own address, removed on
+# exit. It is opened even in a dry run: the copy needs it, and it is gone when the script ends.
 open_firewall() {
   local ip
   ip=$(curl -fsS https://api.ipify.org) || die "couldn't find this Mac's public address."
   RULE="park-$(whoami | tr -cd 'a-zA-Z0-9-')"
-  run az sql server firewall-rule create -g "$RG" -s "$SERVER" -n "$RULE" \
+  echo "Opening the Azure SQL firewall for $ip while the script runs"
+  az sql server firewall-rule create -g "$RG" -s "$SERVER" -n "$RULE" \
     --start-ip-address "$ip" --end-ip-address "$ip" -o none
   trap close_firewall EXIT
 }
 close_firewall() {
-  run az sql server firewall-rule delete -g "$RG" -s "$SERVER" -n "$RULE" -o none || true
+  az sql server firewall-rule delete -g "$RG" -s "$SERVER" -n "$RULE" -o none 2>/dev/null || true
 }
 
 local_sql() {
@@ -203,7 +206,7 @@ down() {
     ops_image
   fi
   open_firewall
-  say "Copying the Azure database to this Mac (it wakes the Azure database once)"
+  say "Copying the Azure database to this Mac (it wakes it first: about a minute)"
   side SOURCE azure
   side TARGET mac
   export TARGET_CREATE=1

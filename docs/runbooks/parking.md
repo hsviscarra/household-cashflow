@@ -13,6 +13,8 @@ up but asleep, at about $0 a month. Coming back moves the data up again. ADR-107
 - On `main`, up to date: `git checkout main && git pull`.
 
 To see what a run would change in Azure and GitHub without changing it, put `DRY_RUN=1` in front.
+A dry run still does the copy (it only reads Azure), so it replaces the local database and opens
+the temporary firewall rule for this Mac, which it removes when it ends.
 
 ## Park: `./infra/local/park.sh down`
 
