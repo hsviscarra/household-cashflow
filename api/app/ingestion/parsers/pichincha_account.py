@@ -12,6 +12,7 @@ format. Layout notes in docs/parsers.md.
 """
 
 import re
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -22,6 +23,7 @@ from app.ingestion.parsers.base import (
     ParseError,
     Reject,
     fold_accents,
+    numbered_lines,
 )
 
 NAME = "pichincha"
@@ -71,9 +73,27 @@ def _section(desc: str) -> str:
     return "movement"
 
 
-def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    """Read a Banco Pichincha account statement's pages: cut dates, balances, lines and checks."""
-    text = fold_accents("\n".join(pages)).upper()
+Printed = tuple[int, Decimal]  # how many movements the summary counts, and what they add up to
+
+
+@dataclass(frozen=True)
+class _Header:
+    """Page 1: the period between the two cuts, the balances, and the summary's credits and
+    debits when it prints them."""
+
+    start: date
+    end: date
+    opening: Decimal
+    closing: Decimal
+    credits: Printed | None
+    debits: Printed | None
+
+
+def _printed(m: re.Match[str] | None) -> Printed | None:
+    return (int(m.group(1)), _num(m.group(2))) if m else None
+
+
+def _header(text: str) -> _Header:
     last, this = LAST_CUT.search(text), THIS_CUT.search(text)
     if not this:
         raise ParseError("Period (FECHA ESTE CORTE) not found.")
@@ -82,71 +102,103 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
     o, c = OPENING.search(text), CLOSING.search(text)
     if not o or not c:
         raise ParseError("Opening or closing balance (SALDO ANTERIOR / SALDO ACTUAL) not found.")
-    opening, closing = _num(o.group(1)), _num(c.group(1))
-    cr, db = CREDITS.search(text), DEBITS.search(text)
-    totals = {"opening": opening, "closing": closing}
-    if cr:
-        totals["credits"] = _num(cr.group(2))
-    if db:
-        totals["debits"] = _num(db.group(2))
-    out = ParsedStatement(
-        parser=NAME,
-        period_start=start,
-        period_end=end,
-        opening_balance=opening,
-        closing_balance=closing,
-        totals=totals,
+    return _Header(
+        start,
+        end,
+        _num(o.group(1)),
+        _num(c.group(1)),
+        _printed(CREDITS.search(text)),
+        _printed(DEBITS.search(text)),
     )
 
-    running, gaps = opening, Decimal(0)
-    credits = debits = Decimal(0)
-    n_credits = n_debits = 0
-    for page_no, page in enumerate(pages, start=1):
-        for line_no, raw in enumerate(page.splitlines(), start=1):
-            line = raw.strip()
-            m = LINE.match(line)
-            if not m:
-                if LOOKS_LIKE_LINE.search(line):
-                    out.rejects.append(Reject(page_no, line_no, line, "Line could not be read"))
-                continue
-            month = MONTHS.get(m.group("mon").lower())
-            if month is None:
-                out.rejects.append(Reject(page_no, line_no, line, "Unknown month"))
-                continue
-            year = end.year if month <= end.month else end.year - 1
-            try:
-                d = date(year, month, int(m.group("day")))
-            except ValueError as exc:
-                out.rejects.append(Reject(page_no, line_no, line, str(exc)))
-                continue
-            debit, credit = _num(m.group("debit")), _num(m.group("credit"))
-            if debit:
-                debits += debit
-                n_debits += 1
-            if credit:
-                credits += credit
-                n_credits += 1
-            amount = credit - debit
-            running += amount
-            printed = _num(m.group("balance"))
-            gaps += abs(printed - running)
-            running = printed  # resynchronize so one misprint is counted at most twice
-            desc = m.group("desc").strip()
-            out.lines.append(Line(page_no, line_no, _section(desc), line, d, None, amount, desc))
 
-    moved = sum((ln.amount for ln in out.lines), Decimal(0))
-    out.checks += [
-        Check("Opening balance + lines = closing balance", closing, opening + moved),
-        Check("Gaps in the running balance, line by line", Decimal(0), gaps),
+@dataclass
+class _Tally:
+    """What the lines add up to as they are read, and how far the printed running balance
+    strays from it."""
+
+    running: Decimal
+    gaps: Decimal = Decimal(0)
+    credits: Decimal = Decimal(0)
+    debits: Decimal = Decimal(0)
+    n_credits: int = 0
+    n_debits: int = 0
+
+    def add(self, debit: Decimal, credit: Decimal, printed: Decimal) -> None:
+        """Count one line against the balance printed beside it."""
+        if debit:
+            self.debits += debit
+            self.n_debits += 1
+        if credit:
+            self.credits += credit
+            self.n_credits += 1
+        self.running += credit - debit
+        self.gaps += abs(printed - self.running)
+        self.running = printed  # resynchronize so one misprint is counted at most twice
+
+
+def _line_date(m: re.Match[str], end: date) -> date:
+    """A line's date: its month is in the cut's year, or the year before when it is later than
+    the cut's month. ValueError when it can't be a date."""
+    month = MONTHS.get(m.group("mon").lower())
+    if month is None:
+        raise ValueError("Unknown month")
+    year = end.year if month <= end.month else end.year - 1
+    return date(year, month, int(m.group("day")))
+
+
+def _checks(h: _Header, tally: _Tally, lines: list[Line]) -> list[Check]:
+    moved = sum((ln.amount for ln in lines), Decimal(0))
+    checks = [
+        Check("Opening balance + lines = closing balance", h.closing, h.opening + moved),
+        Check("Gaps in the running balance, line by line", Decimal(0), tally.gaps),
     ]
-    if cr:
-        out.checks += [
-            Check("Credits add up to the summary", totals["credits"], credits),
-            Check("Number of credits", Decimal(cr.group(1)), Decimal(n_credits)),
+    if h.credits:
+        checks += [
+            Check("Credits add up to the summary", h.credits[1], tally.credits),
+            Check("Number of credits", Decimal(h.credits[0]), Decimal(tally.n_credits)),
         ]
-    if db:
-        out.checks += [
-            Check("Debits add up to the summary", totals["debits"], debits),
-            Check("Number of debits", Decimal(db.group(1)), Decimal(n_debits)),
+    if h.debits:
+        checks += [
+            Check("Debits add up to the summary", h.debits[1], tally.debits),
+            Check("Number of debits", Decimal(h.debits[0]), Decimal(tally.n_debits)),
         ]
+    return checks
+
+
+def parse(pages: list[str]) -> ParsedStatement:
+    """Read a Banco Pichincha account statement's pages: cut dates, balances, lines and checks."""
+    h = _header(fold_accents("\n".join(pages)).upper())
+    totals = {"opening": h.opening, "closing": h.closing}
+    if h.credits:
+        totals["credits"] = h.credits[1]
+    if h.debits:
+        totals["debits"] = h.debits[1]
+    out = ParsedStatement(
+        parser=NAME,
+        period_start=h.start,
+        period_end=h.end,
+        opening_balance=h.opening,
+        closing_balance=h.closing,
+        totals=totals,
+    )
+    tally = _Tally(h.opening)
+    for page_no, line_no, line in numbered_lines(pages):
+        m = LINE.match(line)
+        if not m:
+            if LOOKS_LIKE_LINE.search(line):
+                out.rejects.append(Reject(page_no, line_no, line, "Line could not be read"))
+            continue
+        try:
+            d = _line_date(m, h.end)
+        except ValueError as exc:
+            out.rejects.append(Reject(page_no, line_no, line, str(exc)))
+            continue
+        debit, credit = _num(m.group("debit")), _num(m.group("credit"))
+        tally.add(debit, credit, _num(m.group("balance")))
+        desc = m.group("desc").strip()
+        out.lines.append(
+            Line(page_no, line_no, _section(desc), line, d, None, credit - debit, desc)
+        )
+    out.checks += _checks(h, tally, out.lines)
     return out

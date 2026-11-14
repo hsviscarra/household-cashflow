@@ -20,10 +20,11 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.ingestion import ocr
-from app.ingestion.detect import read_pages
+from app.ingestion.detect import detect, read_pages
 from app.ingestion.parsers import OCR_SOURCES, PARSERS
 from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError
 from app.ingestion.storage import StatementStore
+from app.ingestion.upload import INSTITUTIONS, resolve_accounts
 from app.models import (
     Account,
     Category,
@@ -123,8 +124,6 @@ def _classify(
 
 
 def _account_at_bank(db: Session, sf: StatementFile, last4: str) -> Account | None:
-    from app.ingestion.upload import INSTITUTIONS  # upload imports parsers; avoid a cycle
-
     institution = INSTITUTIONS.get(sf.source)
     return db.scalar(
         select(Account).where(
@@ -203,64 +202,67 @@ def _clear_preview(db: Session, sf: StatementFile) -> None:
 def _account_again(db: Session, sf: StatementFile, text: str) -> None:
     """Reading again re-checks an account the app chose (not one Hernan picked): a fix to how
     accounts are found reaches statements already uploaded, which can't be uploaded again."""
-    from app.ingestion.detect import detect
-    from app.ingestion.upload import resolve_accounts
-
     res = resolve_accounts(db, detect(text))
     if res.accounts and {a.account_id for a in res.accounts} != {a.account_id for a in sf.accounts}:
         sf.accounts = res.accounts
         sf.account_match = res.match
 
 
-def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    db: Session, store: StatementStore, sf: StatementFile, user: str
-) -> ImportBatch:
-    """Read a stored statement with its bank's parser into a batch in preview: raw lines, tie-out
-    and continuity checks, normalized lines with proposed categories."""
+TEXT_MAX = 400  # the width of a raw line's text and a description
+REASON_MAX = 200
+
+
+def _read(store: StatementStore, sf: StatementFile) -> tuple[ParsedStatement, list[str], bool]:
+    """Read the stored file with its bank's parser. Returns what was read, the pages' text and
+    whether the source is one that is always read with OCR."""
     parser = PARSERS.get(sf.source)
     if parser is None:
         raise StageError("This statement's format isn't recognized, so it can't be read.", 422)
     if not sf.accounts:
         raise StageError("Choose the statement's account first.", 422)
-
     try:
         data = store.get(sf.blob_key)
         crop = OCR_SOURCES.get(sf.source)
         pages = ocr.ocr_pages(data, crop) if crop is not None else read_pages(data)
         if crop is None and not "".join(pages).strip() and ocr.available():
             pages = ocr.ocr_pages(data)  # a scan: no text layer, so read the page pictures
-        parsed = parser(pages)
+        return parser(pages), pages, crop is not None
     except (ParseError, ocr.OcrError) as exc:
         raise StageError(f"The statement could not be read: {exc}", 422) from exc
-    if sf.account_match != "manual" and not parsed.balances and crop is None:
-        _account_again(db, sf, "\n".join(pages))
 
-    # One statement may cover several accounts (BofA checking and savings), keyed by last four.
-    accounts: dict[str | None, Account] = {}
-    if parsed.balances:
-        by_last4 = {a.last4: a for a in sf.accounts if a.last4}
-        for last4 in parsed.balances:
-            if last4 not in by_last4:
-                # Linked only to some of its accounts when uploaded (BofA checking without its
-                # savings): link the bank's active account with those digits now. Uploading again
-                # can't do it, since the same file is refused as a duplicate.
-                found = _account_at_bank(db, sf, last4)
-                if found is None:
-                    raise StageError(
-                        f"The statement covers account •••• {last4}, which no active account has "
-                        "as its last four digits. Set them in Settings → Accounts, then read the "
-                        "statement again.",
-                        422,
-                    )
-                sf.accounts.append(found)
-                by_last4[last4] = found
-            accounts[last4] = by_last4[last4]
-    elif len(sf.accounts) == 1:
-        accounts[None] = sf.accounts[0]
-    else:
+
+def _accounts_of(
+    db: Session, sf: StatementFile, parsed: ParsedStatement
+) -> dict[str | None, Account]:
+    """The account each line belongs to. One statement may cover several accounts (BofA
+    checking and savings), keyed by last four; otherwise the one account is under None."""
+    if not parsed.balances:
+        if len(sf.accounts) == 1:
+            return {None: sf.accounts[0]}
         raise StageError("This statement is linked to several accounts; keep only one.", 422)
+    accounts: dict[str | None, Account] = {}
+    by_last4 = {a.last4: a for a in sf.accounts if a.last4}
+    for last4 in parsed.balances:
+        if last4 not in by_last4:
+            # Linked only to some of its accounts when uploaded (BofA checking without its
+            # savings): link the bank's active account with those digits now. Uploading again
+            # can't do it, since the same file is refused as a duplicate.
+            found = _account_at_bank(db, sf, last4)
+            if found is None:
+                raise StageError(
+                    f"The statement covers account •••• {last4}, which no active account has "
+                    "as its last four digits. Set them in Settings → Accounts, then read the "
+                    "statement again.",
+                    422,
+                )
+            sf.accounts.append(found)
+            by_last4[last4] = found
+        accounts[last4] = by_last4[last4]
+    return accounts
 
-    _clear_preview(db, sf)
+
+def _save_header(db: Session, sf: StatementFile, parsed: ParsedStatement) -> None:
+    """Keep what the statement says about itself, and the lines that couldn't be read."""
     if sf.period_start is None or sf.period_end is None:  # upload couldn't read it; the parser did
         sf.period_start, sf.period_end = parsed.period_start, parsed.period_end
     db.add(
@@ -285,12 +287,14 @@ def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
                 statement_file_id=sf.statement_file_id,
                 page=r.page,
                 line_no=r.line_no,
-                text=r.text[:400],
-                reason=r.reason[:200],
+                text=r.text[:TEXT_MAX],
+                reason=r.reason[:REASON_MAX],
             )
         )
-    parsed.checks += _continuity(db, sf, parsed, accounts)
 
+
+def _new_batch(db: Session, sf: StatementFile, parsed: ParsedStatement, user: str) -> ImportBatch:
+    """The batch in preview, with every check and whether they all pass."""
     batch = ImportBatch(
         statement_file_id=sf.statement_file_id,
         status="preview",
@@ -305,35 +309,50 @@ def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
     )
     db.add(batch)
     db.flush()
+    return batch
 
+
+def _raw_line(db: Session, sf: StatementFile, line: Line) -> RawLine:
+    """Keep a line exactly as the parser read it."""
+    raw = RawLine(
+        statement_file_id=sf.statement_file_id,
+        page=line.page,
+        line_no=line.line_no,
+        section=line.section,
+        cardholder=line.cardholder,
+        text=line.text[:TEXT_MAX],
+        data_json=json.dumps(
+            {
+                "txn_date": line.txn_date.isoformat(),
+                "post_date": line.post_date.isoformat() if line.post_date else None,
+                "amount": str(line.amount),
+                "description": line.description,
+                "account": line.account,
+                "reference": line.reference,
+            }
+        ),
+    )
+    db.add(raw)
+    db.flush()
+    return raw
+
+
+def _stage_lines(
+    db: Session,
+    sf: StatementFile,
+    batch: ImportBatch,
+    parsed: ParsedStatement,
+    accounts: dict[str | None, Account],
+) -> list[StgTransaction]:
+    """Each line normalized, with its key, a proposed category and whose it is."""
     rows = list(db.scalars(select(MerchantRule)))
     rules = [rule_engine.Rule.of(r) for r in rows]
     patterns = {r.rule_id: r.pattern for r in rows}
     by_path, by_id = _paths(db)
-
     seen: Counter[tuple[int, date, Decimal, str]] = Counter()
     staged: list[StgTransaction] = []
     for line in parsed.lines:
-        raw = RawLine(
-            statement_file_id=sf.statement_file_id,
-            page=line.page,
-            line_no=line.line_no,
-            section=line.section,
-            cardholder=line.cardholder,
-            text=line.text[:400],
-            data_json=json.dumps(
-                {
-                    "txn_date": line.txn_date.isoformat(),
-                    "post_date": line.post_date.isoformat() if line.post_date else None,
-                    "amount": str(line.amount),
-                    "description": line.description,
-                    "account": line.account,
-                    "reference": line.reference,
-                }
-            ),
-        )
-        db.add(raw)
-        db.flush()
+        raw = _raw_line(db, sf, line)
         account = accounts[line.account if parsed.balances else None]
         ident = (
             account.account_id,
@@ -354,7 +373,7 @@ def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
                 txn_date=line.txn_date,
                 post_date=line.post_date,
                 amount=line.amount,
-                description_raw=line.description[:400],
+                description_raw=line.description[:TEXT_MAX],
                 merchant=c.merchant,
                 type=c.type,
                 category_id=c.category_id,
@@ -365,6 +384,11 @@ def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
                 is_duplicate=False,
             )
         )
+    return staged
+
+
+def _mark_duplicates(db: Session, staged: list[StgTransaction]) -> None:
+    """Flag the lines already loaded (the same natural key is in core)."""
     keys = [s.natural_key for s in staged]
     existing = (
         set(db.scalars(select(Transaction.natural_key).where(Transaction.natural_key.in_(keys))))
@@ -373,6 +397,23 @@ def parse_statement(  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
     )
     for s in staged:
         s.is_duplicate = s.natural_key in existing
+
+
+def parse_statement(
+    db: Session, store: StatementStore, sf: StatementFile, user: str
+) -> ImportBatch:
+    """Read a stored statement with its bank's parser into a batch in preview: raw lines, tie-out
+    and continuity checks, normalized lines with proposed categories."""
+    parsed, pages, by_ocr = _read(store, sf)
+    if sf.account_match != "manual" and not parsed.balances and not by_ocr:
+        _account_again(db, sf, "\n".join(pages))
+    accounts = _accounts_of(db, sf, parsed)
+    _clear_preview(db, sf)
+    _save_header(db, sf, parsed)
+    parsed.checks += _continuity(db, sf, parsed, accounts)
+    batch = _new_batch(db, sf, parsed, user)
+    staged = _stage_lines(db, sf, batch, parsed, accounts)
+    _mark_duplicates(db, staged)
     db.add_all(staged)
     db.flush()
     # Transfer notes and people's texts: the category they'll give, shown in the preview.

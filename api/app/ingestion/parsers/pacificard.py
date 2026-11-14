@@ -15,11 +15,19 @@ then foreign purchases), lines "SEP/08 100002 SU PAGO PAGO DIRECTO BDP GUAYAQUI 
 import difflib
 import re
 from collections import Counter
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
 from app.ingestion.detect import ES_MONTHS
-from app.ingestion.parsers.base import Check, Line, ParsedStatement, ParseError, Reject
+from app.ingestion.parsers.base import (
+    Check,
+    Line,
+    ParsedStatement,
+    ParseError,
+    Reject,
+    numbered_lines,
+)
 
 NAME = "pacificard"
 AMT = r"\d{1,3}(?:,?\d{3})*\.\d{2}"
@@ -136,9 +144,15 @@ def _person(name: str) -> str | None:
     return None  # the account owner
 
 
-def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baseline, docs/refactors.md #15
-    """Read a Pacificard statement's pages: period, lines and checks."""
-    text = "\n".join(pages)
+MAX_CYCLE = timedelta(days=40)  # a start further than this before the end is a misread
+SAFE_DAY = 28  # a day every month has
+SIGNS = {"+": 1, "=": 1, "-": -1}  # OCR reads "+" as "=" at times
+Unread = tuple[str, int, str, Line]  # group, sign, the amount as read, the line
+
+
+def _period(text: str) -> tuple[date, date]:
+    """The cycle's first and last day. The end comes from "hasta" or, when that is unreadable,
+    the cut-off date; an unreadable start is the day after the previous cut."""
     p = PERIOD.search(text)
     end = _period_date(p.group(2)) if p else None
     if end is None and (cut := CUT.search(text)):
@@ -146,72 +160,91 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
     if end is None:
         raise ParseError("Period (Periodo de corte desde … hasta …) could not be read.")
     start = _period_date(p.group(1)) if p else None
-    if start is None or not end - timedelta(days=40) <= start < end:
+    if start is None or not end - MAX_CYCLE <= start < end:
         # The start date is sometimes unreadable; the cycle runs from the day after last cut.
-        start = (end.replace(day=1) - timedelta(days=1)).replace(day=min(end.day, 28))
+        start = (end.replace(day=1) - timedelta(days=1)).replace(day=min(end.day, SAFE_DAY))
         start += timedelta(days=1)
+    return start, end
 
-    found: dict[str, list[Decimal]] = {k: [] for k in TOTALS}
-    summary: list[tuple[Decimal, ...]] = []
-    rows: list[tuple[int, int, str, re.Match[str]]] = []
-    holders: list[tuple[int, int, str | None]] = []
-    rejects: list[Reject] = []
-    for page_no, page in enumerate(pages, start=1):
-        for line_no, raw in enumerate(page.splitlines(), start=1):
-            line = raw.strip()
-            for key, rx in TOTALS.items():
-                if t := rx.search(line):
-                    found[key] += [_num(g) for g in t.groups()]
-            if row := SUMMARY.match(line):
-                summary.append(tuple(_num(g) for g in row.groups()))
-            if h := HOLDER.match(line):
-                holders.append((page_no, line_no, _person(h.group("name"))))
-            elif m := LINE_START.match(line):
-                rows.append((page_no, line_no, line, m))
 
-    for box in summary:  # the summary box repeats the opening and closing balances
-        found["opening"].append(box[0])
-        found["closing"].append(box[4])
-    opening = _agreed(found["opening"])
-    closing = _agreed(found["closing"] + found["revolving"] + found["owed"])
-    if opening is None or closing is None:
-        raise ParseError("Previous balance or total due could not be read.")
-    totals = {"opening": opening, "closing": closing}
-    for key in ("purchases", "payments", "deferred"):
-        if (v := _agreed(found[key])) is not None:
-            totals[key] = v
-    if summary:
-        totals["charges"] = _agreed([box[3] for box in summary]) or Decimal(0)
-    out = ParsedStatement(
-        parser=NAME,
-        period_start=start,
-        period_end=end,
-        opening_balance=opening,
-        closing_balance=closing,
-        totals=totals,
-        rejects=rejects,
-    )
+@dataclass
+class _Scan:
+    """What a first pass over the pages finds: every printing of each total, the summary boxes,
+    the movement rows and where each cardholder's block starts."""
 
-    moved = {"purchases": Decimal(0), "payments": Decimal(0), "charges": Decimal(0)}
-    unread: list[tuple[str, int, str, Line]] = []
-    for page_no, line_no, line, m in rows:
-        person = next(
-            (who for pg, ln, who in reversed(holders) if (pg, ln) < (page_no, line_no)), None
+    found: dict[str, list[Decimal]] = field(default_factory=lambda: {k: [] for k in TOTALS})
+    summary: list[tuple[Decimal, ...]] = field(default_factory=list)
+    rows: list[tuple[int, int, str, re.Match[str]]] = field(default_factory=list)
+    holders: list[tuple[int, int, str | None]] = field(default_factory=list)
+
+    def read(self, page_no: int, line_no: int, line: str) -> None:
+        """File one line under whatever it is."""
+        for key, rx in TOTALS.items():
+            if t := rx.search(line):
+                self.found[key] += [_num(g) for g in t.groups()]
+        if row := SUMMARY.match(line):
+            self.summary.append(tuple(_num(g) for g in row.groups()))
+        if h := HOLDER.match(line):
+            self.holders.append((page_no, line_no, _person(h.group("name"))))
+        elif m := LINE_START.match(line):
+            self.rows.append((page_no, line_no, line, m))
+
+    @property
+    def closings(self) -> list[Decimal]:
+        """Every printing of what is owed at the end."""
+        return self.found["closing"] + self.found["revolving"] + self.found["owed"]
+
+    def totals(self) -> dict[str, Decimal]:
+        """The totals most printings agree on; the balances must be among them."""
+        for box in self.summary:  # the summary box repeats the opening and closing balances
+            self.found["opening"].append(box[0])
+            self.found["closing"].append(box[4])
+        opening = _agreed(self.found["opening"])
+        closing = _agreed(self.closings)
+        if opening is None or closing is None:
+            raise ParseError("Previous balance or total due could not be read.")
+        totals = {"opening": opening, "closing": closing}
+        for key in ("purchases", "payments", "deferred"):
+            if (v := _agreed(self.found[key])) is not None:
+                totals[key] = v
+        if self.summary:
+            totals["charges"] = _agreed([box[3] for box in self.summary]) or Decimal(0)
+        return totals
+
+    def holder_before(self, page_no: int, line_no: int) -> str | None:
+        """Whose block a row is in: the last cardholder heading above it."""
+        return next(
+            (who for pg, ln, who in reversed(self.holders) if (pg, ln) < (page_no, line_no)), None
         )
-        tokens = m.group("rest").split()
+
+
+def _movement(m: re.Match[str], start: date, end: date) -> tuple[int, bool, str, str, date, str]:
+    """A row's sign, whether its amount is garbled, the amount as read, its operation, its date
+    and its description; ValueError (or KeyError, IndexError) when it can't be read."""
+    tokens = m.group("rest").split()
+    sign = SIGNS[tokens[-1]]
+    garbled = bool(GARBLED.match(tokens[-2]))
+    if not AMOUNT.match(tokens[-2]) and not garbled:
+        raise ValueError("amount not readable")
+    usd = tokens[-3] if not garbled and AMOUNT.match(tokens[-3]) else tokens[-2]
+    op_at = -4 if usd is tokens[-3] else -3
+    op = _operation(tokens[op_at])
+    when = _line_date(m.group("mon"), m.group("day"), start, end)
+    desc = re.sub(r"^W/D ", "N/D ", " ".join(tokens[1:op_at]))  # tokens[0]: the reference
+    return sign, garbled, usd, op, when, desc
+
+
+def _read_rows(out: ParsedStatement, scan: _Scan) -> tuple[dict[str, Decimal], list[Unread]]:
+    """Turn the rows into lines. Returns what each group moved, and the rows whose amount has
+    characters OCR couldn't read (they wait for `_fill_unread`)."""
+    moved = {"purchases": Decimal(0), "payments": Decimal(0), "charges": Decimal(0)}
+    unread: list[Unread] = []
+    for page_no, line_no, line, m in scan.rows:
         try:
-            sign = {"+": 1, "=": 1, "-": -1}[tokens[-1]]
-            garbled = bool(GARBLED.match(tokens[-2]))
-            if not AMOUNT.match(tokens[-2]) and not garbled:
-                raise ValueError("amount not readable")
-            usd = tokens[-3] if not garbled and AMOUNT.match(tokens[-3]) else tokens[-2]
-            op_at = -4 if usd is tokens[-3] else -3
-            op = _operation(tokens[op_at])
-            when = _line_date(m.group("mon"), m.group("day"), start, end)
+            sign, garbled, usd, op, when, desc = _movement(m, out.period_start, out.period_end)
         except (KeyError, IndexError, ValueError) as exc:
-            rejects.append(Reject(page_no, line_no, line, f"Line could not be read: {exc}"))
+            out.rejects.append(Reject(page_no, line_no, line, f"Line could not be read: {exc}"))
             continue
-        desc = re.sub(r"^W/D ", "N/D ", " ".join(tokens[1:op_at]))  # tokens[0]: the reference
         line_out = Line(
             page=page_no,
             line_no=line_no,
@@ -221,7 +254,7 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
             post_date=None,
             amount=Decimal(0),
             description=desc,
-            person=person,
+            person=scan.holder_before(page_no, line_no),
         )
         if garbled:
             unread.append((GROUPS[op], sign, usd, line_out))
@@ -229,11 +262,27 @@ def parse(pages: list[str]) -> ParsedStatement:  # noqa: C901, PLR0915 - baselin
         moved[GROUPS[op]] += sign * _num(usd)
         line_out.amount = -sign * _num(usd)  # "+" adds to the debt: money out
         out.lines.append(line_out)
-    _fill_unread(out, moved, unread, rejects)
+    return moved, unread
 
-    _settle_ties(
-        out, moved, found["opening"], found["closing"] + found["revolving"] + found["owed"]
+
+def parse(pages: list[str]) -> ParsedStatement:
+    """Read a Pacificard statement's pages: period, lines and checks."""
+    start, end = _period("\n".join(pages))
+    scan = _Scan()
+    for page_no, line_no, line in numbered_lines(pages):
+        scan.read(page_no, line_no, line)
+    totals = scan.totals()
+    out = ParsedStatement(
+        parser=NAME,
+        period_start=start,
+        period_end=end,
+        opening_balance=totals["opening"],
+        closing_balance=totals["closing"],
+        totals=totals,
     )
+    moved, unread = _read_rows(out, scan)
+    _fill_unread(out, moved, unread, out.rejects)
+    _settle_ties(out, moved, scan.found["opening"], scan.closings)
     _tie_out(out, moved)
     return out
 

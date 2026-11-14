@@ -5,6 +5,14 @@ the Excel workbook.
 
 ## [Unreleased]
 
+## [0.114.0] — Statement readers in small steps
+
+### Changed
+- **The eight statement readers, staging and the workbook reader are split into small steps**
+  (ADR-105). Every statement reads exactly as before: checked against your real statements and
+  workbook, and against more than 11,000 altered copies of them. No function is left over the
+  size limits.
+
 ## [0.113.0] — Seasons scale everyday spending
 
 ### Fixed

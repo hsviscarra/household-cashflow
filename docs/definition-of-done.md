@@ -24,4 +24,5 @@ A roadmap feature (F0 to F19) is Done only when every item holds. The next featu
     not silently rewritten.
   - Enforced in CI where a tool can (ADR-102): docstrings, no blind `except`, at most 10 branches
     and 50 statements a function (ruff); at most 400 lines a web source file (ESLint). The
-    baselines are in `docs/refactors.md` (#15, #16) and only shrink.
+    API has no exceptions left (0.114.0); the web baseline is in `docs/refactors.md` #16 and
+    only shrinks.
